@@ -52,6 +52,10 @@ cassette diff session-a.jsonl session-b.jsonl
 
 # Test a policy against sample tool calls:
 cassette policy test --policy policy.yaml --calls samples.jsonl
+
+# Policy regression test: replay verdicts against a candidate policy
+# (exits non-zero if any verdict would change):
+cassette policy whatif --policy candidate-policy.yaml session.jsonl
 ```
 
 ## Documentation
@@ -60,6 +64,7 @@ cassette policy test --policy policy.yaml --calls samples.jsonl
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, trust boundaries |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What we defend against — and what we honestly don't |
+| [docs/POLICY.md](docs/POLICY.md) | Policy language reference (rules, scoped grants, Cedar `where`) |
 | [docs/SCHEMA.md](docs/SCHEMA.md) | Session event log format + hash-chain spec |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
 | [RESEARCH.md](RESEARCH.md) / [STACK.md](STACK.md) | Market research & stack decisions |

@@ -1,9 +1,12 @@
 package policy
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func writePolicy(t *testing.T, content string) string {
@@ -118,5 +121,100 @@ func TestAllowAllObserveMode(t *testing.T) {
 	dec := e.Evaluate(Request{Tool: "anything"})
 	if dec.Verdict != VerdictAllow || dec.RuleID != "observe" {
 		t.Fatalf("unexpected observe-mode decision: %+v", dec)
+	}
+}
+
+const scopedPolicy = `
+version: 1
+default: deny
+rules:
+  - id: temp-allow
+    tool: "deploy*"
+    action: allow
+    reason: "temporary deployment grant"
+    expires: "2026-09-29T12:00:00Z"
+  - id: task-allow
+    tool: "read*"
+    action: allow
+    reason: "reads allowed for the migration task"
+    tasks: ["migration"]
+  - id: tmp-only
+    tool: "write*"
+    action: allow
+    reason: "writes restricted to /tmp"
+    where: 'context.args.path like "/tmp/*"'
+  - id: no-secrets
+    tool: "*"
+    action: deny
+    reason: "everything else is forbidden"
+`
+
+func TestExpiredRuleSkipped(t *testing.T) {
+	p, err := Load(writePolicy(t, scopedPolicy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Date(2026, 9, 29, 11, 0, 0, 0, time.UTC)
+	after := time.Date(2026, 9, 29, 13, 0, 0, 0, time.UTC)
+
+	p.now = func() time.Time { return before }
+	if dec := p.Evaluate(Request{Tool: "deploy_prod"}); dec.Verdict != VerdictAllow {
+		t.Fatalf("before expiry: want allow, got %s", dec.Verdict)
+	}
+	p.now = func() time.Time { return after }
+	if dec := p.Evaluate(Request{Tool: "deploy_prod"}); dec.Verdict != VerdictDeny {
+		t.Fatalf("after expiry: want deny (rule skipped), got %s", dec.Verdict)
+	}
+}
+
+func TestTaskScoping(t *testing.T) {
+	p, err := Load(writePolicy(t, scopedPolicy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dec := p.Evaluate(Request{Tool: "read_file", Task: "migration"}); dec.Verdict != VerdictAllow {
+		t.Fatalf("matching task: want allow, got %s", dec.Verdict)
+	}
+	if dec := p.Evaluate(Request{Tool: "read_file", Task: "other"}); dec.Verdict != VerdictDeny {
+		t.Fatalf("other task: want deny, got %s", dec.Verdict)
+	}
+	if dec := p.Evaluate(Request{Tool: "read_file"}); dec.Verdict != VerdictDeny {
+		t.Fatalf("no task: want deny, got %s", dec.Verdict)
+	}
+}
+
+func TestWhereConditions(t *testing.T) {
+	p, err := Load(writePolicy(t, scopedPolicy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allow := Request{Tool: "write_file", Args: json.RawMessage(`{"path":"/tmp/x.txt"}`)}
+	deny := Request{Tool: "write_file", Args: json.RawMessage(`{"path":"/etc/passwd"}`)}
+
+	if dec := p.Evaluate(allow); dec.Verdict != VerdictAllow {
+		t.Fatalf("/tmp write: want allow, got %s (%s)", dec.Verdict, dec.Reason)
+	}
+	if dec := p.Evaluate(deny); dec.Verdict != VerdictDeny {
+		t.Fatalf("/etc write: want deny (condition failed), got %s", dec.Verdict)
+	}
+}
+
+func TestInvalidWhereRejectedAtLoad(t *testing.T) {
+	bad := "version: 1\nrules: [{id: x, tool: \"a*\", action: allow, where: 'context.args.path =~ '}]\n"
+	if _, err := Load(writePolicy(t, bad)); err == nil {
+		t.Fatal("invalid Cedar expression accepted")
+	}
+}
+
+func TestCompileCedar(t *testing.T) {
+	p, err := Load(writePolicy(t, scopedPolicy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := CompileCedar(p)
+	for _, want := range []string{`@id("temp-allow")`, "permit(", "forbid(", `context.tool like "deploy*"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("compiled Cedar missing %q:\n%s", want, out)
+		}
 	}
 }

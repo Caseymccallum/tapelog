@@ -22,3 +22,14 @@ Tool-call policy needs (a) a human-writable language, (b) explainable decisions 
 
 - v0 evaluates YAML rules natively; Cedar wiring lands week 3 (ROADMAP) — the interface is designed so this is non-breaking.
 - Policy files are part of the trust boundary: `policy test` exists to validate before deployment.
+
+## Update — 2026-09-29 (week 3, as built)
+
+Cedar (`cedar-go` v1.8) is now wired in as the **condition engine** for `where`
+clauses — real Cedar semantics over `context.tool` / `context.args`, compiled
+per rule at load, fail-closed on evaluation errors. Ordered matching (globs,
+`tasks`, `expires`) remains native because ordered first-match-wins is a
+poor fit for Cedar's effect model; `policy compile` exports portable Cedar
+text (permit/forbid) for interop, with documented approximations. This split
+keeps both promises: no invented expression language *and* the documented
+rule semantics. Full reference: docs/POLICY.md.

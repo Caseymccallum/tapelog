@@ -18,11 +18,12 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] `cassette diff` — compare two sessions (replay vs. live, before/after a change)
 
 ## Week 3 — Policy v1
-- [ ] Cedar under the hood (keep YAML front-end; `Evaluator` interface stable)
-- [ ] Scoped grants with expiry (`expires`, per-task scoping)
-- [ ] Argument-level conditions (path/domain scope constraints)
-- [ ] `policy what-if`: re-evaluate a recorded session against a candidate policy; diff verdicts
-- [ ] Tool-descriptor pinning enforcement (deny-on-drift mode)
+- [x] Cedar under the hood (YAML front-end kept; `Evaluator` interface stable) — `where` conditions are real Cedar via `cedar-go`
+- [x] Scoped grants with expiry (`expires` RFC 3339, `tasks` per-task scoping)
+- [x] Argument-level conditions (`where: 'context.args.path like "/tmp/*"'` etc.)
+- [x] `policy what-if` — re-evaluate a recorded session against a candidate policy; diff verdicts (exits non-zero on change)
+- [x] Tool-descriptor pinning enforcement: `record --deny-on-drift` + race-free ordering (calls wait for in-flight listings)
+- [x] `policy compile` — portable Cedar export
 
 ## Week 4 — Polish & launch
 - [ ] TUI session viewer / scrubger (bubbletea)

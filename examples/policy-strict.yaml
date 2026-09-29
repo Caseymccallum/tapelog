@@ -1,0 +1,13 @@
+# Stricter candidate policy used to demo `cassette policy what-if`:
+# flips the example session's read_file allow into a deny.
+version: 1
+default: deny
+rules:
+  - id: only-list
+    tool: "list*"
+    action: allow
+    reason: "only listing is permitted under this candidate policy"
+  - id: no-file-access
+    tool: "*"
+    action: deny
+    reason: "candidate policy forbids all file access"

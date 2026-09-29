@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -29,6 +30,7 @@ const (
 // Request describes a tool call awaiting a decision.
 type Request struct {
 	SessionID string
+	Task      string // optional task label for per-task scoping
 	Tool      string
 	Args      json.RawMessage
 }
@@ -66,14 +68,51 @@ func (s *StringOrStrings) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // Rule is one ordered policy rule. The first rule whose tool pattern(s)
-// match wins.
+// match — and whose scope (tasks/expires) and `where` conditions pass —
+// wins.
 type Rule struct {
-	ID     string         `yaml:"id"`
-	Tool   StringOrStrings `yaml:"tool"`
-	Action string         `yaml:"action"`
-	Reason string         `yaml:"reason"`
+	ID      string         `yaml:"id"`
+	Tool    StringOrStrings `yaml:"tool"`
+	Action  string         `yaml:"action"`
+	Reason  string         `yaml:"reason"`
+	Tasks   StringOrStrings `yaml:"tasks"`   // optional: rule applies only to these task labels
+	Expires string         `yaml:"expires"` // optional: RFC 3339; expired rules are skipped
+	Where   StringOrStrings `yaml:"where"`   // optional: Cedar conditions over context.tool / context.args
 
-	matchers []*regexp.Regexp // compiled from Tool at load time
+	matchers  []*regexp.Regexp
+	expiresAt *time.Time
+	cond      *conditionSet // Cedar-backed (nil when no `where`)
+}
+
+// inScope reports whether the rule applies to this request's task and is
+// unexpired at time now.
+func (r *Rule) inScope(task string, now time.Time) bool {
+	if len(r.Tasks) > 0 {
+		found := false
+		for _, t := range r.Tasks {
+			if t == task {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if r.expiresAt != nil && now.After(*r.expiresAt) {
+		return false
+	}
+	return true
+}
+
+// matchesTool reports whether any tool glob matches the tool name.
+func (r *Rule) matchesTool(tool string) bool {
+	for _, re := range r.matchers {
+		if re.MatchString(tool) {
+			return true
+		}
+	}
+	return false
 }
 
 // Policy is a parsed YAML policy file.
@@ -81,6 +120,16 @@ type Policy struct {
 	Version int    `yaml:"version"`
 	Default string `yaml:"default"`
 	Rules   []Rule `yaml:"rules"`
+
+	now func() time.Time // test seam; defaults to time.Now
+}
+
+// time returns the policy clock.
+func (p *Policy) time() time.Time {
+	if p.now != nil {
+		return p.now()
+	}
+	return time.Now()
 }
 
 // Load reads, parses, validates and compiles a YAML policy file.
@@ -129,23 +178,42 @@ func (p *Policy) normalize() error {
 			}
 			r.matchers = append(r.matchers, re)
 		}
+		if r.Expires != "" {
+			t, err := time.Parse(time.RFC3339, r.Expires)
+			if err != nil {
+				return fmt.Errorf("rule %q: invalid expires %q (want RFC 3339): %w", r.ID, r.Expires, err)
+			}
+			r.expiresAt = &t
+		}
+		cond, err := compileWhere(r.ID, r.Where)
+		if err != nil {
+			return err
+		}
+		r.cond = cond
 	}
 	return nil
 }
 
-// Evaluate returns the decision of the first matching rule, or the
-// policy default when no rule matches.
+// Evaluate returns the decision of the first rule that is in scope
+// (tasks/expires), whose tool patterns match and whose `where` conditions
+// pass; otherwise the policy default.
 func (p *Policy) Evaluate(req Request) Decision {
+	now := p.time()
 	for _, r := range p.Rules {
-		for _, re := range r.matchers {
-			if re.MatchString(req.Tool) {
-				reason := r.Reason
-				if reason == "" {
-					reason = fmt.Sprintf("matched rule %q", r.ID)
-				}
-				return Decision{Verdict: Verdict(r.Action), RuleID: r.ID, Reason: reason}
-			}
+		if !r.inScope(req.Task, now) {
+			continue
 		}
+		if !r.matchesTool(req.Tool) {
+			continue
+		}
+		if !r.cond.passes(req) {
+			continue
+		}
+		reason := r.Reason
+		if reason == "" {
+			reason = fmt.Sprintf("matched rule %q", r.ID)
+		}
+		return Decision{Verdict: Verdict(r.Action), RuleID: r.ID, Reason: reason}
 	}
 	return Decision{
 		Verdict:   Verdict(p.Default),
