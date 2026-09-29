@@ -50,6 +50,12 @@ cassette replay session.jsonl --strict
 # Compare two sessions (e.g. replay vs. live, or before/after a change):
 cassette diff session-a.jsonl session-b.jsonl
 
+# Inspect a session (interactive TUI, or --plain for CI):
+cassette inspect session.jsonl
+
+# Export the session as an OpenTelemetry trace (OTLP or stdout):
+cassette export otel session.jsonl --endpoint http://localhost:4318/v1/traces
+
 # Test a policy against sample tool calls:
 cassette policy test --policy policy.yaml --calls samples.jsonl
 
@@ -67,6 +73,9 @@ cassette policy whatif --policy candidate-policy.yaml session.jsonl
 | [docs/POLICY.md](docs/POLICY.md) | Policy language reference (rules, scoped grants, Cedar `where`) |
 | [docs/SCHEMA.md](docs/SCHEMA.md) | Session event log format + hash-chain spec |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
+| [docs/launch/SHOW-HN.md](docs/launch/SHOW-HN.md) | Launch kit: post draft, checklist, talking points |
+| [adapters/](adapters/) | TypeScript & Python config adapters (thin, dependency-free) |
+| [examples/rogue-agent/](examples/rogue-agent/) | The 60-second attack-story demo |
 | [RESEARCH.md](RESEARCH.md) / [STACK.md](STACK.md) | Market research & stack decisions |
 | [docs/adr/](docs/adr/) | Architecture decision records |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |

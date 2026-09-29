@@ -85,7 +85,7 @@ func Load(path string) (*Cassette, error) {
 		case session.EventToolsList:
 			var p session.ToolsListPayload
 			if err := json.Unmarshal(e.Payload, &p); err == nil {
-				c.Tools = append(c.Tools, p.Tools...)
+				c.Tools = mergeTools(c.Tools, p.Tools)
 			}
 		case session.EventToolCall:
 			var p session.ToolCallPayload
@@ -144,6 +144,35 @@ func sortInteractions(s []Interaction) {
 			s[j], s[j-1] = s[j-1], s[j]
 		}
 	}
+}
+
+// mergeTools merges a recorded listing into the tool catalog. The newest
+// descriptor per tool name wins (faithful to what the agent last saw).
+func mergeTools(catalog, listing []json.RawMessage) []json.RawMessage {
+	for _, tool := range listing {
+		var desc struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(tool, &desc); err != nil || desc.Name == "" {
+			continue
+		}
+		replaced := false
+		for i, existing := range catalog {
+			var e struct {
+				Name string `json:"name"`
+			}
+			_ = json.Unmarshal(existing, &e)
+			if e.Name == desc.Name {
+				catalog[i] = tool
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			catalog = append(catalog, tool)
+		}
+	}
+	return catalog
 }
 
 // hashArgs returns the hex SHA-256 of an argument object's canonical form.

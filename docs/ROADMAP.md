@@ -26,11 +26,13 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] `policy compile` — portable Cedar export
 
 ## Week 4 — Polish & launch
-- [ ] TUI session viewer / scrubger (bubbletea)
-- [ ] OTel export (GenAI semantic conventions)
-- [ ] TS + Python thin adapters (config/integration)
-- [ ] Demo: "rogue agent" scripted demo + GIF
-- [ ] Show HN post + schema spec published standalone
+- [x] TUI session viewer (`cassette inspect`, bubbletea) + `--plain` mode
+- [x] OTel export (GenAI semantic conventions; OTLP/HTTP + stdout)
+- [x] TS + Python thin adapters (config/integration)
+- [x] Demo: "rogue agent" scripted demo (`examples/rogue-agent/demo.ps1`)
+- [x] Show HN post drafted + launch checklist (`docs/launch/SHOW-HN.md`)
+- [ ] Demo GIF (launch-time artifact — see examples/rogue-agent/README.md)
+- [ ] Tag v0.1.0 + signed release (after final name decision)
 
 ## Later / v2 candidates
 - Toxic-flow (taint) rules across tool calls — the known gap in every tool in this category

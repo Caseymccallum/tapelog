@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 
 ## [Unreleased] — v0.1.0
 
+### Week 4 — polish & launch
+- **`cassette inspect`** — interactive TUI session viewer (bubbletea): event timeline with color-coded verdicts, drift flags, payload detail pane; `--plain` for CI
+- **`cassette export otel`** — OpenTelemetry trace export (GenAI semantic conventions: `execute_tool` spans, `gen_ai.tool.name`); OTLP/HTTP to a collector or stdout
+- **TypeScript & Python adapters** — thin, dependency-free config wrappers (`adapters/`)
+- **Rogue-agent demo** — scripted 60-second attack story (`examples/rogue-agent/`)
+- **Show HN launch kit** — post draft, checklist, talking points (`docs/launch/`)
+- Replay: tool catalogs now merge listings newest-wins (no duplicate descriptors)
+
 ### Week 3 — policy v1
 - **Cedar condition engine** — `where` clauses are real Cedar expressions over `context.tool` / `context.args`, evaluated by `cedar-go` (fail-closed on errors); full reference in `docs/POLICY.md`
 - **Scoped grants** — `expires` (RFC 3339 time-boxed authority) + `tasks` (per-task delegation via `record --task`)

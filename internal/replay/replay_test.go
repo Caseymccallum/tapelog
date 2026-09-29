@@ -164,6 +164,17 @@ func TestServeReplaysFromCassette(t *testing.T) {
 	}
 }
 
+func TestMergeToolsLatestWins(t *testing.T) {
+	catalog := mergeTools(nil, []json.RawMessage{json.RawMessage(`{"name":"read_file","description":"v1"}`)})
+	catalog = mergeTools(catalog, []json.RawMessage{json.RawMessage(`{"name":"read_file","description":"v2"}`)})
+	if len(catalog) != 1 {
+		t.Fatalf("want 1 tool after merge, got %d", len(catalog))
+	}
+	if !strings.Contains(string(catalog[0]), "v2") {
+		t.Fatalf("newest descriptor should win, got %s", catalog[0])
+	}
+}
+
 func TestDiff(t *testing.T) {
 	pathA := buildCassette(t)
 
