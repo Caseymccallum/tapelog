@@ -34,6 +34,7 @@ var defaultSecretPatterns = []*regexp.Regexp{
 // produces the same output, which keeps replay matching stable.
 type Redactor struct {
 	patterns []*regexp.Regexp
+	textHook func(string) string // optional extra redaction (e.g. plugins)
 }
 
 // NewRedactor returns a Redactor with the built-in secret patterns.
@@ -41,11 +42,21 @@ func NewRedactor() *Redactor {
 	return &Redactor{patterns: defaultSecretPatterns}
 }
 
-// RedactString replaces every pattern match with Redacted.
+// RegisterTextRedactor installs an additional redaction pass (applied
+// after the built-in patterns). Used by the plugin chain; one hook only.
+func (r *Redactor) RegisterTextRedactor(fn func(string) string) {
+	r.textHook = fn
+}
+
+// RedactString replaces every pattern match with Redacted, then applies
+// the registered extra redactor.
 func (r *Redactor) RedactString(s string) string {
 	out := s
 	for _, p := range r.patterns {
 		out = p.ReplaceAllString(out, Redacted)
+	}
+	if r.textHook != nil {
+		out = r.textHook(out)
 	}
 	return out
 }

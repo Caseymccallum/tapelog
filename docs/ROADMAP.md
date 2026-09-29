@@ -38,6 +38,6 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Toxic-flow (taint) rules across tool calls — **v1 shipped: session-scoped taint (`flows:` rules); value-level CaMeL-style tracking remains research-grade**
 - [x] Interactive `confirm` UX (per-call terminal approval prompts)
 - [x] HTTP transport interception + remote MCP → **v1 shipped: `cassette mux` multi-server aggregator with stdio + streamable-HTTP upstreams (server-initiated HTTP messages deferred)**
-- [ ] WASM plugin API (external policy/transform plugins)
+- [x] WASM plugin API → **v1 shipped: `--plugin` chain (wazero), tighten-only `verdict_hook` + `redact_hook`, reactor ABI in docs/PLUGINS.md, reference plugin in examples/**
 - [x] Session-log schema as community spec → **v1 shipped: `spec/` (normative spec + JSON Schema + conformance vectors); foundation/community-process home is the launch-time follow-up**
 - [ ] cgroup/landlock defense-in-depth hooks

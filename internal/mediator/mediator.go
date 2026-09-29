@@ -6,12 +6,14 @@
 package mediator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/cassette-ai/cassette/internal/approval"
+	"github.com/cassette-ai/cassette/internal/plugin"
 	"github.com/cassette-ai/cassette/internal/policy"
 	"github.com/cassette-ai/cassette/internal/session"
 )
@@ -22,7 +24,8 @@ type Options struct {
 	Task           string
 	Evaluator      policy.Evaluator
 	Confirmer      approval.Confirmer
-	NonInteractive bool // wording for confirm denials
+	Plugins        *plugin.Chain // optional verdict/redact plugins
+	NonInteractive bool          // wording for confirm denials
 	DenyOnDrift    bool
 	Writer         *session.Writer
 	Redactor       *session.Redactor
@@ -54,6 +57,11 @@ type pin struct {
 func New(opts Options) *Mediator {
 	if opts.Redactor == nil {
 		opts.Redactor = session.NewRedactor()
+	}
+	if !opts.Plugins.Empty() {
+		opts.Redactor.RegisterTextRedactor(func(s string) string {
+			return opts.Plugins.RedactText(context.Background(), s)
+		})
 	}
 	return &Mediator{opts: opts, pins: map[string]pin{}}
 }
@@ -127,7 +135,17 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		})
 	}
 
-	// 3. Human confirmation for `confirm` verdicts.
+	// 3. Plugin verdict hooks may TIGHTEN the decision (never loosen —
+	// host-enforced); plugin failures fail closed.
+	if !m.opts.Plugins.Empty() {
+		t := m.opts.Plugins.Tighten(context.Background(), plugin.Request{
+			Tool: tool, Args: args,
+			Verdict: string(dec.Verdict), RuleID: dec.RuleID, Reason: dec.Reason,
+		})
+		dec.Verdict, dec.Reason = policy.Verdict(t.Verdict), t.Reason
+	}
+
+	// 4. Human confirmation for `confirm` verdicts.
 	finalVerdict, reason := dec.Verdict, dec.Reason
 	if dec.Verdict == policy.VerdictConfirm {
 		switch m.opts.Confirmer.Confirm(tool, args) {

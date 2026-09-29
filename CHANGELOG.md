@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 
 ## [Unreleased] — v0.1.0
 
+### Post-plan development — v2, part 4
+- **WASM plugin API** (`--plugin`, repeatable) — sandboxed pure-computation plugins (wazero, no cgo): `verdict_hook` may only **tighten** decisions (host-enforced lattice — plugins physically cannot weaken enforcement; failures fail closed) and `redact_hook` adds org-specific redaction on already-redacted text. WASI reactor ABI documented in `docs/PLUGINS.md` with a complete reference plugin (`examples/plugins/argguard`, built with plain Go)
+
 ### Post-plan development — v2, part 3
 - **Session log format as standalone spec** — `spec/` package: normative `session-log-v0.md` (RFC 2119, byte-precise canonical form, verification algorithm, replay semantics, conformance classes), JSON Schema, **machine-readable conformance test vectors** (`tools/gen-vectors` + `internal/session` conformance tests bind spec ↔ code). `docs/SCHEMA.md` is now a pointer stub
 
