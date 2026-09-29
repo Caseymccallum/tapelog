@@ -57,7 +57,7 @@ resonates more than security framing, and "rr" is a known-good analogy.
 - [ ] Tag v0.1.0, goreleaser run, attach checksums + SBOM + cosign signatures
 - [ ] Post at Tue–Thu, 8–10am ET; reply actively for the first 3 hours
 - [ ] Cross-posts: MCP Discord, r/LocalLLaMA, r/ExperiencedDevs, OTel community
-- [ ] Publish docs/SCHEMA.md as the standalone "session log format" spec post (follow-up, week 5)
+- [x] Publish the session-log spec standalone → **`spec/` (normative `session-log-v0.md` + JSON Schema + conformance test vectors); community-process post at launch**
 
 ## Talking points / likely questions
 

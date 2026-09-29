@@ -3,7 +3,7 @@
 // server that answers tool calls from the recording — VCR semantics for
 // agent sessions.
 //
-// Rules (documented in docs/SCHEMA.md):
+// Rules (documented in spec/session-log-v0.md):
 //   - matching runs on REDACTED canonical arguments: recordings store
 //     redacted data, redaction is deterministic, so live calls containing
 //     fresh secrets still match their recording.

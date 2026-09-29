@@ -8,7 +8,7 @@ We need a log that serves three masters: audit (tamper evidence), replay (determ
 
 ## Decision
 
-**One JSONL file, one event per line, each event hash-chained** to the previous (`prev_hash` / `hash` over a canonical form). Schema in `docs/SCHEMA.md` + `schema/session-event.v0.schema.json`.
+**One JSONL file, one event per line, each event hash-chained** to the previous (`prev_hash` / `hash` over a canonical form). Schema in `spec/session-log-v0.md` + `spec/schema/session-event.v0.schema.json`.
 
 Key choices:
 - **JSONL:** greppable, streamable, diffable, language-neutral.

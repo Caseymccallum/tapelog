@@ -25,7 +25,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md). In short: `cmd/cassette` (CLI), `interna
 1. **Discuss substantial changes first** (GitHub issue/discussion) — per [GOVERNANCE.md](GOVERNANCE.md), schema/security-claim changes need an RFC.
 2. Keep PRs focused; include tests for behavior changes.
 3. `go test ./...` and `go vet ./...` must pass (CI runs them too).
-4. Update docs alongside code — **documentation is part of the change, not a follow-up.** If you touch the log format, update `docs/SCHEMA.md` + `schema/*.json` + the hash-chain tests.
+4. Update docs alongside code — **documentation is part of the change, not a follow-up.** If you touch the log format, update `spec/session-log-v0.md` + `spec/schema/*.json` + the hash-chain tests.
 5. Sign-off (`git commit -s`) is appreciated but not required pre-1.0.
 
 ## Coding conventions

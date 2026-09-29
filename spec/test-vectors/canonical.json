@@ -1,0 +1,156 @@
+{
+  "$comment": "Conformance vectors for the Agent Session Log Format v0. Regenerate: go run ./tools/gen-vectors",
+  "canonical_cases": [
+    {
+      "name": "empty-payload",
+      "event": {
+        "v": 0,
+        "seq": 1,
+        "ts": "2026-01-02T03:04:05.000Z",
+        "type": "tools/call",
+        "session_id": "vector-session",
+        "payload": {},
+        "prev_hash": "",
+        "hash": ""
+      },
+      "canonical_form": "v=0\nseq=1\nts=2026-01-02T03:04:05.000Z\ntype=tools/call\nsession_id=vector-session\nprev_hash=\npayload={}",
+      "hash": "782bf83ab7da96db7d65bbc8e3ce8daa583c89c5045afbd5b4031e1fe66b35b7"
+    },
+    {
+      "name": "unsorted-keys",
+      "event": {
+        "v": 0,
+        "seq": 1,
+        "ts": "2026-01-02T03:04:05.000Z",
+        "type": "tools/call",
+        "session_id": "vector-session",
+        "payload": {
+          "b": 1,
+          "a": {
+            "z": true,
+            "y": null,
+            "x": "v"
+          }
+        },
+        "prev_hash": "",
+        "hash": ""
+      },
+      "canonical_form": "v=0\nseq=1\nts=2026-01-02T03:04:05.000Z\ntype=tools/call\nsession_id=vector-session\nprev_hash=\npayload={\"a\":{\"x\":\"v\",\"y\":null,\"z\":true},\"b\":1}",
+      "hash": "09b8450d5fc2b244cb940f014e92e9817d1cce4a0418d31143b34838a28a7d45"
+    },
+    {
+      "name": "big-int-preserved",
+      "event": {
+        "v": 0,
+        "seq": 1,
+        "ts": "2026-01-02T03:04:05.000Z",
+        "type": "tools/call",
+        "session_id": "vector-session",
+        "payload": {
+          "n": 12345678901234567890
+        },
+        "prev_hash": "",
+        "hash": ""
+      },
+      "canonical_form": "v=0\nseq=1\nts=2026-01-02T03:04:05.000Z\ntype=tools/call\nsession_id=vector-session\nprev_hash=\npayload={\"n\":12345678901234567890}",
+      "hash": "da67f729c41d10f9bde96664335c9a1c9efe976b65e860b40a80e22bd8d2ec75"
+    },
+    {
+      "name": "html-chars-unescaped",
+      "event": {
+        "v": 0,
+        "seq": 1,
+        "ts": "2026-01-02T03:04:05.000Z",
+        "type": "tools/call",
+        "session_id": "vector-session",
+        "payload": {
+          "s": "a\u003cb\u003e\u0026c"
+        },
+        "prev_hash": "",
+        "hash": ""
+      },
+      "canonical_form": "v=0\nseq=1\nts=2026-01-02T03:04:05.000Z\ntype=tools/call\nsession_id=vector-session\nprev_hash=\npayload={\"s\":\"a\u003cb\u003e\u0026c\"}",
+      "hash": "f0c0212ee40ef321a467a2d8af2515f72fa52f49507888dffa195cdde9bd6f5b"
+    },
+    {
+      "name": "unicode",
+      "event": {
+        "v": 0,
+        "seq": 1,
+        "ts": "2026-01-02T03:04:05.000Z",
+        "type": "tools/call",
+        "session_id": "vector-session",
+        "payload": {
+          "s": "héllo ☃ 🎧"
+        },
+        "prev_hash": "",
+        "hash": ""
+      },
+      "canonical_form": "v=0\nseq=1\nts=2026-01-02T03:04:05.000Z\ntype=tools/call\nsession_id=vector-session\nprev_hash=\npayload={\"s\":\"héllo ☃ 🎧\"}",
+      "hash": "b614ff6d00d77db518d53a3cd0347e07bd7e575f950419cf0017d4b5beb0e29f"
+    },
+    {
+      "name": "arrays-and-nulls",
+      "event": {
+        "v": 0,
+        "seq": 1,
+        "ts": "2026-01-02T03:04:05.000Z",
+        "type": "tools/call",
+        "session_id": "vector-session",
+        "payload": {
+          "arr": [
+            1,
+            "two",
+            {
+              "k": null
+            }
+          ],
+          "nil": null
+        },
+        "prev_hash": "",
+        "hash": ""
+      },
+      "canonical_form": "v=0\nseq=1\nts=2026-01-02T03:04:05.000Z\ntype=tools/call\nsession_id=vector-session\nprev_hash=\npayload={\"arr\":[1,\"two\",{\"k\":null}],\"nil\":null}",
+      "hash": "933d6c70c25b98498be93347d2f7f56175358f96629afd064d3b17dd3d3a7c8c"
+    },
+    {
+      "name": "prev-hash-linkage",
+      "event": {
+        "v": 0,
+        "seq": 1,
+        "ts": "2026-01-02T03:04:05.000Z",
+        "type": "tools/call",
+        "session_id": "vector-session",
+        "payload": {
+          "tool": "read_file"
+        },
+        "prev_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "hash": ""
+      },
+      "canonical_form": "v=0\nseq=1\nts=2026-01-02T03:04:05.000Z\ntype=tools/call\nsession_id=vector-session\nprev_hash=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\npayload={\"tool\":\"read_file\"}",
+      "hash": "3f9b8b41f40c92fdf1f5392c5a1323d377422a225adcb2ad96bd87b540f1fd70"
+    }
+  ],
+  "session_cases": [
+    {
+      "name": "intact",
+      "file": "session-intact.jsonl",
+      "ok": true,
+      "events": 3
+    },
+    {
+      "name": "tampered-payload",
+      "file": "session-tampered.jsonl",
+      "ok": false,
+      "events": 2,
+      "first_bad_seq": 2
+    },
+    {
+      "name": "deleted-event",
+      "file": "session-deleted.jsonl",
+      "ok": false,
+      "events": 2,
+      "first_bad_seq": 3
+    }
+  ]
+}

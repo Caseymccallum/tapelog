@@ -11,7 +11,7 @@ import (
 )
 
 // canonicalJSON returns the canonical serialization of a JSON value used
-// inside the hash-chain canonical form (docs/SCHEMA.md):
+// inside the hash-chain canonical form (spec/session-log-v0.md):
 //   - object keys sorted lexicographically at all depths
 //   - no insignificant whitespace
 //   - strings encoded as JSON with HTML escaping disabled

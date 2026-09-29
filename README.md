@@ -74,7 +74,7 @@ cassette policy whatif --policy candidate-policy.yaml session.jsonl
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, trust boundaries |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What we defend against — and what we honestly don't |
 | [docs/POLICY.md](docs/POLICY.md) | Policy language reference (rules, scoped grants, Cedar `where`) |
-| [docs/SCHEMA.md](docs/SCHEMA.md) | Session event log format + hash-chain spec |
+| [spec/](spec/) | **The Agent Session Log Format spec** — normative rules, JSON Schema, conformance test vectors |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
 | [docs/launch/SHOW-HN.md](docs/launch/SHOW-HN.md) | Launch kit: post draft, checklist, talking points |
 | [adapters/](adapters/) | TypeScript & Python config adapters (thin, dependency-free) |

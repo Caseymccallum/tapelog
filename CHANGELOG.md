@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 
 ## [Unreleased] — v0.1.0
 
+### Post-plan development — v2, part 3
+- **Session log format as standalone spec** — `spec/` package: normative `session-log-v0.md` (RFC 2119, byte-precise canonical form, verification algorithm, replay semantics, conformance classes), JSON Schema, **machine-readable conformance test vectors** (`tools/gen-vectors` + `internal/session` conformance tests bind spec ↔ code). `docs/SCHEMA.md` is now a pointer stub
+
 ### Post-plan development — v2, part 2
 - **`cassette mux`** — one mediated boundary across multiple MCP servers: stdio commands and/or streamable-HTTP endpoints from a YAML config; tools namespaced `<server>__<tool>`; one session log, one policy, one taint state. Live listing refresh keeps `--deny-on-drift` working across upstreams
 - **`internal/mediator`** — the decision pipeline (drift → flows → policy → confirm → taint → logging) extracted into one shared package used by `record` and `mux`; enforcement semantics cannot diverge
@@ -36,7 +39,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 - `tool_descriptor_hash` is now over the *redacted canonical* descriptor (verifiable from the log)
 
 ### Week 1 — foundation
-- **Session log format v0** — append-only, hash-chained JSONL (`docs/SCHEMA.md`, `schema/session-event.v0.schema.json`)
+- **Session log format v0** — append-only, hash-chained JSONL (`docs/SCHEMA.md` at the time — now `spec/session-log-v0.md`)
 - `cassette record` — transparent stdio MCP proxy that records every tool call, result, and policy verdict into the session log (with secret redaction and tool-descriptor hash pinning)
 - `cassette verify` — hash-chain verification; detects modification, deletion, and reordering (incl. recomputed-hash attacks)
 - `cassette policy test` — evaluate sample tool calls against a policy before deploying it

@@ -1,6 +1,6 @@
 // Package session implements cassette's session event log: an append-only,
 // hash-chained JSONL format that serves as both the audit trail and the
-// replay source. The canonical form is specified in docs/SCHEMA.md and MUST
+// replay source. The canonical form is specified in spec/session-log-v0.md and MUST
 // stay byte-identical to this implementation (schema version "v: 0").
 package session
 
@@ -14,7 +14,7 @@ import (
 // SchemaVersion is the current session log schema version (the "v" field).
 const SchemaVersion = 0
 
-// EventType enumerates v0 event types. See docs/SCHEMA.md.
+// EventType enumerates v0 event types. See spec/session-log-v0.md.
 type EventType string
 
 const (
@@ -39,7 +39,7 @@ type Event struct {
 }
 
 // CanonicalBytes returns the exact byte string hashed for the event,
-// per docs/SCHEMA.md "Hash chain — canonical form".
+// per spec/session-log-v0.md "Hash chain — canonical form".
 func (e Event) CanonicalBytes() ([]byte, error) {
 	payload := e.Payload
 	if len(payload) == 0 {
@@ -74,7 +74,7 @@ type SessionStartPayload struct {
 
 // ToolsListPayload is the payload of tools/list: the tool descriptors the
 // server advertised. Descriptors are redacted and canonicalized before
-// recording (SCHEMA.md), so replay can serve them verbatim.
+// recording (spec/session-log-v0.md), so replay can serve them verbatim.
 type ToolsListPayload struct {
 	Tools []json.RawMessage `json:"tools"`
 }
