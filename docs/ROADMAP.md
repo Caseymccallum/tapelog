@@ -40,4 +40,4 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] HTTP transport interception + remote MCP → **v1 shipped: `cassette mux` multi-server aggregator with stdio + streamable-HTTP upstreams (server-initiated HTTP messages deferred)**
 - [x] WASM plugin API → **v1 shipped: `--plugin` chain (wazero), tighten-only `verdict_hook` + `redact_hook`, reactor ABI in docs/PLUGINS.md, reference plugin in examples/**
 - [x] Session-log schema as community spec → **v1 shipped: `spec/` (normative spec + JSON Schema + conformance vectors); foundation/community-process home is the launch-time follow-up**
-- [ ] cgroup/landlock defense-in-depth hooks
+- [x] cgroup/landlock defense-in-depth hooks → **v1 shipped: `--sandbox-ro`/`--sandbox-rw` Landlock sandbox for spawned servers (strict by default, `--sandbox-lenient` opt-out; cgroup/seccomp limits deferred)**

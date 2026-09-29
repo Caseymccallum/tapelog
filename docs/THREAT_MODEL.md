@@ -20,11 +20,12 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 | 4 | Residual authority replay — a stale grant is reused later | Per-task scoped grants with expiry (policy `expires` + `tasks`) |
 | 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`cassette verify` detects modification/deletion/reordering, incl. recomputed-hash forgery) |
 | 6 | Log credential leakage — traces leak secrets | Deterministic `[REDACTED]` masking of known secret patterns + field names (before hashing) |
+| 7 | Tool server over-reach — a mediated server touches files outside its lane | **OS sandbox (defense-in-depth):** spawned servers run under Landlock filesystem restrictions (`--sandbox-ro`/`--sandbox-rw`, Linux; re-exec + syscall.Exec, strict by default) |
 
 ## Out of scope — honest non-claims
 
 - **Prompt injection at the model** (detecting/filtering malicious instructions) — optional defense-in-depth only; not our claim.
-- **Sandbox escape.** We don't sandbox tool execution in v0. A tool that is *allowed* runs with the server's full privileges. Use OS-level sandboxing (containers, seatbelt/landlock) alongside us.
+- **Sandbox escape.** With `--sandbox-*` flags, mediated servers are Landlock-restricted (Linux). We make no claims about kernel exploits or Landlock bypasses; without the flags, a tool that is *allowed* runs with the server's full privileges. Use OS-level sandboxing (containers, seatbelt/landlock) alongside us.
 - **Semantic correctness.** We record and constrain; we don't judge whether an action is *wise*, only whether policy permits it.
 - **Toxic flows (value level).** Flow rules track taint per session (conservative). Tracking specific values *through the model* (CaMeL-style capabilities) is out of scope — the model's internal data flow is opaque to the boundary.
 - **Log confidentiality.** Redaction is best-effort pattern matching. Treat logs as sensitive.
