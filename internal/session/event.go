@@ -19,6 +19,7 @@ type EventType string
 
 const (
 	EventSessionStart   EventType = "session/start"
+	EventToolsList      EventType = "tools/list"
 	EventToolCall       EventType = "tools/call"
 	EventPolicyDecision EventType = "policy/decision"
 	EventToolResult     EventType = "tools/result"
@@ -69,6 +70,13 @@ type SessionStartPayload struct {
 	Harness    string `json:"harness"`
 	PolicyID   string `json:"policy_id"`
 	PolicyHash string `json:"policy_hash"`
+}
+
+// ToolsListPayload is the payload of tools/list: the tool descriptors the
+// server advertised. Descriptors are redacted and canonicalized before
+// recording (SCHEMA.md), so replay can serve them verbatim.
+type ToolsListPayload struct {
+	Tools []json.RawMessage `json:"tools"`
 }
 
 // ToolCallPayload is the payload of tools/call.

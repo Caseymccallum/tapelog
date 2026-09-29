@@ -44,6 +44,12 @@ cassette record --policy policy.yaml --log session.jsonl -- npx -y @modelcontext
 # Verify the log is untampered:
 cassette verify session.jsonl
 
+# Replay the session as a hermetic MCP server (agent regression tests, CI):
+cassette replay session.jsonl --strict
+
+# Compare two sessions (e.g. replay vs. live, or before/after a change):
+cassette diff session-a.jsonl session-b.jsonl
+
 # Test a policy against sample tool calls:
 cassette policy test --policy policy.yaml --calls samples.jsonl
 ```

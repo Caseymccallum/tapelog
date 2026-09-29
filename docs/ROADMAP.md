@@ -12,10 +12,10 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] E2E validated: record → deny/allow → verify against a fake MCP server (test-fixtures/)
 
 ## Week 2 — Replay engine
-- [ ] Cassette capture format (session log = replay source)
-- [ ] Matching rules: canonical arg hashing (JCS), configurable matchers
-- [ ] `cassette replay` — deterministic re-execution against recorded tool I/O (VCR semantics: fail-loud on missing entries)
-- [ ] `cassette diff` — compare two sessions / replay vs. live
+- [x] Cassette capture format (session log = replay source; `tools/list` descriptors recorded)
+- [x] Matching rules: canonical arg hashing, configurable matchers (`exact` / `subset` / `tool`)
+- [x] `cassette replay` — deterministic re-execution as a hermetic MCP server (VCR semantics: fail-loud on missing entries, consume-once, `--strict`)
+- [x] `cassette diff` — compare two sessions (replay vs. live, before/after a change)
 
 ## Week 3 — Policy v1
 - [ ] Cedar under the hood (keep YAML front-end; `Evaluator` interface stable)

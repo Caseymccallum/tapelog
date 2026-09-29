@@ -55,6 +55,7 @@ Rules (deliberately simple and language-portable):
 | `type` | `payload` fields | Meaning |
 |---|---|---|
 | `session/start` | `harness`, `policy_id`, `policy_hash` | Recording begins; pins the policy in effect |
+| `tools/list` | `tools` (array of descriptors) | Server advertised its tool list (descriptors redacted + canonicalized) |
 | `tools/call` | `id` (JSON-RPC id), `tool`, `args`, `tool_descriptor_hash` | Agent invoked a tool |
 | `policy/decision` | `id`, `verdict` (`allow`/`confirm`/`deny`), `rule_id`, `reason` | Verdict for the call with the same `id` |
 | `tools/result` | `id`, `is_error`, `result` | Tool execution result (redacted) |
@@ -66,6 +67,16 @@ Applied **before** hashing (the log stores only redacted data):
 - Known secret patterns (AWS keys, GitHub/Slack tokens, bearer tokens, PEM blocks, …) → `[REDACTED]`
 - JSON fields named like secrets (`password`, `api_key`, `token`, `secret`, `authorization`, …) → `[REDACTED]`
 - Redaction is deterministic (same input → same output) so replay matching stays stable.
+- Tool descriptors (`tools/list`) are redacted + canonicalized the same way; `tool_descriptor_hash` is the hash of the **redacted canonical** descriptor, so pinned hashes are verifiable from the log alone.
+
+## Replay semantics (v1 of `cassette replay`)
+
+The log is the replay source ("cassette"). VCR rules:
+1. **Matching** of live calls to recordings runs on *redacted canonical* arguments — a live call carrying a fresh secret still matches its recording (`--match exact|subset|tool`).
+2. **Consume-once**: each recorded interaction plays once (FIFO); calling a tool twice requires it to have been recorded twice.
+3. **Fail-loud**: a call with no recording is answered with JSON-RPC error `-32011` (`no_matching_recording`) and counted — never invented. `--strict` exits non-zero on any miss.
+4. Recorded `is_error` outcomes replay as JSON-RPC errors.
+5. Calls denied at record time have no recorded result; replaying them fails loud by design.
 
 ## Compatibility
 

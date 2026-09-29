@@ -11,7 +11,7 @@
     "seq": { "type": "integer", "minimum": 1, "description": "Monotonic per-session sequence number" },
     "ts": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$", "description": "RFC 3339 UTC timestamp, millisecond precision" },
     "type": {
-      "enum": ["session/start", "tools/call", "policy/decision", "tools/result", "session/end"]
+      "enum": ["session/start", "tools/list", "tools/call", "policy/decision", "tools/result", "session/end"]
     },
     "session_id": { "type": "string", "minLength": 1 },
     "payload": {
@@ -21,6 +21,7 @@
         "harness": { "type": "string", "description": "session/start: harness name" },
         "policy_id": { "type": "string", "description": "session/start: policy source identifier" },
         "policy_hash": { "type": "string", "description": "session/start: hex SHA-256 of the policy file" },
+        "tools": { "type": "array", "description": "tools/list: redacted, canonicalized tool descriptors" },
         "id": { "description": "JSON-RPC request id this event refers to (number or string)" },
         "tool": { "type": "string", "description": "tools/call: tool name" },
         "args": { "type": "object", "description": "tools/call: redacted arguments" },
