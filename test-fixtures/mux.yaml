@@ -1,0 +1,7 @@
+# Two upstreams, both the same fake server — proves namespacing + routing.
+version: 1
+servers:
+  - name: a
+    command: ["powershell", "-NoProfile", "-File", "test-fixtures/fake-mcp-server.ps1"]
+  - name: b
+    command: ["powershell", "-NoProfile", "-File", "test-fixtures/fake-mcp-server.ps1"]

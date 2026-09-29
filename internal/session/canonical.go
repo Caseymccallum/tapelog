@@ -2,6 +2,8 @@ package session
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -101,6 +103,13 @@ func marshalCanonicalString(s string) ([]byte, error) {
 		return nil, err
 	}
 	return []byte(strings.TrimRight(buf.String(), "\n")), nil
+}
+
+// HashBytes returns the hex SHA-256 of raw bytes — the pin-hash primitive
+// shared by descriptor pinning and replay matching.
+func HashBytes(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 // CanonicalJSON is exported for tests and tooling that need the same

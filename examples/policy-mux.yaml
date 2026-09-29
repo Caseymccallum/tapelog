@@ -1,0 +1,12 @@
+# Mux-mode policy: tool names are namespaced <server>__<tool>.
+version: 1
+default: deny
+rules:
+  - id: allow-reads
+    tool: "*__read*"
+    action: allow
+    reason: "reads are permitted across servers"
+  - id: deny-rest
+    tool: "*"
+    action: deny
+    reason: "everything else is forbidden"

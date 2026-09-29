@@ -41,6 +41,9 @@ go install github.com/cassette-ai/cassette/cmd/cassette@latest   # once publishe
 # Record a session while proxying a real MCP server:
 cassette record --policy policy.yaml --log session.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
 
+# One boundary across MANY servers (stdio + HTTP), one session log:
+cassette mux --config mux.yaml --policy policy.yaml --log session.jsonl
+
 # Verify the log is untampered:
 cassette verify session.jsonl
 

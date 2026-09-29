@@ -118,6 +118,10 @@ Notes:
 `*` = any run, `?` = exactly one character. Anchored to the whole name
 (`read*` matches `read_file`, not `pread`).
 
+**Mux mode:** tool names are namespaced `<server>__<tool>` (e.g.
+`fs__read_file`), so rules must match the namespaced form:
+`*__read*`, `git__*`, etc. Server names never contain `__`.
+
 ## Commands
 
 ```bash
