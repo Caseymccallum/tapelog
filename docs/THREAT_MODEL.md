@@ -12,21 +12,21 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 
 ## In scope — what v0 defends against
 
-| # | Attack class | Defense in v0 |
+| # | Attack class | Defense in v0/v1 |
 |---|---|---|
-| 1 | Excessive agency — agent calls dangerous tools | Policy allow/deny/confirm on `tools/call`, evaluated **before side effects**; fail-closed default available |
-| 2 | MCP tool poisoning / rug pulls — server silently changes tool behavior between calls | Tool-descriptor hash pinning; drift → recorded + flagged (enforcement: deny on drift, configurable) |
-| 3 | Data exfiltration via arguments — secrets sent to tools | Secret redaction in the session log; scope constraints (roadmap: toxic-flow rules) |
-| 4 | Residual authority replay — a stale grant is reused later | Per-task scoped grants with expiry (policy `expires` field) |
-| 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`cassette verify` detects modification/deletion/reordering) |
-| 6 | Log credential leakage — traces leak secrets | Deterministic `[REDACTED]` masking of known secret patterns + field names |
+| 1 | Excessive agency — agent calls dangerous tools | Policy allow/deny/confirm on `tools/call`, evaluated **before side effects**; fail-closed default; `confirm` routes to a **human prompt** (allow once / allow session / deny) |
+| 2 | MCP tool poisoning / rug pulls — server silently changes tool behavior between calls | Tool-descriptor hash pinning; drift recorded + flagged; `--deny-on-drift` denies (race-free: calls wait for in-flight listings) |
+| 3 | Cross-tool exfiltration ("toxic flows") — `read_x` + `send_y` compose into theft though each is allowed | **Session-scoped taint flow rules** (`flows:` in policy): source→sink restrictions with named taint sources; `action: deny` or `confirm` |
+| 4 | Residual authority replay — a stale grant is reused later | Per-task scoped grants with expiry (policy `expires` + `tasks`) |
+| 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`cassette verify` detects modification/deletion/reordering, incl. recomputed-hash forgery) |
+| 6 | Log credential leakage — traces leak secrets | Deterministic `[REDACTED]` masking of known secret patterns + field names (before hashing) |
 
 ## Out of scope — honest non-claims
 
 - **Prompt injection at the model** (detecting/filtering malicious instructions) — optional defense-in-depth only; not our claim.
 - **Sandbox escape.** We don't sandbox tool execution in v0. A tool that is *allowed* runs with the server's full privileges. Use OS-level sandboxing (containers, seatbelt/landlock) alongside us.
 - **Semantic correctness.** We record and constrain; we don't judge whether an action is *wise*, only whether policy permits it.
-- **Toxic flows (cross-tool correlation).** `read_secrets` + `send_http` can each be allowed yet compose into exfiltration. v0 records the sequence (evidence); v2 adds taint-based flow rules. (This is a known limitation of the entire tool category — including the enterprise platforms.)
+- **Toxic flows (value level).** Flow rules track taint per session (conservative). Tracking specific values *through the model* (CaMeL-style capabilities) is out of scope — the model's internal data flow is opaque to the boundary.
 - **Log confidentiality.** Redaction is best-effort pattern matching. Treat logs as sensitive.
 - **Multi-agent / A2A delegation.**
 - **Kernel-level enforcement** (compromised cassette process itself). v0 is userland.

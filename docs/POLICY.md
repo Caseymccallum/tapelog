@@ -40,6 +40,45 @@ A rule applies when **all** of the following hold — otherwise it is skipped:
 
 If no rule applies, `default` decides (fail-closed `deny` unless set).
 
+### `confirm` — the human in the loop
+
+A `confirm` verdict pauses the call and asks the operator on the
+controlling terminal (git-style prompt): **allow once**, **allow for the
+session** (per-tool), or **deny**. Without a terminal and without
+`--auto-confirm`, the call is denied (fail-closed) and the reason says so.
+Every treatment is recorded in the session log.
+
+## Flow rules — toxic-flow guards
+
+Cross-tool data-flow rules: data produced by `from` tools (sources) must
+not reach `to` tools (sinks). They answer what per-call rules cannot see —
+"`read_database` and `send_slack_message` are *each* allowed, but together
+they exfiltrate your customer list."
+
+```yaml
+flows:
+  - id: no-exfil
+    from: ["read_file", "query_db"]   # source tools (glob)
+    to: ["send_*", "post_*"]          # sink tools (glob)
+    action: deny                       # deny | confirm
+    reason: "file/db data must not be sent anywhere"
+```
+
+Semantics (session-scoped taint — deliberately conservative):
+- A permitted tool call **taints the session** with its tool name (at call
+  time; call order in the proxy is serialized, so this is deterministic).
+- A later call whose tool matches a flow's `to` is restricted when any
+  prior tool matches that flow's `from`. The deny reason names the sources.
+- `flow` rules take precedence over regular rules when they apply.
+- Flow `confirm` verdicts go through the same human prompt.
+- Over-conservative by design: the model's actual data flow is opaque to
+  the boundary, so any permitted source call is presumed to contribute
+  data. Value-level tracking through the model (CaMeL-style) is explicitly
+  out of scope (docs/THREAT_MODEL.md).
+
+`cassette policy whatif` is sequence-aware: it walks the recorded session
+in order and builds taint from calls the candidate policy would permit.
+
 ## `where` — real Cedar
 
 Conditions are **Cedar expressions** (CNCF sandbox project) evaluated by

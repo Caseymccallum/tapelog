@@ -120,6 +120,7 @@ type Policy struct {
 	Version int    `yaml:"version"`
 	Default string `yaml:"default"`
 	Rules   []Rule `yaml:"rules"`
+	Flows   []Flow `yaml:"flows"` // optional cross-tool data-flow rules
 
 	now func() time.Time // test seam; defaults to time.Now
 }
@@ -190,6 +191,11 @@ func (p *Policy) normalize() error {
 			return err
 		}
 		r.cond = cond
+	}
+	for i := range p.Flows {
+		if err := p.Flows[i].normalize(i); err != nil {
+			return err
+		}
 	}
 	return nil
 }

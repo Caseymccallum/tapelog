@@ -1,0 +1,16 @@
+# Flow-rule demo policy: both tools are individually permitted, but the
+# flow rule forbids file contents from ever reaching a network sink —
+# the classic toxic-flow that per-call rules cannot see.
+version: 1
+default: deny
+rules:
+  - id: allow-tools
+    tool: ["read*", "send*", "list*"]
+    action: allow
+    reason: "tools individually permitted"
+flows:
+  - id: no-exfil
+    from: ["read_file"]
+    to: ["send_*"]
+    action: deny
+    reason: "file contents must not be sent anywhere"

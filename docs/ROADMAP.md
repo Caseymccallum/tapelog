@@ -35,9 +35,9 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [ ] Tag v0.1.0 + signed release (after final name decision)
 
 ## Later / v2 candidates
-- Toxic-flow (taint) rules across tool calls — the known gap in every tool in this category
-- HTTP transport interception + remote MCP
-- WASM plugin API (external policy/transform plugins)
-- Session-log schema as community spec (foundation home)
-- Interactive `confirm` UX (per-call TUI approval prompts)
-- cgroup/landlock defense-in-depth hooks
+- [x] Toxic-flow (taint) rules across tool calls — **v1 shipped: session-scoped taint (`flows:` rules); value-level CaMeL-style tracking remains research-grade**
+- [x] Interactive `confirm` UX (per-call terminal approval prompts)
+- [ ] HTTP transport interception + remote MCP (multi-server mux)
+- [ ] WASM plugin API (external policy/transform plugins)
+- [ ] Session-log schema as community spec (foundation home)
+- [ ] cgroup/landlock defense-in-depth hooks
