@@ -1,8 +1,8 @@
-# binaries & build output
+# binaries & build output (root-level builds only — never a source dir)
 bin/
 dist/
-tapelog
-tapelog.exe
+/tapelog
+/tapelog.exe
 
 # session logs are user data — never commit
 *.jsonl
