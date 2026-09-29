@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/cassette-ai/cassette/internal/jsonrpc"
+	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
 )
 
 // syncBuffer is a goroutine-safe output sink for tests.
@@ -74,6 +76,18 @@ func TestAllowForwardsAndReportsResult(t *testing.T) {
 	var clientOut, serverOut syncBuffer
 	resultLine := `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"}]}}`
 
+	// A real server answers only AFTER receiving the call; mimic that
+	// causality (a pre-loaded response could race ahead of request
+	// registration, which is impossible in production).
+	serverR, serverW := io.Pipe()
+	go func() {
+		for i := 0; i < 200 && !strings.Contains(serverOut.String(), `"tools/call"`); i++ {
+			time.Sleep(5 * time.Millisecond)
+		}
+		fmt.Fprintln(serverW, resultLine)
+		serverW.Close()
+	}()
+
 	var mu sync.Mutex
 	gotResultID, gotResult := "", ""
 
@@ -81,7 +95,7 @@ func TestAllowForwardsAndReportsResult(t *testing.T) {
 	go func() {
 		done <- Run(context.Background(),
 			strings.NewReader(callLine+"\n"), &clientOut,
-			strings.NewReader(resultLine+"\n"), &serverOut,
+			serverR, &serverOut,
 			Hooks{
 				OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
 					if call.Name != "delete_all" {

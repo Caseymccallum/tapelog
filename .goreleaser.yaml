@@ -3,16 +3,16 @@
 # Signed releases + SBOM land before the first public tag (SECURITY.md).
 version: 2
 
-project_name: cassette
+project_name: tapelog
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: cassette
-    main: ./cmd/cassette
-    binary: cassette
+  - id: tapelog
+    main: ./cmd/tapelog
+    binary: tapelog
     env:
       - CGO_ENABLED=0
     ldflags:

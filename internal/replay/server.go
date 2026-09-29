@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/cassette-ai/cassette/internal/jsonrpc"
+	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
 )
 
 // DefaultProtocolVersion is the MCP protocol version the replay server
@@ -19,10 +19,10 @@ const DefaultProtocolVersion = "2026-07-28"
 // has no recording to play — the fail-loud contract (VCR semantics).
 const CodeNoMatchingRecording = -32011
 
-// Server is a hermetic MCP server that answers tool traffic from a cassette.
+// Server is a hermetic MCP server that answers tool traffic from a tapelog.
 type Server struct {
 	Player   *Player
-	Version  string // cassette version reported in serverInfo
+	Version  string // tapelog version reported in serverInfo
 	Protocol string // MCP protocol version to advertise
 }
 
@@ -85,7 +85,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			if err := result(msg.ID, map[string]any{
 				"protocolVersion": protocol,
 				"capabilities":    map[string]any{"tools": map[string]any{}},
-				"serverInfo":      map[string]any{"name": "cassette-replay", "version": version},
+				"serverInfo":      map[string]any{"name": "tapelog-replay", "version": version},
 			}); err != nil {
 				return err
 			}

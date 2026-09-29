@@ -1,5 +1,5 @@
-// Package replay implements cassette's deterministic re-execution: a
-// recorded session log ("cassette") can be replayed as a hermetic MCP
+// Package replay implements tapelog's deterministic re-execution: a
+// recorded session log ("tapelog") can be replayed as a hermetic MCP
 // server that answers tool calls from the recording — VCR semantics for
 // agent sessions.
 //
@@ -22,7 +22,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
 // Interaction is one recorded tool call with its recorded result.
@@ -37,8 +37,8 @@ type Interaction struct {
 	RuleID   string          // policy rule at record time
 }
 
-// Cassette is a loaded session log ready for replay.
-type Cassette struct {
+// Tape is a loaded session log ready for replay.
+type Tape struct {
 	SessionID    string
 	PolicyID     string
 	Tools        []json.RawMessage // recorded tools/list descriptors
@@ -46,15 +46,15 @@ type Cassette struct {
 	Unanswered   []Interaction     // calls without results (e.g. denied)
 }
 
-// Load parses a session log produced by `cassette record`.
-func Load(path string) (*Cassette, error) {
+// Load parses a session log produced by `tapelog record`.
+func Load(path string) (*Tape, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open cassette: %w", err)
+		return nil, fmt.Errorf("open tapelog: %w", err)
 	}
 	defer f.Close()
 
-	c := &Cassette{}
+	c := &Tape{}
 	type pending struct {
 		idx      int
 		answered bool
@@ -121,7 +121,7 @@ func Load(path string) (*Cassette, error) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("read cassette: %w", err)
+		return nil, fmt.Errorf("read tapelog: %w", err)
 	}
 
 	for _, pend := range byID {

@@ -1,5 +1,5 @@
 // Package jsonrpc implements the JSON-RPC 2.0 envelope used by the MCP
-// wire format (newline-delimited JSON on stdio). Only what cassette needs:
+// wire format (newline-delimited JSON on stdio). Only what tapelog needs:
 // parse, classify, and synthesize error responses.
 package jsonrpc
 
@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// CodeToolDenied is the JSON-RPC error code cassette returns when policy
+// CodeToolDenied is the JSON-RPC error code tapelog returns when policy
 // denies a tool call. Data carries the structured decision.
 const CodeToolDenied = -32010
 
@@ -50,7 +50,7 @@ func (m *Message) IsNotification() bool { return m.Method != "" && len(m.ID) == 
 // IsResponse reports whether the message is a response (id, no method).
 func (m *Message) IsResponse() bool { return m.Method == "" && len(m.ID) > 0 }
 
-// ToolCallParams are the MCP tools/call parameters cassette cares about.
+// ToolCallParams are the MCP tools/call parameters tapelog cares about.
 type ToolCallParams struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`

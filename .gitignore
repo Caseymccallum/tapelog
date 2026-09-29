@@ -1,8 +1,8 @@
 # binaries & build output
 bin/
 dist/
-cassette
-cassette.exe
+tapelog
+tapelog.exe
 
 # session logs are user data — never commit
 *.jsonl

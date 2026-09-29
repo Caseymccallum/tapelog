@@ -9,12 +9,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cassette-ai/cassette/internal/approval"
-	"github.com/cassette-ai/cassette/internal/jsonrpc"
-	"github.com/cassette-ai/cassette/internal/mcpclient"
-	"github.com/cassette-ai/cassette/internal/mediator"
-	"github.com/cassette-ai/cassette/internal/policy"
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/approval"
+	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
+	"github.com/tapelog-dev/tapelog/internal/mcpclient"
+	"github.com/tapelog-dev/tapelog/internal/mediator"
+	"github.com/tapelog-dev/tapelog/internal/policy"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
 // fakeTransport is a scripted in-memory MCP server.

@@ -1,6 +1,6 @@
 # Threat Model
 
-**Scope:** cassette v0.x mediates MCP tool traffic passing through its proxy. Claims below apply only to that mediated traffic.
+**Scope:** tapelog v0.x mediates MCP tool traffic passing through its proxy. Claims below apply only to that mediated traffic.
 
 ## Core assumption: the untrusted model
 
@@ -18,7 +18,7 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 | 2 | MCP tool poisoning / rug pulls — server silently changes tool behavior between calls | Tool-descriptor hash pinning; drift recorded + flagged; `--deny-on-drift` denies (race-free: calls wait for in-flight listings) |
 | 3 | Cross-tool exfiltration ("toxic flows") — `read_x` + `send_y` compose into theft though each is allowed | **Session-scoped taint flow rules** (`flows:` in policy): source→sink restrictions with named taint sources; `action: deny` or `confirm` |
 | 4 | Residual authority replay — a stale grant is reused later | Per-task scoped grants with expiry (policy `expires` + `tasks`) |
-| 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`cassette verify` detects modification/deletion/reordering, incl. recomputed-hash forgery) |
+| 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`tapelog verify` detects modification/deletion/reordering, incl. recomputed-hash forgery) |
 | 6 | Log credential leakage — traces leak secrets | Deterministic `[REDACTED]` masking of known secret patterns + field names (before hashing) |
 | 7 | Tool server over-reach — a mediated server touches files outside its lane | **OS sandbox (defense-in-depth):** spawned servers run under Landlock filesystem restrictions (`--sandbox-ro`/`--sandbox-rw`, Linux; re-exec + syscall.Exec, strict by default) |
 
@@ -30,12 +30,12 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 - **Toxic flows (value level).** Flow rules track taint per session (conservative). Tracking specific values *through the model* (CaMeL-style capabilities) is out of scope — the model's internal data flow is opaque to the boundary.
 - **Log confidentiality.** Redaction is best-effort pattern matching. Treat logs as sensitive.
 - **Multi-agent / A2A delegation.**
-- **Kernel-level enforcement** (compromised cassette process itself). v0 is userland.
+- **Kernel-level enforcement** (compromised tapelog process itself). v0 is userland.
 
 ## Attack surfaces we inherit (MCP, spec 2026-07-28)
 
-Confused deputy, token passthrough, SSRF via tool servers, state-handle hijacking, tool descriptor untrustworthiness. cassette reduces exposure by mediating calls and pinning descriptors, but correct **authorization** (which identity may do what) is delegated to the MCP client/server stack in v0.
+Confused deputy, token passthrough, SSRF via tool servers, state-handle hijacking, tool descriptor untrustworthiness. tapelog reduces exposure by mediating calls and pinning descriptors, but correct **authorization** (which identity may do what) is delegated to the MCP client/server stack in v0.
 
 ## Reporting
 
-Found a vulnerability in cassette itself? See [SECURITY.md](../SECURITY.md).
+Found a vulnerability in tapelog itself? See [SECURITY.md](../SECURITY.md).

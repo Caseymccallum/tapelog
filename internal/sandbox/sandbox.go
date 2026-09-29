@@ -1,12 +1,12 @@
 // Package sandbox applies OS-level restrictions to the MCP server
-// processes cassette spawns — defense-in-depth on top of policy (see
+// processes tapelog spawns — defense-in-depth on top of policy (see
 // docs/THREAT_MODEL.md). On Linux this uses Landlock (filesystem access:
 // only listed paths are reachable). Other platforms have no enforcement
 // yet; requesting a sandbox there is an error unless lenient mode is set.
 //
 // Model: restrictions are applied in a re-exec'd child
-// (`cassette __sandbox_exec`) immediately before syscall.Exec of the real
-// server, so cassette itself is never restricted and Landlock's
+// (`tapelog __sandbox_exec`) immediately before syscall.Exec of the real
+// server, so tapelog itself is never restricted and Landlock's
 // inheritance does the rest. cgroup/seccomp limits are roadmap.
 package sandbox
 
@@ -45,7 +45,7 @@ func baselineRW() []string {
 }
 
 // WrapCommand rewrites a server command so it executes under the
-// restrictions via cassette's hidden __sandbox_exec subcommand.
+// restrictions via tapelog's hidden __sandbox_exec subcommand.
 func (o Options) WrapCommand(executable string, command []string) []string {
 	wrapped := []string{executable, "__sandbox_exec"}
 	if o.Lenient {

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cassette-ai/cassette/internal/jsonrpc"
+	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
 )
 
 // HTTP is a minimal MCP streamable-HTTP client transport: each message is

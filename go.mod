@@ -1,4 +1,4 @@
-module github.com/cassette-ai/cassette
+module github.com/tapelog-dev/tapelog
 
 go 1.27.0
 

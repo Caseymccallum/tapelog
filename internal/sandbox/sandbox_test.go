@@ -20,15 +20,15 @@ func TestEnabled(t *testing.T) {
 
 func TestWrapCommand(t *testing.T) {
 	o := Options{ReadOnly: []string{"/data"}, ReadWrite: []string{"/out"}, Lenient: true}
-	got := o.WrapCommand("/usr/bin/cassette", []string{"node", "server.js"})
-	want := []string{"/usr/bin/cassette", "__sandbox_exec", "--lenient", "--ro", "/data", "--rw", "/out", "--", "node", "server.js"}
+	got := o.WrapCommand("/usr/bin/tapelog", []string{"node", "server.js"})
+	want := []string{"/usr/bin/tapelog", "__sandbox_exec", "--lenient", "--ro", "/data", "--rw", "/out", "--", "node", "server.js"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("WrapCommand =\n%v\nwant\n%v", got, want)
 	}
 
 	plain := Options{ReadOnly: []string{"/data"}}
-	got = plain.WrapCommand("cassette", []string{"srv"})
-	want = []string{"cassette", "__sandbox_exec", "--ro", "/data", "--", "srv"}
+	got = plain.WrapCommand("tapelog", []string{"srv"})
+	want = []string{"tapelog", "__sandbox_exec", "--ro", "/data", "--", "srv"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("WrapCommand =\n%v\nwant\n%v", got, want)
 	}

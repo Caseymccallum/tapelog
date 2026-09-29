@@ -18,9 +18,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/cassette-ai/cassette/internal/mcpclient"
-	"github.com/cassette-ai/cassette/internal/mediator"
-	"github.com/cassette-ai/cassette/internal/transport"
+	"github.com/tapelog-dev/tapelog/internal/mcpclient"
+	"github.com/tapelog-dev/tapelog/internal/mediator"
+	"github.com/tapelog-dev/tapelog/internal/transport"
 )
 
 // ServerConfig describes one upstream MCP server: either a command
@@ -103,7 +103,7 @@ func New(ctx context.Context, cfg *Config, med *mediator.Mediator) (*Mux, error)
 			return nil, fmt.Errorf("server %q: %w", sc.Name, err)
 		}
 		client := mcpclient.New(t)
-		if _, err := client.Initialize(ctx, "cassette-mux"); err != nil {
+		if _, err := client.Initialize(ctx, "tapelog-mux"); err != nil {
 			_ = client.Close()
 			return nil, fmt.Errorf("server %q: %w", sc.Name, err)
 		}

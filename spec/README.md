@@ -18,7 +18,7 @@ invents its own trace. This format is the neutral ground — one JSONL file
 that serves as:
 
 - **audit evidence** (hash-chained; `verify` detects tampering),
-- **a replay cassette** (deterministic re-execution for CI),
+- **a replay tapelog** (deterministic re-execution for CI),
 - **an interop surface** (export to OTel, ingest from any mediator).
 
 ## Conformance classes
@@ -43,11 +43,11 @@ An implementation is conformant when it reproduces these outputs
 byte-for-byte. Regenerate with `go run ./tools/gen-vectors` (reference
 implementation); never edit vectors by hand.
 
-## Relationship to cassette
+## Relationship to tapelog
 
-[cassette](../README.md) is the reference implementation (Writer +
+[tapelog](../README.md) is the reference implementation (Writer +
 Verifier + Replayer). The format is deliberately independent: it has no
-cassette-specific fields, and this directory can be extracted into its own
+tapelog-specific fields, and this directory can be extracted into its own
 repository when the community process starts (see docs/ROADMAP.md).
 
 ## Versioning

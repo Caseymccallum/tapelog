@@ -1,4 +1,4 @@
-// Package session implements cassette's session event log: an append-only,
+// Package session implements tapelog's session event log: an append-only,
 // hash-chained JSONL format that serves as both the audit trail and the
 // replay source. The canonical form is specified in spec/session-log-v0.md and MUST
 // stay byte-identical to this implementation (schema version "v: 0").

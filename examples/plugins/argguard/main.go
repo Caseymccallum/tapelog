@@ -1,6 +1,6 @@
 //go:build wasip1 && wasm
 
-// argguard is an example cassette plugin (docs/PLUGINS.md).
+// argguard is an example tapelog plugin (docs/PLUGINS.md).
 //
 // It demonstrates both hooks with intentionally simple rules:
 //   - verdict_hook: deny calls whose arguments contain the marker

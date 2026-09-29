@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
 // MatchMode selects how live arguments are matched to recordings.
@@ -42,7 +42,7 @@ type Miss struct {
 // Safe for concurrent use.
 type Player struct {
 	mu   sync.Mutex
-	c    *Cassette
+	c    *Tape
 	mode MatchMode
 	red  *session.Redactor
 	used []bool
@@ -51,8 +51,8 @@ type Player struct {
 	misses []Miss
 }
 
-// NewPlayer creates a Player over a cassette.
-func NewPlayer(c *Cassette, mode MatchMode) *Player {
+// NewPlayer creates a Player over a tapelog.
+func NewPlayer(c *Tape, mode MatchMode) *Player {
 	return &Player{
 		c:    c,
 		mode: mode,

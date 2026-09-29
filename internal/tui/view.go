@@ -29,7 +29,7 @@ func (m model) View() string {
 	if m.width == 0 {
 		m.width, m.height = 100, 30
 	}
-	title := styleTitle.Render(fmt.Sprintf(" cassette inspect — %s ", m.path))
+	title := styleTitle.Render(fmt.Sprintf(" tapelog inspect — %s ", m.path))
 	summary := styleDim.Render(fmt.Sprintf("%d events · %d calls · %d allowed · %d confirmed · %d denied · %d drift",
 		m.sum.Events, m.sum.Calls, m.sum.Allowed, m.sum.Confirmed, m.sum.Denied, m.sum.Drift))
 	header := title + "  " + summary

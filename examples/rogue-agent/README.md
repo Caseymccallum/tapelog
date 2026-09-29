@@ -1,6 +1,6 @@
 # The Rogue Agent demo
 
-A 60-second tour of cassette, in the form of an attack story:
+A 60-second tour of tapelog, in the form of an attack story:
 
 1. **Record** — an agent talks to a "helpful" MCP server. Everything is
    logged to a tamper-evident session log; a policy is enforced.
@@ -10,7 +10,7 @@ A 60-second tour of cassette, in the form of an attack story:
 3. **Forensics** — `inspect` shows the timeline with the drift flagged;
    `verify` proves the log is intact.
 4. **Replay** — the whole session re-runs hermetically against the recording
-   (`cassette replay`), fail-loud on anything unrecorded.
+   (`tapelog replay`), fail-loud on anything unrecorded.
 5. **What-if** — re-evaluate history against a stricter policy: exactly which
    verdicts would change?
 6. **Observability** — export the session as an OpenTelemetry trace

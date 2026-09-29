@@ -1,14 +1,14 @@
 /**
- * cassette adapter for TypeScript MCP clients (thin, dependency-free).
+ * tapelog adapter for TypeScript MCP clients (thin, dependency-free).
  *
  * Wraps an MCP stdio server config so all traffic flows through
- * `cassette record` — session logging + policy enforcement without
+ * `tapelog record` — session logging + policy enforcement without
  * touching your agent code:
  *
- *   import { withCassette } from "./cassette";
+ *   import { withTapelog } from "./tapelog";
  *
  *   const servers = {
- *     filesystem: withCassette(
+ *     filesystem: withTapelog(
  *       { command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "."] },
  *       { policy: "policy.yaml", denyOnDrift: true },
  *     ),
@@ -21,7 +21,7 @@ export interface McpServerConfig {
   env?: Record<string, string>;
 }
 
-export interface CassetteOptions {
+export interface TapelogOptions {
   /** Policy YAML file. Omit for observe-only recording. */
   policy?: string;
   /** Session log output path (default: session.jsonl). */
@@ -34,14 +34,14 @@ export interface CassetteOptions {
   denyOnDrift?: boolean;
   /** Harness name recorded in the session log. */
   harness?: string;
-  /** Path to the cassette binary (default: "cassette" on PATH). */
+  /** Path to the tapelog binary (default: "tapelog" on PATH). */
   binary?: string;
 }
 
-/** Wrap an MCP server config so cassette mediates and records it. */
-export function withCassette(
+/** Wrap an MCP server config so tapelog mediates and records it. */
+export function withTapelog(
   server: McpServerConfig,
-  opts: CassetteOptions = {},
+  opts: TapelogOptions = {},
 ): McpServerConfig {
   const args = ["record"];
 
@@ -55,7 +55,7 @@ export function withCassette(
   args.push("--", server.command, ...(server.args ?? []));
 
   return {
-    command: opts.binary ?? "cassette",
+    command: opts.binary ?? "tapelog",
     args,
     env: server.env,
   };

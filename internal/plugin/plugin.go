@@ -1,4 +1,4 @@
-// Package plugin implements cassette's WASM plugin API (docs/PLUGINS.md).
+// Package plugin implements tapelog's WASM plugin API (docs/PLUGINS.md).
 //
 // Plugins are pure computation over JSON: no host I/O is granted, so a
 // plugin cannot phone home, read files, or escape its sandbox. Two hooks

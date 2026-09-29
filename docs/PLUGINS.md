@@ -1,6 +1,6 @@
-# Cassette Plugin API (WASM)
+# Tapelog Plugin API (WASM)
 
-Plugins extend cassette without forking it: extra policy judgment and
+Plugins extend tapelog without forking it: extra policy judgment and
 org-specific redaction, compiled to WebAssembly and run in a sandbox.
 
 **Safety model:** plugins are *pure computation over JSON*. The runtime
@@ -20,13 +20,13 @@ tightens to `deny`).
 ## Loading
 
 ```bash
-cassette record --plugin ./myplugin.wasm --plugin ./orgguard.wasm -- policy…
-cassette mux    --plugin ./myguard.wasm --config mux.yaml …
+tapelog record --plugin ./myplugin.wasm --plugin ./orgguard.wasm -- policy…
+tapelog mux    --plugin ./myguard.wasm --config mux.yaml …
 ```
 
 Plugins run in the order given; each `verdict_hook` receives the previous
 plugin's output. Runtime: [wazero](https://github.com/tetratelabs/wazero)
-(pure Go — keeps cassette a single static binary).
+(pure Go — keeps tapelog a single static binary).
 
 ## Guest ABI
 
@@ -72,7 +72,7 @@ verdict is ignored (and logged). Returning `{}` means "unchanged".
 ### `redact_hook`
 
 Input `{"text": "key ACME-abc123"}` → output `{"text": "key [REDACTED]"}`.
-Applied to every string after cassette's built-in redaction.
+Applied to every string after tapelog's built-in redaction.
 
 ## Reference plugin
 
@@ -84,7 +84,7 @@ args, tighten exec calls to confirm, mask org-specific tokens). Build with
 ```powershell
 cd examples/plugins/argguard
 ./build.ps1
-cassette record --plugin ./argguard.wasm --log s.jsonl -- <server>
+tapelog record --plugin ./argguard.wasm --log s.jsonl -- <server>
 ```
 
 ## Writing a plugin

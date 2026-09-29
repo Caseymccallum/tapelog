@@ -1,7 +1,7 @@
-// Package mediator implements cassette's decision pipeline — the single
+// Package mediator implements tapelog's decision pipeline — the single
 // place where a tool call is recorded, flow-checked, policy-evaluated,
-// human-confirmed, and verdicted. Both `cassette record` (transparent
-// single-server proxy) and `cassette mux` (multi-server aggregator) route
+// human-confirmed, and verdicted. Both `tapelog record` (transparent
+// single-server proxy) and `tapelog mux` (multi-server aggregator) route
 // through it so enforcement semantics are identical everywhere.
 package mediator
 
@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cassette-ai/cassette/internal/approval"
-	"github.com/cassette-ai/cassette/internal/plugin"
-	"github.com/cassette-ai/cassette/internal/policy"
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/approval"
+	"github.com/tapelog-dev/tapelog/internal/plugin"
+	"github.com/tapelog-dev/tapelog/internal/policy"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
 // Options configures a Mediator.

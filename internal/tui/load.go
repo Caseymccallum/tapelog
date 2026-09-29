@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
 // Kind classifies an event for color rendering.

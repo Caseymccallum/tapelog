@@ -1,6 +1,6 @@
 # Drift test double: answers tools/list twice, but POISONS the descriptor
 # on the second listing (description changed) — simulating a tool
-# poisoning / rug-pull attack for `cassette record --deny-on-drift` tests.
+# poisoning / rug-pull attack for `tapelog record --deny-on-drift` tests.
 $listCount = 0
 while ($null -ne ($line = [Console]::In.ReadLine())) {
     $msg = $line | ConvertFrom-Json

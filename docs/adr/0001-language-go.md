@@ -4,7 +4,7 @@
 
 ## Context
 
-Cassette wants maximum adoption and outside contributions in the MCP/agent-tooling ecosystem. Candidates: Go and Rust. Full evidence in [STACK.md](../../STACK.md).
+Tapelog wants maximum adoption and outside contributions in the MCP/agent-tooling ecosystem. Candidates: Go and Rust. Full evidence in [STACK.md](../../STACK.md).
 
 ## Decision
 

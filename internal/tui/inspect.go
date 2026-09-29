@@ -1,4 +1,4 @@
-// Package tui implements cassette's interactive session viewer.
+// Package tui implements tapelog's interactive session viewer.
 package tui
 
 import (

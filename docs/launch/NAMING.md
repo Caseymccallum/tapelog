@@ -1,5 +1,10 @@
 # Naming research & availability audit
 
+> **FINAL DECISION (2026-09-29): `tapelog`** — adopted. GitHub org
+> `tapelog-dev`, Go module `github.com/tapelog-dev/tapelog`, binary
+> `tapelog`. This document preserves the research as conducted (under the
+> former working name "cassette").
+
 **Date:** 2026-09-29 · Method: live registry API queries (npm, PyPI, crates.io), GitHub org pages, RDAP domain lookups (`rdap.org` bootstrap → registry RDAP), web search for brand conflicts. All results verified live this date.
 
 ## Reality check

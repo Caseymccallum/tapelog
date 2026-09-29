@@ -1,4 +1,4 @@
-// Package proxy implements cassette's transparent MCP relay: it sits
+// Package proxy implements tapelog's transparent MCP relay: it sits
 // between an agent harness (client side) and real MCP servers (server side),
 // evaluating policy on tools/call traffic before it is forwarded and
 // emitting hooks so every message can be recorded.
@@ -12,7 +12,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/cassette-ai/cassette/internal/jsonrpc"
+	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
 )
 
 // Decision mirrors policy.Verdict semantics without importing policy:

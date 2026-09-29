@@ -1,14 +1,14 @@
 # Contributing
 
-Thanks for your interest! Cassette is in early construction — the highest-value contributions will come after the v0.1 scaffold lands, but issues labeled `help-wanted` and `good-first-issue` are fair game anytime.
+Thanks for your interest! Tapelog is in early construction — the highest-value contributions will come after the v0.1 scaffold lands, but issues labeled `help-wanted` and `good-first-issue` are fair game anytime.
 
 ## Development setup
 
 Requirements: **Go ≥ 1.27**, `git`. (Windows/macOS/Linux all supported.)
 
 ```bash
-git clone https://github.com/cassette-ai/cassette
-cd cassette
+git clone https://github.com/tapelog-dev/tapelog
+cd tapelog
 go build ./...        # build everything
 go test ./...         # run the test suite
 go vet ./...          # static checks
@@ -18,7 +18,7 @@ No code generation, no container required, no services to run. If that's ever no
 
 ## Project layout
 
-See [ARCHITECTURE.md](ARCHITECTURE.md). In short: `cmd/cassette` (CLI), `internal/{jsonrpc,proxy,policy,session}`, `schema/` (the language-neutral log format), `docs/` (specs + ADRs).
+See [ARCHITECTURE.md](ARCHITECTURE.md). In short: `cmd/tapelog` (CLI), `internal/{jsonrpc,proxy,policy,session}`, `schema/` (the language-neutral log format), `docs/` (specs + ADRs).
 
 ## Pull requests
 

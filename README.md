@@ -1,9 +1,9 @@
-# Cassette
+# Tapelog
 
 **The flight recorder and deterministic replay for AI agents.**
 `rr` for tool-calling agents — record every MCP tool call, enforce policy at the boundary, and replay any session.
 
-> **Status: v0.1 under active construction.** Working name (`cassette`); final name TBD before publication — see [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Status: v0.1 under active construction.** Working name (`tapelog`); final name TBD before publication — see [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Why
 
@@ -20,7 +20,7 @@ agent harness (Claude Code, Codex CLI, any MCP client)
       │ MCP (stdio / HTTP)
       ▼
 ┌──────────────────────────┐
-│  cassette (this tool)    │  1. intercept tools/call
+│  tapelog (this tool)    │  1. intercept tools/call
 │  ┌────────────────────┐  │  2. policy verdict: allow / confirm / deny (+ reason)
 │  │ policy engine      │  │  3. hash-chained session log (redacted)
 │  │ (Cedar / YAML)     │  │  4. forward to the real MCP server
@@ -36,35 +36,35 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/THREAT_MODEL.md](docs/THREAT_MO
 ## Quick start
 
 ```bash
-go install github.com/cassette-ai/cassette/cmd/cassette@latest   # once published
+go install github.com/tapelog-dev/tapelog/cmd/tapelog@latest   # once published
 
 # Record a session while proxying a real MCP server:
-cassette record --policy policy.yaml --log session.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
+tapelog record --policy policy.yaml --log session.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
 
 # One boundary across MANY servers (stdio + HTTP), one session log:
-cassette mux --config mux.yaml --policy policy.yaml --log session.jsonl
+tapelog mux --config mux.yaml --policy policy.yaml --log session.jsonl
 
 # Verify the log is untampered:
-cassette verify session.jsonl
+tapelog verify session.jsonl
 
 # Replay the session as a hermetic MCP server (agent regression tests, CI):
-cassette replay session.jsonl --strict
+tapelog replay session.jsonl --strict
 
 # Compare two sessions (e.g. replay vs. live, or before/after a change):
-cassette diff session-a.jsonl session-b.jsonl
+tapelog diff session-a.jsonl session-b.jsonl
 
 # Inspect a session (interactive TUI, or --plain for CI):
-cassette inspect session.jsonl
+tapelog inspect session.jsonl
 
 # Export the session as an OpenTelemetry trace (OTLP or stdout):
-cassette export otel session.jsonl --endpoint http://localhost:4318/v1/traces
+tapelog export otel session.jsonl --endpoint http://localhost:4318/v1/traces
 
 # Test a policy against sample tool calls:
-cassette policy test --policy policy.yaml --calls samples.jsonl
+tapelog policy test --policy policy.yaml --calls samples.jsonl
 
 # Policy regression test: replay verdicts against a candidate policy
 # (exits non-zero if any verdict would change):
-cassette policy whatif --policy candidate-policy.yaml session.jsonl
+tapelog policy whatif --policy candidate-policy.yaml session.jsonl
 ```
 
 ## Documentation

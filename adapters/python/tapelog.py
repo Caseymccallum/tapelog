@@ -1,15 +1,15 @@
-"""cassette adapter for Python MCP clients (thin, dependency-free).
+"""tapelog adapter for Python MCP clients (thin, dependency-free).
 
 Wraps an MCP stdio server config dict so all traffic flows through
-`cassette record` — session logging + policy enforcement without
+`tapelog record` — session logging + policy enforcement without
 touching your agent code. Works with any client that spawns servers
 via ``{"command": ..., "args": [...], "env": {...}}`` params (e.g. the
 official ``mcp`` python-sdk's stdio_client parameters):
 
-    from cassette import with_cassette
+    from tapelog import with_tapelog
 
     servers = {
-        "filesystem": with_cassette(
+        "filesystem": with_tapelog(
             {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]},
             policy="policy.yaml",
             deny_on_drift=True,
@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 
-def with_cassette(
+def with_tapelog(
     server: Dict[str, Any],
     *,
     policy: Optional[str] = None,
@@ -31,9 +31,9 @@ def with_cassette(
     harness: Optional[str] = None,
     auto_confirm: bool = False,
     deny_on_drift: bool = False,
-    binary: str = "cassette",
+    binary: str = "tapelog",
 ) -> Dict[str, Any]:
-    """Return a server config that routes through ``cassette record``."""
+    """Return a server config that routes through ``tapelog record``."""
     args = ["record"]
 
     if policy:

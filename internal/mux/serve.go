@@ -8,8 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/cassette-ai/cassette/internal/jsonrpc"
-	"github.com/cassette-ai/cassette/internal/mediator"
+	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
+	"github.com/tapelog-dev/tapelog/internal/mediator"
 )
 
 // Serve runs the harness-facing stdio MCP server. Messages are processed
@@ -61,7 +61,7 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			if err := result(msg.ID, map[string]any{
 				"protocolVersion": mcpclientProtocol(),
 				"capabilities":    map[string]any{"tools": map[string]any{}},
-				"serverInfo":      map[string]any{"name": "cassette-mux", "version": mx.version},
+				"serverInfo":      map[string]any{"name": "tapelog-mux", "version": mx.version},
 			}); err != nil {
 				return err
 			}

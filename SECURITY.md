@@ -5,7 +5,7 @@
 Please **do not** open a public issue for security vulnerabilities.
 
 - Use **GitHub Security Advisories → "Report a vulnerability"** on this repository (preferred), or
-- Email: `security@cassette.dev` *(placeholder — wire before launch)*
+- Email: `security@tapelog.dev` *(placeholder — wire before launch)*
 
 Include: description, reproduction steps, impact, and any suggested fix. We acknowledge within **72 hours** and aim to ship fixes within **14 days** for high-severity issues. Credit is given unless you prefer anonymity.
 
@@ -18,7 +18,7 @@ Include: description, reproduction steps, impact, and any suggested fix. We ackn
 
 ## Security posture (what we commit to)
 
-Per docs/THREAT_MODEL.md, cassette is a security-adjacent tool. We therefore hold ourselves to:
+Per docs/THREAT_MODEL.md, tapelog is a security-adjacent tool. We therefore hold ourselves to:
 
 - **Signed releases** (Sigstore/cosign) + published checksums *(from first tagged release)*
 - **SBOM** attached to releases
@@ -28,4 +28,4 @@ Per docs/THREAT_MODEL.md, cassette is a security-adjacent tool. We therefore hol
 
 ## Scope of claims
 
-A reminder: cassette constrains and records agent *tool calls* mediated through its proxy. It is not a sandbox and not a prompt-injection filter. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the exact, honest boundaries of the security claims.
+A reminder: tapelog constrains and records agent *tool calls* mediated through its proxy. It is not a sandbox and not a prompt-injection filter. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the exact, honest boundaries of the security claims.

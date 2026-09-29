@@ -8,13 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
-// buildCassette writes a session log: tools/list with one tool, a read_file
+// buildTapelog writes a session log: tools/list with one tool, a read_file
 // call whose args contain a secret (redacted at record time) with a result,
 // and a denied delete_file call with no result.
-func buildCassette(t *testing.T) string {
+func buildTapelog(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	w, err := session.NewWriter(path, "replay-test")
@@ -46,7 +46,7 @@ func buildCassette(t *testing.T) string {
 }
 
 func TestLoadPairsInteractions(t *testing.T) {
-	c, err := Load(buildCassette(t))
+	c, err := Load(buildTapelog(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,14 +67,14 @@ func TestLoadPairsInteractions(t *testing.T) {
 		t.Errorf("interaction = %+v", it)
 	}
 	if strings.Contains(string(it.Args), "sk-secret") {
-		t.Errorf("args not redacted in cassette: %s", it.Args)
+		t.Errorf("args not redacted in tapelog: %s", it.Args)
 	}
 }
 
 func TestPlayMatchesAcrossRedaction(t *testing.T) {
 	// The recording has api_key "[REDACTED]"; a live call with a *fresh*
 	// secret must still match — that is the point of deterministic redaction.
-	c, _ := Load(buildCassette(t))
+	c, _ := Load(buildTapelog(t))
 	p := NewPlayer(c, MatchExact)
 
 	it, ok := p.Play("read_file", json.RawMessage(`{"path":"/tmp/a.txt","api_key":"sk-completely-different-secret-aaaaaaaaaaaaaa"}`))
@@ -87,7 +87,7 @@ func TestPlayMatchesAcrossRedaction(t *testing.T) {
 }
 
 func TestPlayFailLoudOnMissingRecording(t *testing.T) {
-	c, _ := Load(buildCassette(t))
+	c, _ := Load(buildTapelog(t))
 	p := NewPlayer(c, MatchExact)
 
 	if _, ok := p.Play("delete_file", json.RawMessage(`{"path":"/tmp/a.txt"}`)); ok {
@@ -103,7 +103,7 @@ func TestPlayFailLoudOnMissingRecording(t *testing.T) {
 }
 
 func TestPlayConsumeOnce(t *testing.T) {
-	c, _ := Load(buildCassette(t))
+	c, _ := Load(buildTapelog(t))
 	p := NewPlayer(c, MatchExact)
 	args := json.RawMessage(`{"path":"/tmp/a.txt","api_key":"sk-x"}`)
 
@@ -116,7 +116,7 @@ func TestPlayConsumeOnce(t *testing.T) {
 }
 
 func TestMatchModes(t *testing.T) {
-	c, _ := Load(buildCassette(t))
+	c, _ := Load(buildTapelog(t))
 
 	subset := NewPlayer(c, MatchSubset)
 	if _, ok := subset.Play("read_file", json.RawMessage(`{"path":"/tmp/a.txt","api_key":"sk-x","extra":"field"}`)); !ok {
@@ -134,8 +134,8 @@ func TestMatchModes(t *testing.T) {
 	}
 }
 
-func TestServeReplaysFromCassette(t *testing.T) {
-	c, _ := Load(buildCassette(t))
+func TestServeReplaysFromTapelog(t *testing.T) {
+	c, _ := Load(buildTapelog(t))
 	p := NewPlayer(c, MatchExact)
 	s := &Server{Player: p, Version: "test"}
 
@@ -152,7 +152,7 @@ func TestServeReplaysFromCassette(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
-		`"cassette-replay"`,     // initialize answered
+		`"tapelog-replay"`,     // initialize answered
 		`"read_file"`,           // tools/list answered from recording
 		`"file body"`,           // tools/call replayed
 		"no_matching_recording", // fail-loud
@@ -176,7 +176,7 @@ func TestMergeToolsLatestWins(t *testing.T) {
 }
 
 func TestDiff(t *testing.T) {
-	pathA := buildCassette(t)
+	pathA := buildTapelog(t)
 
 	// B: same call, different recorded result.
 	pathB := filepath.Join(t.TempDir(), "b.jsonl")

@@ -1,5 +1,5 @@
-# Example cassette policy (v0). Validate with:
-#   cassette policy test --policy examples/policy.yaml --calls examples/calls.jsonl
+# Example tapelog policy (v0). Validate with:
+#   tapelog policy test --policy examples/policy.yaml --calls examples/calls.jsonl
 version: 1
 
 # Fail-closed: anything not explicitly allowed is denied.

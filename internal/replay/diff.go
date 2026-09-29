@@ -6,7 +6,7 @@ import (
 	"sort"
 )
 
-// DiffResult summarizes differences between two cassettes (e.g. a replayed
+// DiffResult summarizes differences between two tapelogs (e.g. a replayed
 // run vs. a fresh live run, or before/after a change).
 type DiffResult struct {
 	OnlyInA     []string `json:"only_in_a"`     // tool(args-hash) present only in A
@@ -16,8 +16,8 @@ type DiffResult struct {
 	Same        bool     `json:"same"`
 }
 
-// Diff compares two cassettes interaction-by-interaction.
-func Diff(a, b *Cassette) *DiffResult {
+// Diff compares two tapelogs interaction-by-interaction.
+func Diff(a, b *Tape) *DiffResult {
 	res := &DiffResult{Same: true}
 
 	key := func(it Interaction) string {

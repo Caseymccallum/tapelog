@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cassette.dev/schema/session-event.v0.json",
-  "title": "Cassette session event (v0)",
-  "description": "One line of a cassette session log: append-only, hash-chained JSONL. Canonical form and hash rules: docs/SCHEMA.md",
+  "$id": "https://tapelog.dev/schema/session-event.v0.json",
+  "title": "Tapelog session event (v0)",
+  "description": "One line of a tapelog session log: append-only, hash-chained JSONL. Canonical form and hash rules: docs/SCHEMA.md",
   "type": "object",
   "required": ["v", "seq", "ts", "type", "session_id", "payload", "prev_hash", "hash"],
   "additionalProperties": false,

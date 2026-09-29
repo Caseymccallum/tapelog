@@ -1,4 +1,4 @@
-// Package policy implements cassette's tool-call policy: a small,
+// Package policy implements tapelog's tool-call policy: a small,
 // human-readable YAML scheme (v0) behind a stable Evaluator interface.
 // Decisions are explainable — every verdict carries a rule id and reason,
 // which are recorded in the session log (docs/THREAT_MODEL.md claim #1).

@@ -1,7 +1,7 @@
 # Agent Session Log Format — Version 0
 
 **Spec status:** Working Draft · **Schema version:** `v: 0` · 2026-09-29
-**Reference implementation:** [cassette](https://github.com/cassette-ai/cassette)
+**Reference implementation:** [tapelog](https://github.com/tapelog-dev/tapelog)
 **Machine-readable schema:** [schema/session-event.v0.schema.json](schema/session-event.v0.schema.json)
 **Conformance test vectors:** [test-vectors/](test-vectors/)
 

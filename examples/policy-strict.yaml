@@ -1,4 +1,4 @@
-# Stricter candidate policy used to demo `cassette policy what-if`:
+# Stricter candidate policy used to demo `tapelog policy what-if`:
 # flips the example session's read_file allow into a deny.
 version: 1
 default: deny

@@ -1,6 +1,6 @@
 // Package otelx exports session logs as OpenTelemetry spans following the
 // GenAI semantic conventions (span name `execute_tool <tool>`,
-// attributes `gen_ai.operation.name` / `gen_ai.tool.name`), so cassette
+// attributes `gen_ai.operation.name` / `gen_ai.tool.name`), so tapelog
 // sessions appear in any OTel-compatible backend.
 package otelx
 
@@ -21,7 +21,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
 const tsLayout = "2006-01-02T15:04:05.000Z"
@@ -49,11 +49,11 @@ func Export(ctx context.Context, path, endpoint string) error {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		sdktrace.WithResource(resource.NewWithAttributes("",
-			attribute.String("service.name", "cassette"),
+			attribute.String("service.name", "tapelog"),
 		)),
 	)
 	defer func() { _ = tp.Shutdown(ctx) }()
-	tracer := tp.Tracer("cassette")
+	tracer := tp.Tracer("tapelog")
 
 	// Index events for pairing by JSON-RPC id.
 	decisions := map[string]session.Event{}
@@ -93,22 +93,22 @@ func Export(ctx context.Context, path, endpoint string) error {
 		attrs := []attribute.KeyValue{
 			attribute.String("gen_ai.operation.name", "execute_tool"),
 			attribute.String("gen_ai.tool.name", p.Tool),
-			attribute.String("cassette.session_id", sessionID),
-			attribute.Int64("cassette.seq", int64(e.Seq)),
+			attribute.String("tapelog.session_id", sessionID),
+			attribute.Int64("tapelog.seq", int64(e.Seq)),
 		}
 		if p.ToolDescriptorHash != "" {
-			attrs = append(attrs, attribute.String("cassette.tool_descriptor_hash", p.ToolDescriptorHash))
+			attrs = append(attrs, attribute.String("tapelog.tool_descriptor_hash", p.ToolDescriptorHash))
 		}
 		if p.DescriptorDrift {
-			attrs = append(attrs, attribute.Bool("cassette.descriptor_drift", true))
+			attrs = append(attrs, attribute.Bool("tapelog.descriptor_drift", true))
 		}
 		callEnd := callStart
 		if dec, ok := decisions[string(p.ID)]; ok {
 			var dp session.PolicyDecisionPayload
 			_ = json.Unmarshal(dec.Payload, &dp)
 			attrs = append(attrs,
-				attribute.String("cassette.verdict", dp.Verdict),
-				attribute.String("cassette.rule_id", dp.RuleID),
+				attribute.String("tapelog.verdict", dp.Verdict),
+				attribute.String("tapelog.rule_id", dp.RuleID),
 			)
 			if t, _ := time.Parse(tsLayout, dec.TS); t.After(callEnd) {
 				callEnd = t
@@ -122,11 +122,11 @@ func Export(ctx context.Context, path, endpoint string) error {
 			var rp session.ToolResultPayload
 			if json.Unmarshal(res.Payload, &rp) == nil && rp.IsError {
 				span.SetStatus(codes.Error, "tool returned an error")
-				span.SetAttributes(attribute.Bool("cassette.tool_error", true))
+				span.SetAttributes(attribute.Bool("tapelog.tool_error", true))
 			}
 		} else {
 			span.SetStatus(codes.Error, "denied or unanswered by policy")
-			span.SetAttributes(attribute.Bool("cassette.unanswered", true))
+			span.SetAttributes(attribute.Bool("tapelog.unanswered", true))
 		}
 		span.End(trace.WithTimestamp(callEnd))
 	}

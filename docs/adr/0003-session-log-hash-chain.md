@@ -4,7 +4,7 @@
 
 ## Context
 
-We need a log that serves three masters: audit (tamper evidence), replay (deterministic re-execution), and interop (other tools can read/write it). Prior art: JSONL audit logs (no integrity), Merkle trees (complex), VCR cassettes (replay but no integrity), OTel spans (behavior but no replay).
+We need a log that serves three masters: audit (tamper evidence), replay (deterministic re-execution), and interop (other tools can read/write it). Prior art: JSONL audit logs (no integrity), Merkle trees (complex), VCR tapelogs (replay but no integrity), OTel spans (behavior but no replay).
 
 ## Decision
 
@@ -19,5 +19,5 @@ Key choices:
 ## Consequences
 
 - Schema changes that touch the canonical form are breaking (`v` bump + migration) — enforced by GOVERNANCE.md rule 3.
-- The same file is the replay cassette — no second storage format.
+- The same file is the replay tapelog — no second storage format.
 - Future: OTel export is derived from the log, never the source of truth.

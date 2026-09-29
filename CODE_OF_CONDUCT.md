@@ -1,6 +1,6 @@
 # Code of Conduct
 
-We pledge to make participation in cassette a harassment-free experience for everyone.
+We pledge to make participation in tapelog a harassment-free experience for everyone.
 
 ## Our standards
 
@@ -19,7 +19,7 @@ We pledge to make participation in cassette a harassment-free experience for eve
 
 ## Enforcement
 
-Report unacceptable behavior to the maintainers at `conduct@cassette.dev` *(placeholder — wire before launch)* or via private contact with any maintainer. All complaints are reviewed promptly and fairly; the privacy of reporters is respected.
+Report unacceptable behavior to the maintainers at `conduct@tapelog.dev` *(placeholder — wire before launch)* or via private contact with any maintainer. All complaints are reviewed promptly and fairly; the privacy of reporters is respected.
 
 Maintainers may take any action they deem appropriate, including warnings, temporary bans, or permanent bans from the project, in line with [GOVERNANCE.md](GOVERNANCE.md).
 

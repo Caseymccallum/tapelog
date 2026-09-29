@@ -67,7 +67,7 @@ func (c *Interactive) Confirm(tool string, args json.RawMessage) Choice {
 		return ChoiceAllowSession
 	}
 
-	fmt.Fprintf(c.out, "\ncassette: confirmation required\n")
+	fmt.Fprintf(c.out, "\ntapelog: confirmation required\n")
 	fmt.Fprintf(c.out, "  tool: %s\n", tool)
 	fmt.Fprintf(c.out, "  args: %s\n", compact(args))
 	fmt.Fprintf(c.out, "  [a]llow once / allow [s]ession / [d]eny (default: deny): ")

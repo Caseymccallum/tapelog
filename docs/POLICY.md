@@ -1,6 +1,6 @@
 # Policy Language Reference (v0/v1)
 
-Cassette policies are **YAML**: ordered rules with explainable outcomes. The
+Tapelog policies are **YAML**: ordered rules with explainable outcomes. The
 first rule that is *in scope*, whose tool patterns match, and whose `where`
 conditions pass — wins. Decisions always carry a rule id + reason into the
 session log.
@@ -76,7 +76,7 @@ Semantics (session-scoped taint — deliberately conservative):
   data. Value-level tracking through the model (CaMeL-style) is explicitly
   out of scope (docs/THREAT_MODEL.md).
 
-`cassette policy whatif` is sequence-aware: it walks the recorded session
+`tapelog policy whatif` is sequence-aware: it walks the recorded session
 in order and builds taint from calls the candidate policy would permit.
 
 ## `where` — real Cedar
@@ -110,7 +110,7 @@ Notes:
 ## Scoped grants
 
 - `expires` — time-boxed authority (a rule with `expires` in the past is simply skipped; audit trail keeps the historical verdicts).
-- `tasks` — per-task delegation: pass `cassette record --task release ...` and only `tasks: [release]` rules apply to un-scoped requests.
+- `tasks` — per-task delegation: pass `tapelog record --task release ...` and only `tasks: [release]` rules apply to un-scoped requests.
 - Together these mitigate *residual authority replay*: authority is granted narrowly and dies on schedule.
 
 ## Tool-name globs
@@ -125,9 +125,9 @@ Notes:
 ## Commands
 
 ```bash
-cassette policy test   --policy p.yaml --calls samples.jsonl   # dry-run verdicts
-cassette policy whatif --policy p.yaml session.jsonl           # re-evaluate a recording (CI: exits non-zero on verdict changes)
-cassette policy compile --policy p.yaml                        # export portable Cedar text
+tapelog policy test   --policy p.yaml --calls samples.jsonl   # dry-run verdicts
+tapelog policy whatif --policy p.yaml session.jsonl           # re-evaluate a recording (CI: exits non-zero on verdict changes)
+tapelog policy compile --policy p.yaml                        # export portable Cedar text
 ```
 
 `what-if` re-runs recorded calls against a candidate policy and diffs the
@@ -146,7 +146,7 @@ export (the YAML engine is authoritative):
 
 ## Deny-on-drift (record time)
 
-`cassette record --deny-on-drift` denies tool calls whose descriptor changed
+`tapelog record --deny-on-drift` denies tool calls whose descriptor changed
 since first listing (possible tool poisoning / rug pull). Descriptor pins are
 hashes of the *redacted canonical* descriptor; tool calls wait for in-flight
 `tools/list` responses so enforcement cannot be raced.

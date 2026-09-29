@@ -54,21 +54,21 @@ func (c *Chain) Tighten(ctx context.Context, req Request) Request {
 		out, err := p.CallVerdict(ctx, in)
 		if err != nil {
 			// Fail closed: a broken enforcement plugin denies.
-			fmt.Fprintf(c.warn, "cassette: plugin %s error (%v) — failing closed\n", p.Name(), err)
+			fmt.Fprintf(c.warn, "tapelog: plugin %s error (%v) — failing closed\n", p.Name(), err)
 			req.Verdict = "deny"
 			req.Reason += fmt.Sprintf(" (plugin %s error: failing closed)", p.Name())
 			continue
 		}
 		var resp Response
 		if err := json.Unmarshal(out, &resp); err != nil {
-			fmt.Fprintf(c.warn, "cassette: plugin %s returned invalid JSON — failing closed\n", p.Name())
+			fmt.Fprintf(c.warn, "tapelog: plugin %s returned invalid JSON — failing closed\n", p.Name())
 			req.Verdict = "deny"
 			req.Reason += fmt.Sprintf(" (plugin %s invalid output: failing closed)", p.Name())
 			continue
 		}
 		if resp.Verdict != "" && resp.Verdict != req.Verdict {
 			if !TightenAllowed(req.Verdict, resp.Verdict) {
-				fmt.Fprintf(c.warn, "cassette: plugin %s tried to loosen %s -> %s — ignored\n",
+				fmt.Fprintf(c.warn, "tapelog: plugin %s tried to loosen %s -> %s — ignored\n",
 					p.Name(), req.Verdict, resp.Verdict)
 			} else {
 				req.Verdict = resp.Verdict
@@ -102,7 +102,7 @@ func (c *Chain) RedactText(ctx context.Context, text string) string {
 		}
 		out, err := p.CallRedact(ctx, in)
 		if err != nil {
-			fmt.Fprintf(c.warn, "cassette: plugin %s redact_hook error (%v) — text unchanged\n", p.Name(), err)
+			fmt.Fprintf(c.warn, "tapelog: plugin %s redact_hook error (%v) — text unchanged\n", p.Name(), err)
 			continue
 		}
 		var resp struct {

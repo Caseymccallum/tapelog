@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cassette-ai/cassette/internal/session"
+	"github.com/tapelog-dev/tapelog/internal/session"
 )
 
 const vectorsDir = "spec/test-vectors"

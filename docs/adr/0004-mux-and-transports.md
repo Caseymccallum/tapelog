@@ -5,12 +5,12 @@
 ## Context
 
 Real harness setups run many MCP servers (5–10), some remote. Mediating
-one server per `cassette record` invocation does not fit; we need one
+one server per `tapelog record` invocation does not fit; we need one
 boundary covering all upstreams with one session log and one policy.
 
 ## Decision
 
-1. **`cassette mux --config mux.yaml`** aggregates upstreams (stdio
+1. **`tapelog mux --config mux.yaml`** aggregates upstreams (stdio
    commands and streamable-HTTP endpoints) behind one stdio MCP server.
 2. **Tool namespacing**: upstream `read_file` on server `fs` becomes
    `fs__read_file`. Policy rules in mux mode match namespaced names

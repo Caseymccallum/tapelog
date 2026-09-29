@@ -2,7 +2,7 @@
 
 ## Principles
 
-Cassette is founder-led in the pre-1.0 phase with a light, transparent process designed to grow into community governance. Decisions are made in public (GitHub issues/discussions). "Transparency is a feature" applies to the project itself.
+Tapelog is founder-led in the pre-1.0 phase with a light, transparent process designed to grow into community governance. Decisions are made in public (GitHub issues/discussions). "Transparency is a feature" applies to the project itself.
 
 ## Decision making
 
