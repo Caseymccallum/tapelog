@@ -1,0 +1,74 @@
+# Cassette
+
+**The flight recorder and deterministic replay for AI agents.**
+`rr` for tool-calling agents — record every MCP tool call, enforce policy at the boundary, and replay any session.
+
+> **Status: v0.1 under active construction.** Working name (`cassette`); final name TBD before publication — see [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Why
+
+Agents can read files, run commands, and call the network on our behalf — and today, when something goes wrong, we debug by printf-ing JSON blobs. Enterprise "agent governance" platforms exist (see [RESEARCH.md](RESEARCH.md) for the full landscape), but nobody ships the developer-grade basics:
+
+1. **Record everything** — a tamper-evident, hash-chained session log of every tool call, result, and policy verdict.
+2. **Enforce a hard boundary** — declarative allow/deny/confirm policy on tool calls with *explainable* deny reasons (a fully prompt-injected agent must not exceed its delegated authority).
+3. **Replay anything** — VCR-style deterministic re-execution of sessions for debugging, regression tests, and policy what-if analysis.
+
+## How it works
+
+```
+agent harness (Claude Code, Codex CLI, any MCP client)
+      │ MCP (stdio / HTTP)
+      ▼
+┌──────────────────────────┐
+│  cassette (this tool)    │  1. intercept tools/call
+│  ┌────────────────────┐  │  2. policy verdict: allow / confirm / deny (+ reason)
+│  │ policy engine      │  │  3. hash-chained session log (redacted)
+│  │ (Cedar / YAML)     │  │  4. forward to the real MCP server
+│  └────────────────────┘  │
+└──────────────────────────┘
+      │ MCP
+      ▼
+real MCP servers (filesystem, git, fetch, ...)
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+
+## Quick start
+
+```bash
+go install github.com/cassette-ai/cassette/cmd/cassette@latest   # once published
+
+# Record a session while proxying a real MCP server:
+cassette record --policy policy.yaml --log session.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
+
+# Verify the log is untampered:
+cassette verify session.jsonl
+
+# Test a policy against sample tool calls:
+cassette policy test --policy policy.yaml --calls samples.jsonl
+```
+
+## Documentation
+
+| Document | What |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, trust boundaries |
+| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What we defend against — and what we honestly don't |
+| [docs/SCHEMA.md](docs/SCHEMA.md) | Session event log format + hash-chain spec |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
+| [RESEARCH.md](RESEARCH.md) / [STACK.md](STACK.md) | Market research & stack decisions |
+| [docs/adr/](docs/adr/) | Architecture decision records |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
+| [GOVERNANCE.md](GOVERNANCE.md) / [SECURITY.md](SECURITY.md) | Project governance & vulnerability reporting |
+
+## Design principles
+
+- **Local-first.** No hosted service, no phone-home. Your traces stay on your machine.
+- **Record everything, enforce what you can prove, replay the rest.** No security theater.
+- **Untrusted-model assumption.** The model may be fully prompt-injected; the boundary must still hold.
+- **Interoperable by default.** MCP spec `2026-07-28`, OpenTelemetry GenAI semantic conventions, language-neutral log schema.
+- **Reuse over reinvention.** See the [bill of materials](STACK.md).
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).

@@ -1,0 +1,29 @@
+# Example cassette policy (v0). Validate with:
+#   cassette policy test --policy examples/policy.yaml --calls examples/calls.jsonl
+version: 1
+
+# Fail-closed: anything not explicitly allowed is denied.
+# Use `default: allow` for observe-only logging instead.
+default: deny
+
+rules:
+  # First matching rule wins — order matters.
+  - id: allow-reads
+    tool: ["read*", "list*", "search*", "get*"]
+    action: allow
+    reason: "read-only tools are safe"
+
+  - id: confirm-exec
+    tool: ["exec*", "run*", "shell*"]
+    action: confirm
+    reason: "shell execution requires confirmation (use --auto-confirm to allow)"
+
+  - id: deny-credential-paths
+    tool: "*file*"
+    action: deny
+    reason: "file tools are denied in this example (edit to taste)"
+
+  - id: deny-destruction
+    tool: ["*delete*", "*remove*", "*destroy*", "*drop*"]
+    action: deny
+    reason: "destructive operations are forbidden"

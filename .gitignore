@@ -1,0 +1,18 @@
+# binaries & build output
+bin/
+dist/
+cassette
+cassette.exe
+
+# session logs are user data — never commit
+*.jsonl
+!examples/calls.jsonl
+
+# editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Go
+coverage.out

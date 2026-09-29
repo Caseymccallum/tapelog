@@ -1,0 +1,36 @@
+# goreleaser config — single static binaries for the platforms agents run on.
+# Release flow (from v0.1.0): git tag v0.1.0 && goreleaser release
+# Signed releases + SBOM land before the first public tag (SECURITY.md).
+version: 2
+
+project_name: cassette
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cassette
+    main: ./cmd/cassette
+    binary: cassette
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:"]
