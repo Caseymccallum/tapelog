@@ -30,6 +30,7 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 	root.AddCommand(newTestCmd())
 	root.AddCommand(newFuzzCmd())
 	root.AddCommand(newDoctorCmd())
+	root.AddCommand(newWebCmd())
 	root.AddCommand(newSandboxExecCmd())
 	root.AddCommand(newCompletionCmd())
 	root.AddCommand(newReplayCmd())

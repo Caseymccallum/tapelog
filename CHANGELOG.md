@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 ## [Unreleased]
 
 ### v0.2 in progress — agent regression CI (mainline per docs/RESEARCH-EVOLUTION.md)
+- **Multi-session dashboard** — `tapelog web --dir sessions/` serves a read-only browser dashboard over a directory of session logs: session list (event + denial counts), per-session event timeline, same security posture (loopback pinning, strict CSP, optional token, path-traversal-proof file selection)
 - **`tapelog doctor`** — setup preflight: policy compiles (rules/Cedar/limits), WASM plugins load, platform capabilities (Landlock, terminal), log writability, node presence; ✓/!/✗ report, CI-friendly exit codes
 - **OTel decision spans** — `policy.decision` is now a first-class span event on every `execute_tool` span (verdict, rule_id, reason as both attributes and event fields): the boundary's decisions are queryable in any trace backend
 - **Policy packs** (`packs/`) — batteries-included policies for filesystem/git/fetch/postgres/slack/shell + a default-deny starter: deny the dangerous, confirm the risky, allow the routine. Every pack is Cedar-compiled in CI (`packs/packs_test.go`); live dogfooding caught and fixed an AND-vs-OR `where` authoring bug (now documented in POLICY.md)

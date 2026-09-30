@@ -79,6 +79,9 @@ tapelog completion bash > /etc/bash_completion.d/tapelog
 
 # Behavioral regression over recorded sessions (agent CI):
 tapelog test agent-tests/ --plain   # assertions on the tool-call trajectory
+
+# Browse all your recorded sessions in a browser (read-only):
+tapelog web --dir ./sessions
 ```
 
 ## Documentation

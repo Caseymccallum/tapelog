@@ -58,5 +58,5 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Policy packs for popular MCP servers (community rules repo) — **v1 shipped: 7 packs + CI-enforced Cedar compilation (packs/); caught a `where` AND-vs-OR authoring bug via live dogfooding**
 - [x] `tapelog doctor` (config/plugin/platform sanity) — **v1 shipped: preflight checks with ✓/!/✗ report + CI exit codes**
 - [x] OTel spans for policy decisions — **v1 shipped: `policy.decision` span events + verdict/rule/reason attributes**
-- Web dashboard: multi-session support (serve a directory of logs)
+- [x] Web dashboard: multi-session support — **v1 shipped: `tapelog web --dir` session browser (list + per-session timeline, traversal-proof)**
 - Value-level taint tracking (CaMeL-style) research spike

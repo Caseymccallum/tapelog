@@ -164,3 +164,58 @@ func itoa(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)
 }
+
+func TestDirModeSessionsAndTraversalDefense(t *testing.T) {
+	dir := t.TempDir()
+	logA := `{"v":0,"seq":1,"ts":"2026-01-01T00:00:00Z","type":"session/start","session_id":"aaa","payload":{}}
+{"v":0,"seq":2,"ts":"2026-01-01T00:00:01Z","type":"policy/decision","session_id":"aaa","payload":{"id":1,"verdict":"deny","rule_id":"r","reason":"no"}}
+`
+	logB := `{"v":0,"seq":1,"ts":"2026-01-02T00:00:00Z","type":"session/start","session_id":"bbb","payload":{}}
+`
+	os.WriteFile(filepath.Join(dir, "a.jsonl"), []byte(logA), 0o600)
+	os.WriteFile(filepath.Join(dir, "b.jsonl"), []byte(logB), 0o600)
+	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("ignore me"), 0o600)
+
+	h := DirHandler(dir, "")
+
+	// Sessions listing: both logs, newest first, denies counted.
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/sessions", nil))
+	var body struct {
+		Sessions []SessionInfo `json:"sessions"`
+	}
+	if err := json.Unmarshal(rw.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Sessions) != 2 || body.Sessions[0].File != "b.jsonl" || body.Sessions[1].Denies != 1 {
+		t.Fatalf("sessions listing wrong: %+v", body.Sessions)
+	}
+
+	// Per-session log fetch.
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/log?file=a.jsonl&after=0", nil))
+	if !strings.Contains(rw2.Body.String(), `"session_id":"aaa"`) && !strings.Contains(rw2.Body.String(), `"verdict":"deny"`) {
+		t.Fatalf("log fetch wrong: %s", rw2.Body.String())
+	}
+
+	// Path traversal / bad names are refused (400).
+	for _, evil := range []string{"../evil.jsonl", "..%2Fevil.jsonl", "sub/evil.jsonl", "evil.txt", "a.jsonl%00"} {
+		rw3 := httptest.NewRecorder()
+		h.ServeHTTP(rw3, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/log?file="+evil, nil))
+		if rw3.Code != 400 {
+			t.Fatalf("bad file %q must be 400, got %d", evil, rw3.Code)
+		}
+	}
+
+	// Standalone mode has no queue.
+	rw4 := httptest.NewRecorder()
+	h.ServeHTTP(rw4, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/pending", nil))
+	if !strings.Contains(rw4.Body.String(), `"pending":[]`) {
+		t.Fatalf("pending should be empty: %s", rw4.Body.String())
+	}
+	rw5 := httptest.NewRecorder()
+	h.ServeHTTP(rw5, httptest.NewRequest("POST", "http://127.0.0.1:8923/api/decide", strings.NewReader(`{"id":1,"verdict":"allow"}`)))
+	if rw5.Code != 404 {
+		t.Fatalf("decide without queue must 404, got %d", rw5.Code)
+	}
+}

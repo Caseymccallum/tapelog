@@ -5,6 +5,7 @@
 
 const $ = (id) => document.getElementById(id);
 let lastSeq = 0;
+let currentFile = "";
 
 /* ---- helpers ------------------------------------------------------ */
 
@@ -83,6 +84,35 @@ async function decide(id, verdict, note) {
   }
 }
 
+/* ---- session picker (directory mode) ------------------------------- */
+
+async function refreshSessions() {
+  try {
+    const data = await api("/api/sessions");
+    if (!data.sessions || data.sessions.length === 0) return;
+    const picker = $("sessions");
+    picker.hidden = false;
+    picker.replaceChildren();
+    for (const s of data.sessions) {
+      const opt = el("option", "",
+        s.file + "  ·  " + s.events + " events" + (s.denies ? "  ·  " + s.denies + " denied" : ""));
+      opt.value = s.file;
+      picker.appendChild(opt);
+    }
+    picker.onchange = () => {
+      currentFile = picker.value;
+      lastSeq = 0;
+      $("log-list").replaceChildren();
+      $("log-count").textContent = "0";
+      refreshLog();
+    };
+    currentFile = picker.value;
+    refreshLog();
+  } catch (e) {
+    /* single-session mode: no picker */
+  }
+}
+
 /* ---- session log panel -------------------------------------------- */
 
 function describe(p) {
@@ -106,7 +136,8 @@ function addEvent(e) {
 
 async function refreshLog() {
   try {
-    const data = await api("/api/log?after=" + lastSeq);
+    const url = "/api/log?after=" + lastSeq + (currentFile ? "&file=" + encodeURIComponent(currentFile) : "");
+    const data = await api(url);
     for (const e of data.events) {
       addEvent(e);
       if (e.seq > lastSeq) lastSeq = e.seq;
@@ -120,6 +151,7 @@ async function refreshLog() {
 
 /* ---- boot ---------------------------------------------------------- */
 
+refreshSessions();
 refreshPending();
 refreshLog();
 setInterval(refreshPending, 3000);
