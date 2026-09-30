@@ -54,8 +54,7 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 
 ## v0.2 candidates (prioritized per docs/RESEARCH-EVOLUTION.md)
 - [x] **`tapelog test` — agent regression CI** (mainline) — **v1 shipped: scenario DSL over cassettes, policy re-evaluation, CI exit codes (docs/TESTING.md)**
-- **`tapelog fuzz` — boundary hardening lab**: mutate recorded sessions and
-  assert the policy boundary holds (property-based policy testing)
+- [x] **`tapelog fuzz` — boundary hardening lab** — **v1 shipped: 8 mutation operators, comparative deny→allow oracle, ATLAS hints, CI/JSON output (docs/TESTING.md)**
 - Policy packs for popular MCP servers (community rules repo)
 - Web dashboard: multi-session support (serve a directory of logs)
 - Value-level taint tracking (CaMeL-style) research spike
