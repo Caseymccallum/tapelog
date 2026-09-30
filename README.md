@@ -3,7 +3,7 @@
 **The flight recorder and deterministic replay for AI agents.**
 `rr` for tool-calling agents — record every MCP tool call, enforce policy at the boundary, and replay any session.
 
-> **Status: v0.1.0.** Local-first, single binary, Apache-2.0. Follow the
+> **Status: v0.2.0.** Local-first, single binary, Apache-2.0. Follow the
 > [roadmap](docs/ROADMAP.md) or read the [threat model](docs/THREAT_MODEL.md).
 
 ## Why
@@ -13,6 +13,7 @@ Agents can read files, run commands, and call the network on our behalf — and 
 1. **Record everything** — a tamper-evident, hash-chained session log of every tool call, result, and policy verdict.
 2. **Enforce a hard boundary** — declarative allow/deny/confirm policy with *explainable* deny reasons, an **inbound schema firewall** (arguments must satisfy the server's own `inputSchema`), **session budgets / rate limits / payload caps**, **prompt-injection scanning of results**, cross-tool taint rules, and tool-poisoning drift detection (a fully prompt-injected agent must not exceed its delegated authority).
 3. **Replay anything** — VCR-style deterministic re-execution of sessions for debugging, regression tests, and policy what-if analysis.
+4. **Test and harden it** — behavioral regression over recorded trajectories (`tapelog test`), policy-boundary fuzzing (`tapelog fuzz`), and batteries-included policy packs (`packs/`) — the CI layer the eval wave doesn't have.
 
 ## How it works
 

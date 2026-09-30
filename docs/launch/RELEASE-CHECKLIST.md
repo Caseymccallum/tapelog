@@ -1,4 +1,17 @@
-# v0.1.0 Release Checklist
+# Release Checklist
+
+## v0.2.0 (current)
+
+- [x] Feature cut: `tapelog test`, `tapelog fuzz`, policy packs, multi-session
+      dashboard, `tapelog doctor`, OTel decision spans
+- [x] CHANGELOG `[0.2.0]` section cut; version set to `0.2.0`
+- [x] All tests green (15 packages incl. packs harness), `go vet` clean
+- [x] Annotated tag `v0.2.0` prepared locally
+- [ ] **Human:** `git push origin main && git push origin v0.2.0`
+- [ ] **Human:** note v0.1.0's launch steps still stand (domain, demo GIF,
+      contacts, Show HN) — v0.2.0 folds into the same launch
+
+## v0.1.0
 
 ## ✅ Done (in-repo)
 

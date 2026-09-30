@@ -5,7 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 
 ## [Unreleased]
 
-### v0.2 in progress — agent regression CI (mainline per docs/RESEARCH-EVOLUTION.md)
+## [0.2.0] — 2026-09-30
+
+The **agent regression CI & boundary hardening** release: behavioral
+testing at the tool boundary (`tapelog test`), policy fuzzing (`tapelog fuzz`),
+batteries-included policy packs, a multi-session web dashboard, setup
+preflight (`tapelog doctor`), and OTel policy-decision events. Built from
+the community research in docs/RESEARCH-EVOLUTION.md — the tools the
+eval/gateway wave does not have.
+
+### Added (agent regression CI & boundary hardening, per docs/RESEARCH-EVOLUTION.md)
 - **Multi-session dashboard** — `tapelog web --dir sessions/` serves a read-only browser dashboard over a directory of session logs: session list (event + denial counts), per-session event timeline, same security posture (loopback pinning, strict CSP, optional token, path-traversal-proof file selection)
 - **`tapelog doctor`** — setup preflight: policy compiles (rules/Cedar/limits), WASM plugins load, platform capabilities (Landlock, terminal), log writability, node presence; ✓/!/✗ report, CI-friendly exit codes
 - **OTel decision spans** — `policy.decision` is now a first-class span event on every `execute_tool` span (verdict, rule_id, reason as both attributes and event fields): the boundary's decisions are queryable in any trace backend
