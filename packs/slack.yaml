@@ -1,0 +1,29 @@
+# tapelog policy pack: Slack / messaging MCP servers
+#
+# Philosophy: reading is fine, sending is confirmed, and data from
+# sensitive sources must never flow to a sink (cross-tool taint rule —
+# most powerful when the messaging server is behind `tapelog mux` with
+# your filesystem/database servers).
+version: 1
+default: allow
+
+rules:
+  - id: sends-confirm
+    tool: ["send_*", "post_*", "create_*", "invite*", "*message*"]
+    action: confirm
+    reason: "messages to humans need a human in the loop"
+
+  - id: no-channel-creation
+    tool: ["create_conversation", "create_channel", "archive*"]
+    action: deny
+    reason: "workspace structure is not an agent's to change"
+
+flows:
+  - id: no-exfil-to-chat
+    from: ["read_file", "read_secrets", "query_db", "postgres_*", "git_*"]
+    to: ["send_*", "post_*", "*message*"]
+    action: deny
+    reason: "file/db/git data must not be exfiltrated to chat"
+
+limits:
+  max_per_minute: 20

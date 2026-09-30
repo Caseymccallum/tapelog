@@ -1,0 +1,35 @@
+# tapelog policy pack: starter baseline
+#
+# The one to copy first: default-deny with the routine allowed and the
+# risky confirmed. Extend with rules for your own tools — and validate
+# your edits with `tapelog test` and `tapelog fuzz`.
+version: 1
+default: deny
+
+rules:
+  # Reads are routine.
+  - id: allow-reads
+    tool: ["read_*", "get_*", "list_*", "search_*", "fetch"]
+    action: allow
+    reason: "read-only tools are routine"
+
+  # Anything that changes state gets a human.
+  - id: confirm-writes
+    tool: ["write_*", "edit_*", "create_*", "delete_*", "send_*", "post_*", "update_*", "exec*"]
+    action: confirm
+    reason: "state changes need a human in the loop"
+
+flows:
+  - id: no-exfil
+    from: ["read_*", "query_*"]
+    to: ["send_*", "post_*", "exec*"]
+    action: deny
+    reason: "data read inside the boundary must not leave it"
+
+limits:
+  max_calls: 300
+  max_per_minute: 60
+  max_response_bytes: 2097152
+
+injection:
+  mode: log

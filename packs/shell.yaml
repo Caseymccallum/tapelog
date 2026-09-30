@@ -1,0 +1,30 @@
+# tapelog policy pack: shell / exec MCP servers
+#
+# Philosophy: the blast radius is the whole machine, so everything is
+# confirmed, catastrophe is hard-denied, and injection scanning is
+# escalated. Consider also --sandbox-ro/--sandbox-rw (Linux) to contain
+# what slips through.
+version: 1
+default: confirm
+
+rules:
+  - id: no-catastrophe
+    tool: ["exec*", "run_*", "shell*", "bash*"]
+    where: 'context.args.command like "%rm -rf /%" || context.args.command like "%rm -rf ~%" || context.args.command like "%mkfs%" || context.args.command like "%dd of=/dev/%" || context.args.command like "%:(){ :|:& };:%" || context.args.command like "%curl%|%sh%" || context.args.command like "%curl%|%bash%" || context.args.command like "%wget%|%sh%" || context.args.command like "%wget%|%bash%" || context.args.command like "%chmod 777%" || context.args.command like "%> /dev/sd%"'
+    action: deny
+    reason: "catastrophic or self-installing commands are out of bounds"
+
+  - id: no-privilege-escalation
+    tool: ["exec*", "run_*", "shell*", "bash*"]
+    where: 'context.args.command like "%sudo %" || context.args.command like "%su -%" || context.args.command like "%doas %"'
+    action: deny
+    reason: "privilege escalation is not delegated to agents"
+
+limits:
+  max_calls_per_tool:
+    "*": 25
+  max_per_minute: 10
+  max_response_bytes: 262144
+
+injection:
+  mode: confirm

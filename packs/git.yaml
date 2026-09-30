@@ -1,0 +1,29 @@
+# tapelog policy pack: git MCP servers (run_git_command style tools)
+#
+# Philosophy: history is readable, pushes are confirmed, history-destroying
+# and hook-touching commands are hard-denied. Matches on the command string.
+version: 1
+default: allow
+
+rules:
+  - id: no-history-destruction
+    tool: ["git_*", "run_git*", "exec*"]
+    where: 'context.args.command like "%reset --hard%" || context.args.command like "%push --force%" || context.args.command like "%push -f%" || context.args.command like "%filter-branch%" || context.args.command like "%filter-repo%" || context.args.command like "%update-ref -d%" || context.args.command like "%clean -f%" || context.args.command like "%clean -fd%" || context.args.command like "%clean -xdf%"'
+    action: deny
+    reason: "history-destroying git commands are out of bounds"
+
+  - id: no-hook-or-config-tamper
+    tool: ["git_*", "run_git*", "exec*"]
+    where: 'context.args.command like "%core.hooksPath%" || context.args.command like "%--upload-pack%" || context.args.command like "%--receive-pack%"'
+    action: deny
+    reason: "hook and transport config tampering is a supply-chain attack"
+
+  - id: pushes-confirm
+    tool: ["git_*", "run_git*"]
+    where: 'context.args.command like "%push%"'
+    action: confirm
+    reason: "pushes change shared state"
+
+limits:
+  max_calls_per_tool:
+    "*": 200

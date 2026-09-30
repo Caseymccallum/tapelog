@@ -1,0 +1,24 @@
+# tapelog policy pack: fetch / HTTP MCP servers (SSRF defense)
+#
+# Philosophy: public URLs are fine, internal network space is not. An
+# agent-side fetch tool aimed at localhost/RFC1918/link-local/metadata
+# endpoints is the classic SSRF pivot.
+version: 1
+default: allow
+
+rules:
+  - id: no-internal-urls
+    tool: ["fetch", "fetch_*", "http_*", "get", "download*"]
+    where: 'context.args.url like "http://localhost*" || context.args.url like "http://127.*" || context.args.url like "http://[::1]*" || context.args.url like "http://10.*" || context.args.url like "http://192.168.*" || context.args.url like "http://172.1[6-9]*" || context.args.url like "http://172.2[0-9]*" || context.args.url like "http://172.3[0-1]*" || context.args.url like "http://169.254.*" || context.args.url like "http://metadata*" || context.args.url like "http://100.64.*"'
+    action: deny
+    reason: "internal/metadata URLs are SSRF pivots"
+
+  - id: https-only-for-posts
+    tool: ["post", "http_post", "submit*"]
+    where: '!(context.args.url like "https://*")'
+    action: deny
+    reason: "outbound data must travel over TLS"
+
+limits:
+  max_per_minute: 30
+  max_response_bytes: 1048576

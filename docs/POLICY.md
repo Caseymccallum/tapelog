@@ -81,6 +81,13 @@ in order and builds taint from calls the candidate policy would permit.
 
 ## `where` — real Cedar
 
+> **Combinator semantics:** multiple `where` entries are **ANDed** — *every*
+> expression must hold. For alternatives ("this OR that"), write one
+> expression joined with `||`:
+> `where: 'context.args.path like "*.env*" || context.args.path like "*.key*"'`.
+> (A pack authoring bug our own dogfooding caught: three OR-intended list
+> entries could never all match, silently disabling the rule.)
+
 Conditions are **Cedar expressions** (CNCF sandbox project) evaluated by
 `cedar-go` — we do not invent our own expression language (ADR 0002).
 

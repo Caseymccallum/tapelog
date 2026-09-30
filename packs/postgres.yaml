@@ -1,0 +1,26 @@
+# tapelog policy pack: Postgres / SQL MCP servers
+#
+# Philosophy: SELECTs are free, writes are confirmed, schema-destroying
+# statements are hard-denied. Adjust table names for your estate.
+version: 1
+default: allow
+
+rules:
+  - id: no-schema-destruction
+    tool: ["query", "execute", "sql", "run_query", "postgres_*"]
+    where: 'context.args.query like "%DROP %" || context.args.query like "%TRUNCATE%" || context.args.query like "%ALTER USER%" || context.args.query like "%ALTER SYSTEM%" || context.args.query like "%GRANT %"'
+    action: deny
+    reason: "schema destruction and privilege changes are out of bounds"
+
+  - id: writes-confirm
+    tool: ["query", "execute", "sql", "run_query", "postgres_*"]
+    where: 'context.args.query like "%INSERT %" || context.args.query like "%UPDATE %" || context.args.query like "%DELETE %"'
+    action: confirm
+    reason: "data writes need a human in the loop"
+
+limits:
+  max_per_minute: 60
+  max_response_bytes: 4194304
+
+injection:
+  mode: log
