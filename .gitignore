@@ -20,3 +20,6 @@ Thumbs.db
 coverage.out
 web-out.txt
 web-err.txt
+gr-check.log
+gr-check.log
+*.log
