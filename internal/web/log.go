@@ -50,16 +50,19 @@ func queryInt(r *http.Request, key string) int {
 }
 
 // readLog returns session events with seq > after (capped) plus the
-// highest seq seen. The JSONL is written by the session writer; it is
-// opened read-only per request (redaction already happened at write).
-func readLog(path string, after int) (events []json.RawMessage, next int) {
+// highest seq served and the highest seq in the file at all — the last
+// one lets the client detect truncation/replacement (a shrunken max
+// means the log on disk is not the one it has been rendering). The
+// JSONL is written by the session writer; it is opened read-only per
+// request (redaction already happened at write).
+func readLog(path string, after int) (events []json.RawMessage, next, max int) {
 	next = after
 	if path == "" {
-		return nil, next
+		return nil, next, 0
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, next
+		return nil, next, 0
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
@@ -72,6 +75,9 @@ func readLog(path string, after int) (events []json.RawMessage, next int) {
 		if err := json.Unmarshal(line, &env); err != nil {
 			continue
 		}
+		if env.Seq > max {
+			max = env.Seq
+		}
 		if env.Seq > after {
 			events = append(events, json.RawMessage(append([]byte(nil), line...)))
 			if env.Seq > next {
@@ -79,11 +85,11 @@ func readLog(path string, after int) (events []json.RawMessage, next int) {
 			}
 		}
 	}
-	const max = 500
-	if len(events) > max {
-		events = events[len(events)-max:]
+	const maxBuf = 500
+	if len(events) > maxBuf {
+		events = events[len(events)-maxBuf:]
 	}
-	return events, next
+	return events, next, max
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

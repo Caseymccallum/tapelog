@@ -91,11 +91,11 @@ func newMux(s *server) http.Handler {
 			}
 			path = resolved
 		}
-		events, next := readLog(path, queryInt(r, "after"))
+		events, next, max := readLog(path, queryInt(r, "after"))
 		// Verify the hash chain on every fetch (not just at page load):
 		// a tamper mid-session must surface live, in both single-session
 		// and directory mode, without a restart or a hard refresh.
-		resp := map[string]any{"events": events, "next": next}
+		resp := map[string]any{"events": events, "next": next, "max": max}
 		if res, err := session.VerifyFile(path); err == nil {
 			resp["chain_ok"] = res.OK()
 			resp["first_bad_seq"] = res.FirstBadSeq

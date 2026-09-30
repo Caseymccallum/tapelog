@@ -181,11 +181,11 @@ async function refreshLog() {
 
     // A tamper rewrites or truncates already-served events; incremental
     // `after=` polling would keep showing the pre-tamper rows. When the
-    // chain just broke (or the file shrank / was replaced), re-pull the
-    // whole log so the view shows what is actually on disk now; later
+    // chain just broke (or the file was replaced by a shorter one), do a
+    // full re-pull so the view shows what is actually on disk now; later
     // polls resume incremental appends (the recorder keeps writing).
     const broken = data.chain_ok === false;
-    const shrank = data.next < lastSeq;
+    const shrank = typeof data.max === "number" && data.max < lastSeq;
     if ((broken && !chainBroken) || shrank) {
       chainBroken = broken;
       lastSeq = 0;
