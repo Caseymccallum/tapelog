@@ -52,7 +52,12 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Review web dashboard (approvals + live log tail) — **v1 shipped: XSS-safe embedded UI on the approval socket; token + host-pinning + CSRF defenses**
 - [x] Resource/prompt catalog aggregation + namespacing in mux — **v1 shipped: merged annotated catalogs, namespaced prompts, owner-map routing for resource reads (research list complete)**
 
-## v0.2 candidates
+## v0.2 candidates (prioritized per docs/RESEARCH-EVOLUTION.md)
+- **`tapelog test` — agent regression CI** (mainline): run agent scenarios
+  against cassettes as hermetic fixtures; behavior diffs across runs/versions
+- **`tapelog fuzz` — boundary hardening lab**: mutate recorded sessions and
+  assert the policy boundary holds (property-based policy testing)
+- Policy packs for popular MCP servers (community rules repo)
 - Web dashboard: multi-session support (serve a directory of logs)
 - Value-level taint tracking (CaMeL-style) research spike
 - `tapelog doctor` (config/plugin/platform sanity)
