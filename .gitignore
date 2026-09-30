@@ -7,6 +7,7 @@ dist/
 # session logs are user data — never commit
 *.jsonl
 !examples/calls.jsonl
+!test-fixtures/queue-session.jsonl
 
 # editor / OS noise
 .vscode/

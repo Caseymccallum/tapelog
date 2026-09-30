@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 
 ## [Unreleased]
 
+### v0.2 in progress — agent regression CI (mainline per docs/RESEARCH-EVOLUTION.md)
+- **`tapelog test`** — behavioral regression at the tool boundary: YAML scenarios assert over recorded cassettes (`called`/`never_called`/`args`/`times`/`sequence`/`taint_never`/`result_contains`/`allowed`/`denied`/invariants), optional policy re-evaluation (what-if semantics), CI-native exit codes + `--plain`. Research note: the eval wave does prompt scoring; nobody does tool-call trajectory regression with hash-chained provenance
+
 ## [0.1.0] — 2026-09-30
 
 First release: the flight recorder, boundary, and replay engine for MCP

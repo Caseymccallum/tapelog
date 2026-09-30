@@ -1,0 +1,9 @@
+# Behavioral regression over the recorded delete_file session.
+version: 1
+scenario: release-flow
+fixture: ../queue-session.jsonl
+assert:
+  - called: { tool: delete_file, args: { path: /tmp/x } }
+  - never_called: "shell_*"
+  - sequence: [delete_file]
+  - invariant: no_deny_bypassed

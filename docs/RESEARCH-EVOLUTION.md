@@ -45,3 +45,65 @@ from the original brainstorm (RESEARCH.md). Verified live this date.
 2. **Fresh project for variety**: idea #1 scoped sharp (a code *reader*
    TUI, not a graph tool) is the only one that survived re-validation.
    Start it only if the variety is the point — its window is narrowing.
+
+## `tapelog test` — the scenario format (draft v0)
+
+Differentiation vs. the eval wave (promptfoo/DeepEval/Braintrust/LangSmith —
+research above): those are **prompt evaluators** (judge-scores, cost,
+latency). We are **behavioral regression at the tool boundary**: assertions
+on the actual tool-call trajectory, with hash-chained provenance, runnable
+offline in CI. Keep the DSL a *thin* YAML over cassettes — deliberately
+smaller than promptfoo's assert zoo.
+
+```yaml
+# agent-tests/ci-release.yaml
+version: 1
+scenario: release-agent
+fixture: ../fixtures/release-session.jsonl   # recorded cassette (or `live:` block)
+policy: ../policies/prod.yaml                # optional: assert verdicts under policy
+assert:
+  - called: publish_artifact
+    args: { channel: "stable" }
+    times: 1
+  - never_called: "shell_*"
+  - sequence: [build_artifact, test_artifact, publish_artifact]
+  - taint_never: [read_secrets, "send_*"]   # no secrets ever flowed to a sink
+  - result_contains: { tool: deploy, text: "success" }
+  - allowed: deploy
+  - denied: delete_db
+  - invariants:                             # boundary invariants (also used by fuzz)
+      - no_deny_bypassed
+      - no_descriptor_drift
+exit: non-zero on any failure (CI-native)
+```
+
+Design rules:
+1. **Trajectory-first**: `called/never_called/args/sequence/taint_never`
+   are exact, deterministic assertions. No LLM judge needed (optionally
+   pluggable later — `assert.llm` behind a flag).
+2. **Cassette-native**: `fixture` = a recorded tapelog session. Every run
+   emits the cassette it exercised → failures are reproducible from CI
+   artifacts alone.
+3. **Policy-aware**: `policy:` re-runs the decision pipeline (what-if
+   already does this) and asserts on verdicts (`allowed:`/`denied:`).
+4. **CI-native**: non-zero exit on failure, `--plain` output, optional
+   JUnit-ish XML later.
+
+## `tapelog fuzz` — boundary hardening lab (draft v0)
+
+Nobody fuzzes the agent↔tool boundary (research above: prompt fuzzing and
+ATLAS attack generators exist; policy-boundary fuzzing does not).
+
+- Input: a cassette + a policy.
+- Mutation operators over recorded calls: argument tampering (type/size/
+  unicode/traversal markers), tool-name spoofing & homoglyphs, reordering
+  (toxic-flow permutation), taint injection (orders the original agent
+  never tried), descriptor-drift replay, boundary-name games (`../`,
+  `server__tool` confusion).
+- **Oracle = the policy itself**: every mutant must either match the
+  recorded verdict or trip a *documented* rule. A mutant that sails
+  through a rule it should trip = finding (`no_deny_bypassed`).
+- Output: reproducible findings (mutant cassette + the rule that broke),
+  seed corpus exportable for CI regression; ATLAS mapping on findings
+  (the aragentsec pattern) for security-team credibility.
+

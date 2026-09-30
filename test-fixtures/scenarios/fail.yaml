@@ -1,0 +1,6 @@
+# This scenario must FAIL: delete_file was called.
+version: 1
+scenario: no-deletes
+fixture: ../queue-session.jsonl
+assert:
+  - never_called: delete_file
