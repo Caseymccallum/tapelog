@@ -81,7 +81,8 @@ func TestAllowForwardsAndReportsResult(t *testing.T) {
 	// registration, which is impossible in production).
 	serverR, serverW := io.Pipe()
 	go func() {
-		for i := 0; i < 200 && !strings.Contains(serverOut.String(), `"tools/call"`); i++ {
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) && !strings.Contains(serverOut.String(), `"tools/call"`) {
 			time.Sleep(5 * time.Millisecond)
 		}
 		fmt.Fprintln(serverW, resultLine)
@@ -135,7 +136,8 @@ func TestResultVetoReplacesResponse(t *testing.T) {
 
 	serverR, serverW := io.Pipe()
 	go func() {
-		for i := 0; i < 200 && !strings.Contains(serverOut.String(), `"tools/call"`); i++ {
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) && !strings.Contains(serverOut.String(), `"tools/call"`) {
 			time.Sleep(5 * time.Millisecond)
 		}
 		fmt.Fprintln(serverW, resultLine)
@@ -227,7 +229,8 @@ func TestSurfaceCallsAreMediated(t *testing.T) {
 	resultLine := `{"jsonrpc":"2.0","id":9,"result":{"messages":[]}}`
 	serverR, serverW := io.Pipe()
 	go func() {
-		for i := 0; i < 200 && !strings.Contains(sOut.String(), "prompts/get"); i++ {
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) && !strings.Contains(sOut.String(), "prompts/get") {
 			time.Sleep(5 * time.Millisecond)
 		}
 		fmt.Fprintln(serverW, resultLine)

@@ -108,6 +108,13 @@ func (f *fakeTransport) Close() error {
 	return nil
 }
 
+// snapshot copies f.calls for race-free assertions and diagnostics.
+func (f *fakeTransport) snapshot() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.calls...)
+}
+
 // newTestMux wires a two-upstream mux ("a" with read_file, "b" with
 // delete_file) under a policy allowing only *__read*.
 func newTestMux(t *testing.T) (*Mux, *fakeTransport, *fakeTransport) {

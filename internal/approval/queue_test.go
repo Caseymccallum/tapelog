@@ -13,11 +13,14 @@ func TestQueueParkAndDecide(t *testing.T) {
 	got := make(chan Choice, 1)
 	go func() { got <- q.Confirm("deploy", json.RawMessage(`{"env":"prod"}`)) }()
 
-	// Wait for the call to park.
+	// Wait for the call to park (generous deadline: CI runners are slow).
 	var items []PendingItem
-	for i := 0; i < 200 && len(items) == 0; i++ {
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) && len(items) == 0 {
 		items = q.List()
-		time.Sleep(2 * time.Millisecond)
+		if len(items) == 0 {
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 	if len(items) != 1 || items[0].Tool != "deploy" {
 		t.Fatalf("pending list: %+v", items)
@@ -59,8 +62,9 @@ func TestQueueTimeoutFailsClosed(t *testing.T) {
 func TestQueueSessionAllowAndNotes(t *testing.T) {
 	q := NewQueue(5 * time.Second)
 	go func() {
-		for i := 0; i < 200 && len(q.List()) == 0; i++ {
-			time.Sleep(2 * time.Millisecond)
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) && len(q.List()) == 0 {
+			time.Sleep(5 * time.Millisecond)
 		}
 		items := q.List()
 		if len(items) > 0 {
@@ -80,7 +84,8 @@ func TestQueueSessionAllowAndNotes(t *testing.T) {
 func TestQueueListOldestFirst(t *testing.T) {
 	q := NewQueue(5 * time.Second)
 	decideWhenVisible := func(n int) {
-		for i := 0; i < 500; i++ {
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
 			items := q.List()
 			if len(items) >= n {
 				for _, it := range items {
@@ -88,7 +93,7 @@ func TestQueueListOldestFirst(t *testing.T) {
 				}
 				return
 			}
-			time.Sleep(2 * time.Millisecond)
+			time.Sleep(5 * time.Millisecond)
 		}
 	}
 	ids := make(chan int, 2)

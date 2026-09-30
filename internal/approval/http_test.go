@@ -12,11 +12,12 @@ func parkOne(t *testing.T, q *Queue) int {
 	t.Helper()
 	done := make(chan Choice, 1)
 	go func() { done <- q.Confirm("write_file", json.RawMessage(`{"path":"/x"}`)) }()
-	for i := 0; i < 500; i++ {
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
 		if items := q.List(); len(items) == 1 {
 			return items[0].ID
 		}
-		time.Sleep(2 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("call did not park")
 	return 0
