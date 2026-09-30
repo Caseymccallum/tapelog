@@ -6,6 +6,6 @@ scenario: roo-live-session
 fixture: ../sessions/roo.jsonl
 assert:
   - called: { tool: read_file }
-  - called: { tool: write_file, args: { path: roo-demo-scratch.txt } }
-  - sequence: [read_file]
+  - called: { tool: write_file, args: { path: "C:\\Users\\Casey\\Web Apps\\agent-boundary\\roo-demo-scratch.txt" } }
+  - called: { tool: read_text_file }
   - invariant: no_deny_bypassed
