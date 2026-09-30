@@ -3,7 +3,18 @@
 All notable changes to tapelog are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](https://semver.org/).
 
-## [Unreleased] — v0.1.0
+## [Unreleased]
+
+## [0.1.0] — 2026-09-30
+
+First release: the flight recorder, boundary, and replay engine for MCP
+tool-calling agents. Highlights: tamper-evident hash-chained session logs
+(with a standalone format spec + conformance vectors), VCR-style hermetic
+replay + diff, the full decision pipeline (policy rules with Cedar
+conditions, schema firewall, limits, taint flows, drift detection,
+injection scanning), human-in-the-loop approvals (terminal, queue, web
+dashboard), multi-server mux, WASM plugins, OTel export, and an OS
+sandbox for spawned servers.
 
 ### Research-driven gap fills (2026-09-29 internet research)
 - **mux catalog aggregation + precise routing** — `resources/list`, `prompts/list`, `resources/templates/list` merge across upstreams (annotated `_tapelog_server`); prompt names namespaced like tools; resource reads route to the catalog's owner (unknown URIs fall back to first-success) — closes the last research item

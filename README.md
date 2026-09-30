@@ -3,7 +3,8 @@
 **The flight recorder and deterministic replay for AI agents.**
 `rr` for tool-calling agents — record every MCP tool call, enforce policy at the boundary, and replay any session.
 
-> **Status: v0.1 under active construction.** Working name (`tapelog`); final name TBD before publication — see [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Status: v0.1.0.** Local-first, single binary, Apache-2.0. Follow the
+> [roadmap](docs/ROADMAP.md) or read the [threat model](docs/THREAT_MODEL.md).
 
 ## Why
 
@@ -65,6 +66,16 @@ tapelog policy test --policy policy.yaml --calls samples.jsonl
 # Policy regression test: replay verdicts against a candidate policy
 # (exits non-zero if any verdict would change):
 tapelog policy whatif --policy candidate-policy.yaml session.jsonl
+
+# Park confirm verdicts for remote review (quarantine queue) — a web
+# dashboard (approvals + live log) opens on the same socket:
+tapelog record --policy policy.yaml --log session.jsonl \
+  --approval-listen 127.0.0.1:8923 -- npx -y @modelcontextprotocol/server-filesystem .
+tapelog queue list              # or: open http://127.0.0.1:8923
+tapelog queue allow 1 --note "reviewed"
+
+# Shell completion:
+tapelog completion bash > /etc/bash_completion.d/tapelog
 ```
 
 ## Documentation
