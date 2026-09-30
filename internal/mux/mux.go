@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -122,6 +123,35 @@ func (mx *Mux) Close() {
 // tools aggregates namespaced descriptors from every upstream, refreshing
 // listings (which re-pins descriptors and detects drift). ok is false when
 // any upstream fails — the mux fails closed.
+// callFirst forwards a surface call (resources/read, prompts/get, ...) to
+// upstreams in deterministic name order and returns the first successful
+// response. MCP resource URIs and prompt names are not namespaced across
+// servers, so first-success is the honest v0 routing (docs/POLICY.md).
+func (mx *Mux) callFirst(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, error) {
+	names := make([]string, 0, len(mx.byName))
+	for name := range mx.byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var lastErr error
+	for _, name := range names {
+		resp, err := mx.byName[name].client.Request(ctx, method, params)
+		if err != nil {
+			lastErr = fmt.Errorf("%s: %w", name, err)
+			continue
+		}
+		if resp.Error != nil {
+			lastErr = fmt.Errorf("%s: %s", name, resp.Error.Message)
+			continue
+		}
+		return resp.Result, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no upstream available")
+	}
+	return nil, lastErr
+}
+
 func (mx *Mux) tools(ctx context.Context) ([]json.RawMessage, error) {
 	var out []json.RawMessage
 	for name, u := range mx.byName {

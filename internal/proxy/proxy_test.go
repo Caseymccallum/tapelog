@@ -170,22 +170,93 @@ func TestResultVetoReplacesResponse(t *testing.T) {
 	}
 }
 
-func TestNonToolTrafficPassesThrough(t *testing.T) {
+func TestCoreMethodPassesUnmediated(t *testing.T) {
 	var clientOut, serverOut syncBuffer
-	line := `{"jsonrpc":"2.0","id":7,"method":"resources/read","params":{"uri":"file:///x"}}`
+	line := `{"jsonrpc":"2.0","id":7,"method":"ping","params":{}}`
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(context.Background(),
 			strings.NewReader(line+"\n"), &clientOut,
 			strings.NewReader(""), &serverOut,
 			Hooks{OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
-				t.Errorf("OnToolCall must not fire for resources/read")
+				t.Errorf("OnToolCall must not fire for ping")
 				return DecisionAllow, nil
 			}})
 	}()
 	waitRun(t, done)
 
-	if !strings.Contains(serverOut.String(), "resources/read") {
-		t.Fatalf("non-tool request was not forwarded: %q", serverOut.String())
+	if !strings.Contains(serverOut.String(), "ping") {
+		t.Fatalf("core method was not forwarded: %q", serverOut.String())
+	}
+}
+
+func TestSurfaceCallsAreMediated(t *testing.T) {
+	// Deny path: a refused resources/read must never reach the server,
+	// and must answer with the structured deny error.
+	var clientOut, serverOut syncBuffer
+	readLine := `{"jsonrpc":"2.0","id":8,"method":"resources/read","params":{"uri":"file:///secrets/key"}}`
+	done := make(chan error, 1)
+	var gotName, gotArgs string
+	go func() {
+		done <- Run(context.Background(),
+			strings.NewReader(readLine+"\n"), &clientOut,
+			strings.NewReader(""), &serverOut,
+			Hooks{OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
+				gotName, gotArgs = call.Name, string(call.Arguments)
+				return DecisionDeny, &DenyData{
+					Code: "tool_denied", RuleID: "no-secrets",
+					Reason: "secrets are out of bounds", Verdict: "deny",
+				}
+			}})
+	}()
+	waitRun(t, done)
+	if gotName != "resources/read" || !strings.Contains(gotArgs, "file:///secrets/key") {
+		t.Fatalf("surface call not mediated correctly: name=%q args=%q", gotName, gotArgs)
+	}
+	if serverOut.String() != "" {
+		t.Fatalf("denied surface call reached the server: %q", serverOut.String())
+	}
+	if !strings.Contains(clientOut.String(), "no-secrets") || !strings.Contains(clientOut.String(), `"code":-32010`) {
+		t.Fatalf("no structured deny for surface call: %q", clientOut.String())
+	}
+
+	// Allow path: prompts/get is forwarded and its result is paired
+	// (recorded) like any tool result.
+	var cOut, sOut syncBuffer
+	promptLine := `{"jsonrpc":"2.0","id":9,"method":"prompts/get","params":{"name":"summarize"}}`
+	resultLine := `{"jsonrpc":"2.0","id":9,"result":{"messages":[]}}`
+	serverR, serverW := io.Pipe()
+	go func() {
+		for i := 0; i < 200 && !strings.Contains(sOut.String(), "prompts/get"); i++ {
+			time.Sleep(5 * time.Millisecond)
+		}
+		fmt.Fprintln(serverW, resultLine)
+		serverW.Close()
+	}()
+	var paired string
+	done2 := make(chan error, 1)
+	go func() {
+		done2 <- Run(context.Background(),
+			strings.NewReader(promptLine+"\n"), &cOut,
+			serverR, &sOut,
+			Hooks{
+				OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
+					if call.Name != "prompts/get" {
+						t.Errorf("name = %q", call.Name)
+					}
+					return DecisionAllow, nil
+				},
+				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) (Decision, *DenyData) {
+					paired = string(result)
+					return DecisionAllow, nil
+				},
+			})
+	}()
+	waitRun(t, done2)
+	if !strings.Contains(sOut.String(), "prompts/get") {
+		t.Fatalf("surface call was not forwarded: %q", sOut.String())
+	}
+	if !strings.Contains(paired, "messages") {
+		t.Fatalf("surface result was not paired/recorded: %q", paired)
 	}
 }

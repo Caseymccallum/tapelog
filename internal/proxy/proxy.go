@@ -51,6 +51,27 @@ type Hooks struct {
 	OnRawMessage func(direction string, raw []byte)
 }
 
+// mediatedCall extracts the mediated call from a client→server request.
+// tools/call yields the tool call; every other REQUEST except the core
+// protocol trio (initialize/ping/tools/list — plumbing, no data enters the
+// agent's context through them) is treated as a surface call named after
+// its method (resources/read, prompts/get, ...), so nothing that can feed
+// the agent's context crosses the boundary unmediated.
+func mediatedCall(msg *jsonrpc.Message) *jsonrpc.ToolCallParams {
+	switch msg.Method {
+	case "initialize", "ping", "tools/list":
+		return nil
+	case "tools/call":
+		call, err := msg.ToolCall()
+		if err != nil {
+			return nil // malformed: forwarded untouched (protocol safety)
+		}
+		return call
+	default:
+		return &jsonrpc.ToolCallParams{Name: msg.Method, Arguments: msg.Params}
+	}
+}
+
 // Run relays MCP traffic until client EOF, context cancellation, or error.
 //
 //	 clientIn/Out  — the harness side (e.g. os.Stdin/os.Stdout)
@@ -94,9 +115,8 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 				}
 				continue
 			}
-			if msg.IsRequest() && msg.Method == "tools/call" {
-				call, err := msg.ToolCall()
-				if err == nil {
+			if msg.IsRequest() {
+				if call := mediatedCall(msg); call != nil {
 					idMu.Lock()
 					toolIDs[idKey(msg.ID)] = true
 					idMu.Unlock()

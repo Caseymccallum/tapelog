@@ -21,6 +21,7 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 | 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`tapelog verify` detects modification/deletion/reordering, incl. recomputed-hash forgery) |
 | 6 | Log credential leakage — traces leak secrets | Deterministic `[REDACTED]` masking of known secret patterns + field names (before hashing) |
 | 7 | Tool server over-reach — a mediated server touches files outside its lane | **OS sandbox (defense-in-depth):** spawned servers run under Landlock filesystem restrictions (`--sandbox-ro`/`--sandbox-rw`, Linux; re-exec + syscall.Exec, strict by default) |
+| 8 | Exfiltration via non-tool surfaces — `resources/read` / `prompts/get` bypass tool policy | **No unmediated surface:** every client request except `initialize`/`ping`/`tools/list` is mediated as a surface call (same pipeline: policy, flows, limits, confirm, recording) |
 
 ## Out of scope — honest non-claims
 

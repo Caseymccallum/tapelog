@@ -1,0 +1,16 @@
+# Surface gating: resources and prompts are mediated like tools.
+version: 1
+default: allow
+
+rules:
+  - id: no-secret-reads
+    tool: "resources/read"
+    where: 'context.args.uri like "file://secrets/*"'
+    action: deny
+    reason: "secrets are out of bounds for agents"
+
+  - id: no-admin-prompts
+    tool: "prompts/get"
+    where: 'context.args.name like "admin*"'
+    action: deny
+    reason: "admin prompts are not for agents"

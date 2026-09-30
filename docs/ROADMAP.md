@@ -46,6 +46,7 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Inbound schema firewall (args vs advertised inputSchema) — shipped
 - [x] Session limits: budgets, per-tool caps, rate limit, response payload cap — shipped
 - [x] Shell completion — shipped
+- [x] Resource/prompt surface gating (no unmediated surface) — **v1 shipped: surface calls through the full pipeline; mux routes first-success (catalog aggregation still open)**
 - [ ] Remote approval queue (async HITL web UI, "quarantine queue" per the gateway-pattern article)
-- [ ] Resource/prompt catalog policies (MCP Trail gates resources & prompts too, not just tools)
+- [ ] Resource/prompt catalog aggregation + namespacing in mux
 - [ ] Prompt-injection heuristics in tool results

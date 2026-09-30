@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 ## [Unreleased] — v0.1.0
 
 ### Research-driven gap fills (2026-09-29 internet research)
+- **No unmediated surface** — `resources/read`, `prompts/get`, `resources/templates/get` (and any future method) now flow through the full decision pipeline as "surface calls" (`tool:` = method name, args = MCP params; Cedar `where:` conditions can match `context.args.uri`/`name`). They consume limits, feed taint, and are recorded as `tool_call`/`tool_result` events. In `mux` they route first-success in deterministic server order. Previously these crossed the boundary completely uninspected.
 - **Schema firewall (inbound)** — tool-call arguments are validated against the `inputSchema` the server itself advertised (jsonschema draft-agnostic); violations deny with `rule_id: schema-firewall` before anything is forwarded. Fail-open for tools without/broken schemas. ("Allowing a tool name isn't enough — risk hides in the payload.")
 - **Session limits** — policy `limits:` block: `max_calls` (session budget), `max_calls_per_tool` (glob patterns), `max_per_minute` (sliding window), `max_response_bytes` (payload cap — over-cap results are replaced with a structured `response_too_large` error while the log keeps the evidence). Explainable denials like every other verdict.
 - **`tapelog completion`** — bash/zsh/fish/powershell scripts.

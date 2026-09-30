@@ -53,6 +53,7 @@ func (f *fakeTransport) Send(msg *jsonrpc.Message) error {
 		f.calls = append(f.calls, p.Name)
 		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(`{"content":[{"type":"text","text":"done"}]}`)}
 	default:
+		f.calls = append(f.calls, msg.Method) // surface calls land here
 		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(`{}`)}
 	}
 	f.queue = append(f.queue, resp)
@@ -166,6 +167,68 @@ func TestMuxUnknownServer(t *testing.T) {
 		t.Fatalf("want unknown_tool error:\n%s", out)
 	}
 }
+
+func TestSurfaceCallsMediatedAndRouted(t *testing.T) {
+	writer, err := session.NewWriter(t.TempDir()+"/session.jsonl", "surface-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+	policyPath := t.TempDir() + "/policy.yaml"
+	if err := os.WriteFile(policyPath, []byte(`
+version: 1
+default: deny
+rules:
+  - id: reads-ok
+    tool: "resources/read"
+    action: allow
+    reason: "docs are readable"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	med := mediator.New(mediator.Options{
+		SessionID: "surface-test", Evaluator: p, Confirmer: approval.Deny{},
+		Writer: writer,
+	})
+	fa := newFakeTransport("read_file")
+	fb := newFakeTransport("delete_file")
+	mx := &Mux{
+		med:     med,
+		byName:  map[string]*Upstream{"a": {client: mcpclient.New(fa)}, "b": {client: mcpclient.New(fb)}},
+		version: "test",
+	}
+
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"file:///docs/x"}}
+{"jsonrpc":"2.0","id":2,"method":"prompts/get","params":{"name":"admin_reset"}}
+`)
+	var out bytes.Buffer
+	if err := mx.Serve(context.Background(), in, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	// resources/read: allowed by policy, routed deterministically to the
+	// first upstream by name, answered.
+	if len(fa.calls) != 1 || fa.calls[0] != "resources/read" {
+		t.Fatalf("upstream a surface calls: %v", fa.calls)
+	}
+	if len(fb.calls) != 0 {
+		t.Fatalf("first-success must stop at the first upstream; b got: %v", fb.calls)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, `"id":1`) || strings.Contains(got, `"id":1,"error"`) {
+		t.Fatalf("resources/read should succeed: %s", got)
+	}
+	// prompts/get: default deny — structured denial, nothing forwarded.
+	if !strings.Contains(got, "tool_denied") || !strings.Contains(got, `"id":2,"error"`) {
+		t.Fatalf("prompts/get must be denied by policy: %s", got)
+	}
+}
+
 
 func TestLoadConfigValidation(t *testing.T) {
 	path := t.TempDir() + "/mux.yaml"

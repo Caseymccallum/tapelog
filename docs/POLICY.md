@@ -140,6 +140,40 @@ limits:
 ## Schema firewall (inbound)
 
 Tool-call arguments are validated against the JSON Schema the MCP server
+## Gating resources & prompts (no unmediated surface)
+
+Every client→server **request** except `initialize`, `ping`, and
+`tools/list` is mediated as a *surface call* named after its method:
+`resources/read`, `prompts/get`, `resources/templates/get`, and any future
+method. They flow through the same pipeline as `tools/call` (drift, schema,
+limits, flows, policy, confirm, taint, recording), so:
+
+- **Rules match them by method name**; arguments are the MCP params:
+
+```yaml
+rules:
+  - id: no-secret-reads
+    tool: "resources/read"
+    where: 'context.args.uri like "file://secrets/*"'
+    action: deny
+    reason: "secrets are out of bounds for agents"
+
+  - id: no-admin-prompts
+    tool: "prompts/get"
+    where: 'context.args.name like "admin*"'
+    action: deny
+```
+
+- Surface calls **consume `limits` budgets**, **feed taint** (`flows:` rules
+  can name `resources/read` as a source), and are **recorded** in the
+  session log as `tool_call`/`tool_result` events with `tool` set to the
+  method name, so `verify`, `inspect`, `replay`, and `what-if` all work.
+- In `tapelog mux`, surface calls are mediated the same way and routed
+  **first-success in deterministic server-name order** (MCP resource URIs
+  and prompt names are not namespaced across servers, a documented v0
+  limitation; catalog aggregation is roadmap).
+
+
 itself advertised in the tool's `inputSchema` — automatically, for every
 `record` and `mux` session. "Allowing a tool name isn't enough; risk hides
 in the payload."

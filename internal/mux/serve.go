@@ -148,7 +148,38 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				return err
 			}
 		default:
-			if err := fail(msg.ID, -32601, "method not found", nil); err != nil {
+			// Every other method (resources/read, prompts/get, ...) is a
+			// surface call: mediate it like a tool call, then forward.
+			outcome := mx.med.Decide(msg.ID, msg.Method, msg.Params)
+			if !outcome.Allowed {
+				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool call denied by policy", map[string]any{
+					"code": "tool_denied", "rule_id": outcome.RuleID,
+					"reason": outcome.Reason, "verdict": outcome.Verdict,
+				}); err != nil {
+					return err
+				}
+				continue
+			}
+			raw, err := mx.callFirst(ctx, msg.Method, msg.Params)
+			if err != nil {
+				eobj := &jsonrpc.ErrorObj{Code: -32603, Message: err.Error()}
+				rawErr, _ := json.Marshal(eobj)
+				_ = mx.med.Result(msg.ID, true, rawErr)
+				if err := write(&jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID, Error: eobj}); err != nil {
+					return err
+				}
+				continue
+			}
+			if v := mx.med.Result(msg.ID, false, raw); v != nil {
+				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool result over payload cap", map[string]any{
+					"code": "response_too_large", "rule_id": v.RuleID,
+					"reason": v.Reason, "verdict": "deny",
+				}); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := result(msg.ID, json.RawMessage(raw)); err != nil {
 				return err
 			}
 		}
