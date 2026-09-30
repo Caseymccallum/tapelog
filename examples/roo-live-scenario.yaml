@@ -1,0 +1,11 @@
+# Behavioral regression for a live Roo Code session recorded through
+# tapelog (docs/CLIENT-SETUP.md test-drive). The fixture path is
+# relative to this file — adjust if your log lives elsewhere.
+version: 1
+scenario: roo-live-session
+fixture: ../sessions/roo.jsonl
+assert:
+  - called: { tool: read_file }
+  - called: { tool: write_file, args: { path: roo-demo-scratch.txt } }
+  - sequence: [read_file]
+  - invariant: no_deny_bypassed
