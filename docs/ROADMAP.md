@@ -59,3 +59,4 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] `tapelog doctor` (config/plugin/platform sanity) — **v1 shipped: preflight checks with ✓/!/✗ report + CI exit codes**
 - [x] OTel spans for policy decisions — **v1 shipped: `policy.decision` span events + verdict/rule/reason attributes**
 - Web dashboard: multi-session support (serve a directory of logs)
+- Value-level taint tracking (CaMeL-style) research spike
