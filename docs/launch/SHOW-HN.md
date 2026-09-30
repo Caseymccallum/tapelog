@@ -5,9 +5,11 @@
 1. **Show HN: rr for AI agents – deterministic replay of tool-calling sessions**
 2. **Show HN: Tapelog – flight recorder, policy boundary and replay for AI agents**
 3. **Show HN: A tamper-evident flight recorder for AI agents (VCR for agent sessions)**
+4. **Show HN: Tapelog – tamper-evident replayable logs for MCP agent tool calls, with regression CI**
 
 Recommendation: #1 — it leads with the *developer* story (replay), which
 resonates more than security framing, and "rr" is a known-good analogy.
+#4 leads with the regression-CI angle if the discussion skews CI/testing.
 
 ## Post body (draft)
 
@@ -15,7 +17,7 @@ resonates more than security framing, and "rr" is a known-good analogy.
 > a local-first boundary layer between agent harnesses (Claude Code, Codex
 > CLI, anything MCP) and their tool servers.
 >
-> Three things, one binary:
+> Four things, one binary:
 >
 > 1. **Record everything.** Every tool call, result and policy verdict goes
 >    into a hash-chained session log. Secrets are redacted before hashing;
@@ -32,6 +34,11 @@ resonates more than security framing, and "rr" is a known-good analogy.
 >    regression tests. VCR semantics: redaction-aware matching (a fresh
 >    secret still matches its recording), consume-once, fail-loud on
 >    missing recordings. Plus `diff` and `policy whatif` for CI.
+> 4. **Regression CI for tool trajectories.** `tapelog test` asserts over
+>    recorded sessions (called/never_called/sequence/invariants — no LLM
+>    judge), `tapelog fuzz` mutates recorded calls hunting policy holes,
+>    `tapelog doctor` preflights the setup. The eval wave scores prompts;
+>    nobody scores the tool-call trajectory.
 >
 > There's also a TUI inspector and OTLP export (GenAI semconv spans).
 >
@@ -41,9 +48,11 @@ resonates more than security framing, and "rr" is a known-good analogy.
 > primitive — it's the one feature every debugging session wants.
 >
 > Honest non-claims (docs/THREAT_MODEL.md): we don't sandbox tool
-> execution, we don't filter prompt injection at the model, and we can't
-> yet correlate "toxic flows" across tools (v2). We constrain and record
-> actions; the model stays untrusted.
+> execution by default (opt-in Landlock on Linux), we don't filter prompt
+> injection at the model, and value-level toxic-flow tracking is
+> heuristic (substring contamination matching — transformations evade
+> it; session-scoped flow rules are the must-never case). We constrain
+> and record actions; the model stays untrusted.
 >
 > Apache-2.0, single static binary, no telemetry. Would love feedback —
 > especially from people building MCP servers: what would you want from
@@ -54,7 +63,7 @@ resonates more than security framing, and "rr" is a known-good analogy.
 - [ ] Final name check (GitHub org, npm, crates.io, PyPI) — currently `tapelog` (working name)
 - [ ] Record the demo GIF (see examples/rogue-agent/README.md)
 - [ ] `GOVERNANCE`/`SECURITY` contacts: replace placeholder emails
-- [ ] Tag v0.1.0, goreleaser run, attach checksums + SBOM + cosign signatures
+- [x] Tags + signed releases — v0.1.0/v0.2.0 tagged; goreleaser (SBOM + cosign) runs on each `v*` tag
 - [ ] Post at Tue–Thu, 8–10am ET; reply actively for the first 3 hours
 - [ ] Cross-posts: MCP Discord, r/LocalLLaMA, r/ExperiencedDevs, OTel community
 - [x] Publish the session-log spec standalone → **`spec/` (normative `session-log-v0.md` + JSON Schema + conformance test vectors); community-process post at launch**

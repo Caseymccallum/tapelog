@@ -31,8 +31,8 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] TS + Python thin adapters (config/integration)
 - [x] Demo: "rogue agent" scripted demo (`examples/rogue-agent/demo.ps1`)
 - [x] Show HN post drafted + launch checklist (`docs/launch/SHOW-HN.md`)
+- [x] Tag v0.1.0 + v0.2.0 + signed releases (goreleaser pipeline live; v0.3.0 cut at launch)
 - [ ] Demo GIF (launch-time artifact — see examples/rogue-agent/README.md)
-- [ ] Tag v0.1.0 + signed release (after final name decision)
 
 ## Later / v2 candidates
 - [x] Toxic-flow (taint) rules across tool calls — **v1 shipped: session-scoped taint (`flows:` rules); value-level CaMeL-style tracking remains research-grade**
@@ -61,8 +61,14 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Web dashboard: multi-session support — **v1 shipped: `tapelog web --dir` session browser (list + per-session timeline, traversal-proof)**
 - [x] Value-level taint tracking (CaMeL-style) research spike — **shipped as experimental `flows: mode: value` (ADR 0005): contamination-matched value taint with results gate; session semantics preserved for must-never flows**
 
+## v0.4 candidates (feedback-driven)
+- [ ] Blob refs for large payloads — store `args`/`result` out-of-band with a digest reference (spec/FAQ.md gap; replay needs the blob store)
+
 ## v0.3 candidates / launch prep (2026-09-30)
 - [x] Fuzz operators v2 — **shipped: `arg_unicode`, `arg_boundary`, `arg_encoding`, `tool_namespace`, `swap_rotate` (13 operators total)**
 - [x] `tapelog test` CI integrations — **shipped: `--junit` JUnit XML, `--annotate` GitHub annotations, CI dogfood job**
 - [x] Spec community materials — **shipped: `spec/OTel-COMPARE.md` + `spec/FAQ.md`**
+- [x] Live-tamper-safe recording — **shipped: per-append log writer (no held handle), external-edit WARNING, session survives mid-session edits**
+- [x] Live chain verdict in the dashboards — **shipped: `/api/log` re-verifies the chain every poll; ⚠ banner in both dashboards; full re-render on break/truncation**
+- [x] Windows + Roo/Cline integration fix — **shipped (docs): 8.3 short-path recipe in `docs/CLIENT-SETUP.md`, root-caused against Roo 3.54.0 spawn code**
 - [ ] Human launch TODOs: register `tapelog.dev`, demo GIF, repo topics, Show HN post (`docs/launch/SHOW-HN.md`)

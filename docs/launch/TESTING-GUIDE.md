@@ -35,7 +35,10 @@ You should see mostly `✓`, maybe some `!` (warnings are fine):
 ```
 ✓ runtime — tapelog 0.3.0-dev, windows/amd64
 ! policy — none given — record/mux will run observe-only (add --policy to enforce)
+! plugins — none configured (optional)
 ! os-sandbox — no OS enforcement on this platform (Linux required); policy still enforces
+✓ terminal — interactive approval prompts available
+✓ log-location — . is writable
 ✓ node — on PATH (for npx-based MCP servers)
 all required checks passed
 ```
@@ -130,9 +133,11 @@ You should see a verdict table — the read is allowed, the write needs a
 human:
 
 ```
-VERDICT  TOOL        RULE                REASON
-allow    read_file   default             no rule matched; policy default is "allow"
-confirm  write_file  writes-need-confirm filesystem mutations need a human in the loop
+VERDICT  TOOL                           RULE           REASON
+allow    read_file                      default        no rule matched; policy default is "allow"
+confirm  write_file                     writes-need-confirm filesystem mutations need a human in the loop
+
+2 calls evaluated against packs\filesystem.yaml
 ```
 
 ✅ **Pass:** `write_file` shows `confirm`. Try adding
@@ -199,9 +204,10 @@ rule that broke) or the all-clear line:
 no boundary bypasses found (1 calls mutated across 2 operators)
 ```
 
-✅ **Pass:** exit code 0. **Findings are not test failures** — each one
-is a real policy hole ("this mutation escaped your deny rule"); fix the
-rule (usually a wildcard) and re-run until clean.
+✅ **Pass:** exit code 0 on the all-clear. **Findings exit 1** (CI
+semantics: a bypass is a build break) — each one is a real policy hole
+("this mutation escaped your deny rule"), not a test bug; fix the rule
+(usually a wildcard) and re-run until clean.
 
 ---
 
@@ -221,7 +227,10 @@ dropdown, and selecting it shows a red banner:
 `⚠ chain broken — first bad event: seq 4 (hash mismatch...)` — the
 dashboard verifies every log's hash chain so modified evidence can't
 pass as authentic. `my-session.jsonl` and `taint-demo.jsonl` show no
-warning.
+warning. The verdict is re-checked on every poll (≈2s), so an edit made
+*while the dashboard is open* raises the banner live — and the same
+banner appears in the `record --approval-listen` dashboard, not just
+`tapelog web`.
 
 ✅ **Pass:** sessions list renders, `tampered.jsonl` carries the ⚠ +
 banner, and the timeline shows the deny from Test 4 with its reason.

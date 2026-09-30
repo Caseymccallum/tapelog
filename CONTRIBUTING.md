@@ -1,6 +1,8 @@
 # Contributing
 
-Thanks for your interest! Tapelog is in early construction — the highest-value contributions will come after the v0.1 scaffold lands, but issues labeled `help-wanted` and `good-first-issue` are fair game anytime.
+Thanks for your interest! Tapelog is pre-1.0 and moving fast (v0.3 in
+progress) — issues labeled `help-wanted` and `good-first-issue` are fair
+game anytime.
 
 ## Development setup
 
@@ -18,7 +20,7 @@ No code generation, no container required, no services to run. If that's ever no
 
 ## Project layout
 
-See [ARCHITECTURE.md](ARCHITECTURE.md). In short: `cmd/tapelog` (CLI), `internal/{jsonrpc,proxy,policy,session}`, `schema/` (the language-neutral log format), `docs/` (specs + ADRs).
+See [ARCHITECTURE.md](ARCHITECTURE.md). In short: `cmd/tapelog` (CLI), `internal/{jsonrpc,proxy,mediator,policy,session,replay,web,…}`, `spec/` (the language-neutral log format), `docs/` (guides + ADRs).
 
 ## Pull requests
 
@@ -56,7 +58,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md). In short: `cmd/tapelog` (CLI), `internal
 
 - Standard `gofmt` / `go vet`; no heavy lint rule-churn early on.
 - Errors are values: wrap with context (`fmt.Errorf("…: %w", err)`), never panic on user input.
-- Determinism matters: anything touching the log format must be byte-reproducible (see `internal/session/canonical` tests).
+- Determinism matters: anything touching the log format must be byte-reproducible (see the canonical-form tests in `internal/session`).
 - Comments explain *why*; the docs explain *what*.
 
 ## Testing expectations

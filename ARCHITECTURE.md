@@ -1,6 +1,6 @@
 # Architecture
 
-**Tapelog** is a local-first boundary layer between AI agent harnesses and MCP tool servers. It records every tool interaction into a tamper-evident session log, evaluates declarative policy before side effects occur, and (roadmap) replays sessions deterministically.
+**Tapelog** is a local-first boundary layer between AI agent harnesses and MCP tool servers. It records every tool interaction into a tamper-evident session log, evaluates declarative policy before side effects occur, and replays sessions deterministically (`tapelog replay`).
 
 ## Components
 
@@ -23,12 +23,16 @@
 
 | Package | Responsibility |
 |---|---|
-| `cmd/tapelog` | CLI (cobra): `record`, `verify`, `policy test`, `version` |
+| `cmd/tapelog` | CLI (cobra): `record`, `mux`, `verify`, `replay`, `diff`, `inspect`, `export`, `policy`, `test`, `fuzz`, `doctor`, `web`, `queue`, `completion`, `version` |
 | `internal/jsonrpc` | JSON-RPC 2.0 envelope parsing/serialization for the MCP wire format |
 | `internal/proxy` | Transparent bidirectional MCP relay; interception hooks; deny short-circuit |
+| `internal/mediator` | Per-session decision pipeline: drift pinning, schema firewall, limits, flows/taint, injection scan, confirm routing, recording |
 | `internal/policy` | `Evaluator` interface, YAML policy loader, glob matching, explainable decisions |
 | `internal/session` | Event types, hash-chained JSONL writer/verifier, redaction |
-| `schema/` | JSON Schema for session events (language-neutral interop surface) |
+| `internal/replay` | Deterministic re-execution of a recorded session as a hermetic MCP server |
+| `internal/approval` | Parked-approval queue (remote human-in-the-loop) |
+| `internal/web` | Embedded review dashboard (approvals + live session log + chain verdicts) |
+| `spec/` | The session log format: normative spec + JSON Schema + conformance vectors |
 
 ## Data flow
 
@@ -36,7 +40,7 @@
 2. If `method == tools/call`, the proxy extracts `params.name` + `params.arguments` and asks the **policy evaluator** for a verdict *before any side effect*:
    - `allow` → forward to the real MCP server (acting as MCP client).
    - `deny` → synthesize a JSON-RPC error response (`code: -32010`, structured data with policy id + reason); nothing is forwarded.
-   - `confirm` → deny in non-interactive mode unless `--auto-confirm`; interactive TUI prompt (roadmap).
+   - `confirm` → pause for a human: terminal prompt, or the remote approval queue (`--approval-listen`); `--auto-confirm` records the call as allowed; with none available, fail closed (deny).
 3. Every message in both directions is redacted and appended to the **session log** as a hash-chained event (`tools/call`, `policy/decision`, `tools/result`, `session/start`, `session/end`).
 4. `tapelog verify` re-computes the chain to detect tampering.
 
@@ -55,10 +59,12 @@ See [docs/adr/](docs/adr/):
 - [0001-language-go.md](docs/adr/0001-language-go.md) — Go core for adoption & contributions
 - [0002-policy-engine-cedar.md](docs/adr/0002-policy-engine-cedar.md) — Cedar primary, YAML front-end, evaluator interface
 - [0003-session-log-hash-chain.md](docs/adr/0003-session-log-hash-chain.md) — append-only hash-chained JSONL format
+- [0004-mux-and-transports.md](docs/adr/0004-mux-and-transports.md) — multi-server mux & transports
+- [0005-value-level-taint.md](docs/adr/0005-value-level-taint.md) — value-level taint tracking (experimental)
 
 ## Non-goals (v0)
 
 - Hosted/telemetry components of any kind
 - LLM-judged content filtering (prompt-injection *prevention* at the model)
-- Kernel-level enforcement (eBPF/Landlock) — defense-in-depth later
+- Kernel-level enforcement as a hard guarantee — Landlock sandboxing exists as opt-in defense-in-depth (`--sandbox-*`, Linux); eBPF/seccomp remains out of scope
 - Multi-agent / A2A protocol mediation

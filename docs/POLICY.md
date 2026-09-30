@@ -149,6 +149,12 @@ Notes:
 ## Tool-name globs
 
 `*` = any run, `?` = exactly one character. Anchored to the whole name
+(`read*` matches `read_file`, not `pread`).
+
+**Mux mode:** tool names are namespaced `<server>__<tool>` (e.g.
+`fs__read_file`), so rules must match the namespaced form:
+`*__read*`, `git__*`, etc. Server names never contain `__`.
+
 ## Session limits (budgets, rates, payload caps)
 
 ```yaml
@@ -173,6 +179,22 @@ limits:
 ## Schema firewall (inbound)
 
 Tool-call arguments are validated against the JSON Schema the MCP server
+itself advertised in the tool's `inputSchema` — automatically, for every
+`record` and `mux` session. "Allowing a tool name isn't enough; risk hides
+in the payload."
+
+- Invalid arguments (wrong types, missing required fields, properties the
+  schema forbids) are **denied before forwarding** with
+  `rule_id: schema-firewall`.
+- **Fail-open where there is nothing to validate against**: tools with no
+  `inputSchema`, or a schema that will not compile, pass through (the
+  error is reported at pin time). Servers cannot brick themselves with
+  broken schemas — but they also cannot smuggle bad arguments past a
+  schema they declared.
+- Validation happens after drift checks and before policy rules, so a
+  schema violation never consumes a policy rule's semantics (or a confirm
+  prompt's attention).
+
 ## Gating resources & prompts (no unmediated surface)
 
 Every client→server **request** except `initialize`, `ping`, and
@@ -199,6 +221,16 @@ rules:
 
 - Surface calls **consume `limits` budgets**, **feed taint** (`flows:` rules
   can name `resources/read` as a source), and are **recorded** in the
+  session log as `tool_call`/`tool_result` events with `tool` set to the
+  method name, so `verify`, `inspect`, `replay`, and `what-if` all work.
+- In `tapelog mux`, catalogs are **aggregated**: `resources/list`,
+  `prompts/list`, and `resources/templates/list` merge every upstream's
+  entries (annotated `_tapelog_server`); prompt names are namespaced
+  `<server>__<name>` and unwrapped on `prompts/get`. Resource URIs are
+  left intact but the mux **remembers each URI's owner** from the catalog
+  and routes `resources/read` precisely; only unknown URIs fall back to
+  first-success in deterministic server-name order.
+
 ## Injection scanning (tool results)
 
 Tool and surface results are scanned for **prompt-injection markers** —
@@ -225,6 +257,9 @@ injection:
   evidence.
 - Findings are auditable (`tapelog inspect` shows them like any
   decision), and `mode: off` disables scanning entirely.
+
+Heuristics are not proof — treat hits as signals to review, not verdicts.
+
 ## Remote approval queue ("quarantine queue")
 
 `record`/`mux --approval-listen 127.0.0.1:8923` turns `confirm` verdicts
@@ -243,15 +278,21 @@ tapelog queue deny  4
 
 - **Review dashboard** (`http://<listen>`): parked approvals with
   note-carrying allow/deny, plus a live tail of the session log
-  (the `inspect` timeline in a browser). Dependency-free, embedded
+  (the `inspect` timeline in a browser). A tampered log surfaces a red
+  `⚠ chain broken — first bad event: seq N` banner on every poll — the
+  chain is re-verified continuously, so an edit made mid-session is
+  visible without a restart. Dependency-free, embedded
   assets. Security posture: untrusted data rendered via `textContent`
   only (tool output is attacker-controlled — no HTML, strict
   `default-src 'self'` CSP), loopback Host pinning (DNS-rebinding
   defense), same-origin-only POSTs (CSRF defense), `no-store` responses.
 - **API** (JSON): `GET /api/pending`, `POST /api/decide {"id","verdict":
-  allow|allow_session|deny,"note"}`, `GET /api/log?after=<seq>`,
-  `GET /healthz`. Add `--approval-token` to require
-  `Authorization: Bearer <token>` (and to allow non-loopback binds).
+  allow|allow_session|deny,"note"}`, `GET /api/log?after=<seq>` (returns
+  `events`, `next`, `max`, and a live chain verdict: `chain_ok`,
+  `first_bad_seq`, `problem`), `GET /api/sessions` (directory mode
+  listing with per-session chain verdicts), `GET /healthz`. Add
+  `--approval-token` to require `Authorization: Bearer <token>` (and to
+  allow non-loopback binds).
 - **Trust model**: localhost-first — the listener is plain HTTP and
   anyone who can reach it can decide. Keep it on 127.0.0.1 (or set a
   token and put it behind your own TLS). See docs/THREAT_MODEL.md.
@@ -261,44 +302,6 @@ tapelog queue deny  4
   the rest of the session (like the terminal prompt's `[s]`).
 - Precedence: `--auto-confirm` > `--approval-listen` > terminal prompt >
   fail closed. Works for `injection: mode: confirm` reviews too.
-
-
-
-Heuristics are not proof — treat hits as signals to review, not verdicts.
-
-
-  session log as `tool_call`/`tool_result` events with `tool` set to the
-  method name, so `verify`, `inspect`, `replay`, and `what-if` all work.
-- In `tapelog mux`, catalogs are **aggregated**: `resources/list`,
-  `prompts/list`, and `resources/templates/list` merge every upstream's
-  entries (annotated `_tapelog_server`); prompt names are namespaced
-  `<server>__<name>` and unwrapped on `prompts/get`. Resource URIs are
-  left intact but the mux **remembers each URI's owner** from the catalog
-  and routes `resources/read` precisely; only unknown URIs fall back to
-  first-success in deterministic server-name order.
-
-
-itself advertised in the tool's `inputSchema` — automatically, for every
-`record` and `mux` session. "Allowing a tool name isn't enough; risk hides
-in the payload."
-
-- Invalid arguments (wrong types, missing required fields, properties the
-  schema forbids) are **denied before forwarding** with
-  `rule_id: schema-firewall`.
-- **Fail-open where there is nothing to validate against**: tools with no
-  `inputSchema`, or a schema that will not compile, pass through (the
-  error is reported at pin time). Servers cannot brick themselves with
-  broken schemas — but they also cannot smuggle bad arguments past a
-  schema they declared.
-- Validation happens after drift checks and before policy rules, so a
-  schema violation never consumes a policy rule's semantics (or a confirm
-  prompt's attention).
-
-(`read*` matches `read_file`, not `pread`).
-
-**Mux mode:** tool names are namespaced `<server>__<tool>` (e.g.
-`fs__read_file`), so rules must match the namespaced form:
-`*__read*`, `git__*`, etc. Server names never contain `__`.
 
 ## Commands
 

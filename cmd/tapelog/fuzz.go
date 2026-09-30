@@ -34,7 +34,7 @@ allow is a boundary bypass — a policy hole a real attacker could use.
 Findings are reproducible and carry indicative MITRE ATLAS tactics.
 
   tapelog fuzz --policy prod.yaml session.jsonl
-  tapelog fuzz --policy prod.yaml --operators tool_case,tool_homoglyph session.jsonl
+  tapelog fuzz --policy prod.yaml --operator tool_case --operator tool_homoglyph session.jsonl
   tapelog fuzz --policy prod.yaml --json session.jsonl > findings.json
 
 Exits non-zero when any finding is reported.`,

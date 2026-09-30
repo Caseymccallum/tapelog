@@ -217,7 +217,9 @@ The recipe is always the same:
 - [ ] After a few prompts, `tapelog verify <log>` reports `chain intact`
 - [ ] `tapelog inspect <log>` shows every `tools/call` with its verdict
 - [ ] A deny (if any) appears in the client as a tool error with rule id
-- [ ] `tapelog web --dir <dir>` shows the session (⚠ badge = broken chain)
+- [ ] `tapelog web --dir <dir>` shows the session (⚠ badge = broken chain);
+      the ⚠ chain banner also appears in the `record --approval-listen`
+      dashboard and updates live (re-verified every poll)
 
 ## Troubleshooting
 
@@ -228,6 +230,6 @@ The recipe is always the same:
 | Server starts, zero tools | inner command broken (`npx` w/o `cmd /c` on Windows) | run the inner command alone in a terminal first |
 | Agent hangs on a call | `confirm` policy + no approval path | add `--approval-listen` or `--auto-confirm` |
 | Calls denied immediately | policy pack too strict for your tools | first run observe-only; then `tapelog policy whatif` |
-| Log grows but verify fails | something rewrote the log | check the ⚠ banner in `tapelog web`; that's tampering or a tool editing files |
+| Log grows but verify fails | something rewrote the log | check the ⚠ banner (live in both dashboards) or `tapelog verify`; that's tampering or a tool editing files. Recording survives mid-session edits and flags them — see CHANGELOG |
 
 

@@ -1,6 +1,16 @@
 # Release Checklist
 
-## v0.2.0 (current)
+## v0.3.0 (current — launch prep)
+
+- [x] Feature cut: value-level taint (ADR 0005), fuzz operators v2,
+      `tapelog test` CI integrations (`--junit`/`--annotate` + dogfood job),
+      spec community docs, live-tamper-safe recording, live chain verdicts
+      in both dashboards, `docs/CLIENT-SETUP.md`
+- [ ] CHANGELOG `v0.3` section cut + version set to `0.3.0`
+- [ ] Demo GIF + human launch TODOs (domain, contacts, Show HN) — see
+      `docs/ROADMAP.md` v0.3 section and `docs/launch/SHOW-HN.md`
+
+## v0.2.0 (released)
 
 - [x] Feature cut: `tapelog test`, `tapelog fuzz`, policy packs, multi-session
       dashboard, `tapelog doctor`, OTel decision spans
@@ -57,9 +67,9 @@
    `mcp`, `ai-agents`, `observability`, `security`, `replay`, `go`
 6. Optional pre-publish: reserve `tapelog-mcp` on npm/PyPI for adapters
 
-## Post-release
+## Post-release (v0.1.0 → v0.2.0 — done)
 
-- [ ] Bump `version` to `0.2.0-dev` on main
-- [ ] Goreleaser provenance + cosign signing + SBOM (SECURITY.md promise)
+- [x] Bump `version` on main (now `0.3.0-dev`)
+- [x] Goreleaser provenance + cosign signing + SBOM (SECURITY.md promise — ships with `release.yml`)
 - [ ] Open the v0.2 candidates (docs/ROADMAP.md) as GitHub issues for
       community input
