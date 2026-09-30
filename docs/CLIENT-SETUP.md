@@ -178,6 +178,7 @@ The recipe is always the same:
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| **`MCP error -32000: Connection closed` in the client** | `command` not absolute (bare `tapelog.exe`), or a manually-started `tapelog record` still running (it can't be "connected to" — and if it holds the `--approval-listen` port, it conflicts with the client's own copy) | absolute path in `command`; kill stray `tapelog.exe` processes; **Restart** the server in the client. Never run the record command yourself — the client spawns it |
 | Server won't start in client | relative path to tapelog | use absolute path in `command` |
 | Server starts, zero tools | inner command broken (`npx` w/o `cmd /c` on Windows) | run the inner command alone in a terminal first |
 | Agent hangs on a call | `confirm` policy + no approval path | add `--approval-listen` or `--auto-confirm` |

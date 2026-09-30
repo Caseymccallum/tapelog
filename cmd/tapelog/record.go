@@ -261,7 +261,11 @@ func buildConfirmer(autoConfirm bool, listen, token string, timeout time.Duratio
 	if listen != "" {
 		q := approval.NewQueue(timeout)
 		srv := &http.Server{Addr: listen, Handler: web.Handler(q, logPath, token)}
-		go func() { _ = srv.ListenAndServe() }()
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				fmt.Fprintf(os.Stderr, "tapelog: approval queue dashboard failed to listen on %s: %v (is another tapelog still running?) — record continues, but confirm verdicts will fail closed after the approval timeout\n", listen, err)
+			}
+		}()
 		fmt.Fprintf(os.Stderr, "tapelog: review dashboard on http://%s (approvals + session log; API: /api/pending /api/decide /api/log)\n", listen)
 		return q, false, func() { _ = srv.Close() }, nil
 	}
