@@ -27,3 +27,5 @@ gr-check.log
 *-out.txt
 *-err.txt
 *-e2e*
+junit.xml
+smoke-junit.xml

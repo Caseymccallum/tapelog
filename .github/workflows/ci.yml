@@ -41,3 +41,30 @@ jobs:
       - name: Test
         run: go test -count=1 -timeout 10m ./...
 
+  # Dogfood: run tapelog test against its own scenario fixtures and
+  # publish the JUnit report + inline annotations.
+  dogfood:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build -o bin/tapelog ./cmd/tapelog
+      - name: Scenario suite (JUnit)
+        run: ./bin/tapelog test --plain --junit junit.xml test-fixtures/scenarios/pass.yaml
+      - name: Failure annotations smoke (expected fail)
+        run: |
+          if ./bin/tapelog test --annotate test-fixtures/scenarios/fail.yaml; then
+            echo "fail.yaml must fail" >&2
+            exit 1
+          fi
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-report
+          path: junit.xml
+

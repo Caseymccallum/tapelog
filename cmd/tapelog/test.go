@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Caseymccallum/tapelog/internal/policy"
+	"github.com/Caseymccallum/tapelog/internal/report"
 	"github.com/Caseymccallum/tapelog/internal/replay"
 	"github.com/Caseymccallum/tapelog/internal/scenario"
 )
@@ -17,6 +18,8 @@ import (
 // cassettes: `tapelog test <scenario.yaml | dir>...`.
 func newTestCmd() *cobra.Command {
 	var plain bool
+	var junitPath string
+	var annotate bool
 	cmd := &cobra.Command{
 		Use:   "test [scenario.yaml | directory]...",
 		Short: "Run behavioral regression scenarios against recorded cassettes",
@@ -41,6 +44,7 @@ judge needed. Exits non-zero on any failure: CI-native.
 			}
 
 			failed := 0
+			var results []report.Result
 			for _, file := range files {
 				sc, err := scenario.Load(file)
 				if err != nil {
@@ -64,6 +68,11 @@ judge needed. Exits non-zero on any failure: CI-native.
 				if name == "" {
 					name = filepath.Base(file)
 				}
+				res := report.Result{Name: name, File: file, Asserts: len(sc.Assert)}
+				for _, f := range fails {
+					res.Failures = append(res.Failures, report.Failure{Check: f.Check, Detail: f.Detail})
+				}
+				results = append(results, res)
 				if len(fails) == 0 {
 					if plain {
 						fmt.Printf("ok\t%s\n", name)
@@ -82,6 +91,27 @@ judge needed. Exits non-zero on any failure: CI-native.
 					fmt.Printf("    %s: %s\n", f.Check, f.Detail)
 				}
 			}
+			if junitPath != "" {
+				f, err := os.Create(junitPath)
+				if err != nil {
+					return err
+				}
+				err = report.WriteJUnit(f, results)
+				cerr := f.Close()
+				if err != nil {
+					return err
+				}
+				if cerr != nil {
+					return cerr
+				}
+			}
+			// GitHub Actions annotations: opt-in via --annotate or
+			// automatic inside a workflow run.
+			if annotate || os.Getenv("GITHUB_ACTIONS") == "true" {
+				for _, line := range report.GitHubAnnotations(results) {
+					fmt.Println(line)
+				}
+			}
 			if failed > 0 {
 				return fmt.Errorf("%d scenario(s) failed", failed)
 			}
@@ -89,6 +119,8 @@ judge needed. Exits non-zero on any failure: CI-native.
 		},
 	}
 	cmd.Flags().BoolVar(&plain, "plain", false, "flat output for CI logs")
+	cmd.Flags().StringVar(&junitPath, "junit", "", "write a JUnit XML report to this path")
+	cmd.Flags().BoolVar(&annotate, "annotate", false, "emit GitHub Actions ::error annotations (automatic on GITHUB_ACTIONS)")
 	return cmd
 }
 
