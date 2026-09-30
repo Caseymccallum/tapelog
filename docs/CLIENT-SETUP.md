@@ -68,8 +68,18 @@ port 8923:
 
 Notes that matter on Windows:
 
+- ⚠ **No spaces in ANY path.** Roo (and Cline) wrap your command in
+  `cmd.exe /c <command> <args…>`, and cmd's quote rule chops the command
+  at the first space — `"C:\...\Web Apps\..."` dies instantly with
+  `'C:\...\Web' is not recognized` and the client reports
+  **"MCP error -32000: Connection closed"**. If your path has spaces
+  (e.g. `C:\Users\you\My Project\`), use the 8.3 short name in the
+  config:
+  `cmd /c for %I in ("C:\Users\you\My Project") do @echo %~sI`
+  (→ `C:\Users\you\MYPROJ~1\...`), or install tapelog to a space-free
+  directory.
 - Use the **absolute path** to `tapelog.exe` (spawn doesn't run PATH
-  lookup the way your shell does). Spaces in the path are fine in JSON.
+  lookup the way your shell does).
 - `npx` needs the `cmd /c` wrapper on Windows (Roo's own docs do the
   same); everything after `--` is the original server command **verbatim**.
 - Drop `--policy` for a first observe-only run (everything is recorded,
@@ -178,7 +188,7 @@ The recipe is always the same:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| **`MCP error -32000: Connection closed` in the client** | `command` not absolute (bare `tapelog.exe`), or a manually-started `tapelog record` still running (it can't be "connected to" — and if it holds the `--approval-listen` port, it conflicts with the client's own copy) | absolute path in `command`; kill stray `tapelog.exe` processes; **Restart** the server in the client. Never run the record command yourself — the client spawns it |
+| **`MCP error -32000: Connection closed` in the client** | **(most common on Windows)** spaces in a path + Roo/Cline's `cmd.exe /c` wrapper: cmd chops the command at the first space (`'C:\...\Web' is not recognized`) | use 8.3 short paths (`cmd /c for %I in ("C:\your path") do @echo %~sI`) everywhere in the entry — see the note above. Also: absolute path in `command`, no stray manual `tapelog record` running, then **Restart** the server |
 | Server won't start in client | relative path to tapelog | use absolute path in `command` |
 | Server starts, zero tools | inner command broken (`npx` w/o `cmd /c` on Windows) | run the inner command alone in a terminal first |
 | Agent hangs on a call | `confirm` policy + no approval path | add `--approval-listen` or `--auto-confirm` |
