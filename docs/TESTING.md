@@ -32,7 +32,20 @@ assert:
 ```bash
 tapelog test agent-tests/            # every *.yaml in the directory
 tapelog test agent-tests/release.yaml
+tapelog test --junit junit.xml agent-tests/   # JUnit XML for CI ingestion
+tapelog test --annotate agent-tests/          # GitHub ::error annotations
 ```
+
+CI integration:
+- **JUnit XML** (`--junit <path>`): ingested by GitLab, Jenkins, Azure
+  DevOps, and GitHub Actions (via e.g. `dorny/test-reporter`). Written
+  even when scenarios fail — pair with `if: always()`.
+- **GitHub annotations** (`--annotate`, or automatic when
+  `GITHUB_ACTIONS=true`): failures appear inline on the PR diff as
+  `::error file=<scenario>,title=tapelog test::...`.
+- The repo's own CI runs a **dogfood job** (`.github/workflows/ci.yml`)
+  that runs `tapelog test` against its scenario fixtures and uploads the
+  JUnit artifact — copy it as a starting point.
 
 ## Boundary fuzzing (`tapelog fuzz`)
 
