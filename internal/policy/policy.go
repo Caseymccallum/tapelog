@@ -17,6 +17,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Caseymccallum/tapelog/internal/inject"
 	"github.com/Caseymccallum/tapelog/internal/limits"
 )
 
@@ -117,13 +118,21 @@ func (r *Rule) matchesTool(tool string) bool {
 	return false
 }
 
+// InjectionConfig configures result-side prompt-injection scanning
+// (docs/POLICY.md "Injection scanning"). Mode "" defaults to "log".
+type InjectionConfig struct {
+	Mode     string   `yaml:"mode"`     // off | log | confirm | deny
+	Patterns []string `yaml:"patterns"` // extra Go-regexp patterns
+}
+
 // Policy is a parsed YAML policy file.
 type Policy struct {
-	Version int          `yaml:"version"`
-	Default string       `yaml:"default"`
-	Rules   []Rule       `yaml:"rules"`
-	Flows   []Flow       `yaml:"flows"`   // optional cross-tool data-flow rules
-	Limits  limits.Limits `yaml:"limits"` // optional session budgets / payload caps
+	Version  int            `yaml:"version"`
+	Default  string         `yaml:"default"`
+	Rules    []Rule         `yaml:"rules"`
+	Flows    []Flow         `yaml:"flows"`    // optional cross-tool data-flow rules
+	Limits   limits.Limits  `yaml:"limits"`   // optional session budgets / payload caps
+	Injection InjectionConfig `yaml:"injection"` // optional result injection scanning
 
 	now func() time.Time // test seam; defaults to time.Now
 }
@@ -202,6 +211,16 @@ func (p *Policy) normalize() error {
 	}
 	if p.Limits.Enabled() {
 		if _, err := limits.NewTracker(p.Limits); err != nil {
+			return err
+		}
+	}
+	switch p.Injection.Mode {
+	case "", "off", "log", "confirm", "deny":
+	default:
+		return fmt.Errorf("injection: invalid mode %q (want off|log|confirm|deny)", p.Injection.Mode)
+	}
+	if len(p.Injection.Patterns) > 0 {
+		if _, err := inject.New(p.Injection.Patterns); err != nil {
 			return err
 		}
 	}

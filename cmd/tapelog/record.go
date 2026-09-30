@@ -15,6 +15,7 @@ import (
 	"github.com/Caseymccallum/tapelog/internal/approval"
 	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 	"github.com/Caseymccallum/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/inject"
 	"github.com/Caseymccallum/tapelog/internal/limits"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
 	"github.com/Caseymccallum/tapelog/internal/policy"
@@ -63,16 +64,13 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				serverCmd = sandboxOpts.WrapCommand(exe, serverCmd)
 			}
 
-			evaluator, policyID, policyHash, lim, err := loadEvaluator(policyPath)
+			evaluator, policyID, policyHash, pol, err := loadEvaluator(policyPath)
 			if err != nil {
 				return err
 			}
-			var limTracker *limits.Tracker
-			if lim.Enabled() {
-				limTracker, err = limits.NewTracker(lim)
-				if err != nil {
-					return err
-				}
+			limTracker, injScanner, injMode, err := buildGuards(pol)
+			if err != nil {
+				return err
 			}
 			if sessionID == "" {
 				sessionID = generateSessionID()
@@ -105,6 +103,8 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				Plugins:        plugins,
 				Limits:         limTracker,
 				Schemas:        schemafire.New(),
+				Injection:      injScanner,
+				InjectionMode:  injMode,
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
 				Writer:         writer,
@@ -145,7 +145,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) (proxy.Decision, *proxy.DenyData) {
 					if v := med.Result(id, isError, result); v != nil {
 						return proxy.DecisionDeny, &proxy.DenyData{
-							Code: "response_too_large", RuleID: v.RuleID,
+							Code: v.Code, RuleID: v.RuleID,
 							Reason: v.Reason, Verdict: "deny",
 						}
 					}
@@ -174,21 +174,60 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 }
 
 // loadEvaluator resolves the policy (or observe-only mode) and returns the
-// policy id + file hash recorded in session/start, plus session limits.
-func loadEvaluator(policyPath string) (policy.Evaluator, string, string, limits.Limits, error) {
+// policy id + file hash recorded in session/start plus the parsed policy
+// (nil in observe-only mode).
+func loadEvaluator(policyPath string) (policy.Evaluator, string, string, *policy.Policy, error) {
 	if policyPath == "" {
-		return policy.AllowAll{}, "observe", "", limits.Limits{}, nil
+		return policy.AllowAll{}, "observe", "", nil, nil
 	}
 	p, err := policy.Load(policyPath)
 	if err != nil {
-		return nil, "", "", limits.Limits{}, err
+		return nil, "", "", nil, err
 	}
 	data, err := os.ReadFile(policyPath)
 	if err != nil {
-		return nil, "", "", limits.Limits{}, err
+		return nil, "", "", nil, err
 	}
 	sum := sha256.Sum256(data)
-	return p, policyPath, hex.EncodeToString(sum[:]), p.Limits, nil
+	return p, policyPath, hex.EncodeToString(sum[:]), p, nil
+}
+
+// buildGuards constructs the runtime guards from policy config: session
+// limits and the result-side injection scanner. Injection scanning is on
+// by default in `log` mode (observe-only sessions too) — heuristics warn,
+// operators opt into confirm/deny.
+func buildGuards(pol *policy.Policy) (*limits.Tracker, *inject.Scanner, string, error) {
+	var (
+		limTracker *limits.Tracker
+		injScanner *inject.Scanner
+	)
+	injMode := "log"
+	if pol != nil {
+		if pol.Limits.Enabled() {
+			t, err := limits.NewTracker(pol.Limits)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			limTracker = t
+		}
+		if pol.Injection.Mode != "off" {
+			if pol.Injection.Mode != "" {
+				injMode = pol.Injection.Mode
+			}
+			s, err := inject.New(pol.Injection.Patterns)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			injScanner = s
+		}
+	} else {
+		s, err := inject.New(nil)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		injScanner = s
+	}
+	return limTracker, injScanner, injMode, nil
 }
 
 // buildConfirmer implements the confirm strategy: --auto-confirm allows

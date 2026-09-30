@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
+	"github.com/Caseymccallum/tapelog/internal/inject"
 	"github.com/Caseymccallum/tapelog/internal/limits"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
 	"github.com/Caseymccallum/tapelog/internal/policy"
@@ -27,8 +28,10 @@ type Options struct {
 	Evaluator      policy.Evaluator
 	Confirmer      approval.Confirmer
 	Plugins        *plugin.Chain // optional verdict/redact plugins
-	Limits         *limits.Tracker     // optional session budgets / caps
+	Limits         *limits.Tracker      // optional session budgets / caps
 	Schemas        *schemafire.Validator // optional inbound schema firewall
+	Injection      *inject.Scanner       // optional result injection scanning
+	InjectionMode  string                // log | confirm | deny ("" = log)
 	NonInteractive bool          // wording for confirm denials
 	DenyOnDrift    bool
 	Writer         *session.Writer
@@ -41,6 +44,14 @@ type Outcome struct {
 	Verdict string // evaluated verdict (allow|confirm|deny)
 	RuleID  string
 	Reason  string
+}
+
+// ResultBlock says a recorded result must not be delivered to the
+// harness as-is (payload cap exceeded, or injection markers blocked).
+type ResultBlock struct {
+	Code   string // machine-readable: response_too_large | result_blocked
+	RuleID string
+	Reason string
 }
 
 // Mediator runs the decision pipeline. Safe for concurrent use.
@@ -211,15 +222,45 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 }
 
 // Result records a tool result for the call with the given id. A non-nil
-// Violation means the response exceeds limits.max_response_bytes: the
-// (redacted) result is still recorded as evidence, but the caller must
-// replace what the harness receives with an error.
-func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessage) *limits.Violation {
+// ResultBlock means the harness must not receive the payload as-is
+// (over limits.max_response_bytes, or blocked by injection mode: deny):
+// the (redacted) original is still recorded as evidence either way.
+func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessage) *ResultBlock {
 	_, _ = m.opts.Writer.Append(session.EventToolResult, session.ToolResultPayload{
 		ID: id, IsError: isError, Result: m.opts.Redactor.RedactJSON(result),
 	})
 	if m.opts.Limits != nil {
-		return m.opts.Limits.CheckResponse(len(result))
+		if v := m.opts.Limits.CheckResponse(len(result)); v != nil {
+			return &ResultBlock{Code: "response_too_large", RuleID: v.RuleID, Reason: v.Reason}
+		}
+	}
+	if m.opts.Injection != nil {
+		findings := m.opts.Injection.Scan(string(result))
+		if len(findings) > 0 {
+			reason := "result contains prompt-injection markers: " + findings[0].Pattern
+			if n := len(findings); n > 1 {
+				reason += fmt.Sprintf(" (+%d more)", n-1)
+			}
+			switch m.opts.InjectionMode {
+			case "deny":
+				m.recordDecision(id, "deny", "injection-scan", reason)
+				return &ResultBlock{Code: "result_blocked", RuleID: "injection-scan", Reason: reason}
+			case "confirm":
+				args, _ := json.Marshal(map[string]any{
+					"note": "deliver tool result containing injection markers?", "findings": findings,
+				})
+				choice := m.opts.Confirmer.Confirm("injection-review", args)
+				if choice != approval.ChoiceAllowOnce && choice != approval.ChoiceAllowSession {
+					reason += " (delivery blocked by human)"
+					m.recordDecision(id, "deny", "injection-scan", reason)
+					return &ResultBlock{Code: "result_blocked", RuleID: "injection-scan", Reason: reason}
+				}
+				reason += " (delivered with human approval)"
+				m.recordDecision(id, "allow", "injection-scan", reason)
+			default: // log
+				m.recordDecision(id, "allow", "injection-scan", reason)
+			}
+		}
 	}
 	return nil
 }

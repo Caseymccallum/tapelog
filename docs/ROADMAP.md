@@ -47,6 +47,6 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Session limits: budgets, per-tool caps, rate limit, response payload cap — shipped
 - [x] Shell completion — shipped
 - [x] Resource/prompt surface gating (no unmediated surface) — **v1 shipped: surface calls through the full pipeline; mux routes first-success (catalog aggregation still open)**
+- [x] Prompt-injection heuristics in tool results — **v1 shipped: `injection: mode: log|confirm|deny` with conservative built-ins + custom patterns**
 - [ ] Remote approval queue (async HITL web UI, "quarantine queue" per the gateway-pattern article)
 - [ ] Resource/prompt catalog aggregation + namespacing in mux
-- [ ] Prompt-injection heuristics in tool results

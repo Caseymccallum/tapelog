@@ -166,6 +166,36 @@ rules:
 
 - Surface calls **consume `limits` budgets**, **feed taint** (`flows:` rules
   can name `resources/read` as a source), and are **recorded** in the
+## Injection scanning (tool results)
+
+Tool and surface results are scanned for **prompt-injection markers** —
+text trying to rewrite the agent's instructions from inside tool output
+(`"IGNORE ALL PREVIOUS INSTRUCTIONS"`, `"reveal your system prompt"`,
+`"do not tell the user"`, smuggled tool-call JSON, and similar).
+Detection is heuristic (imperative + AI-context phrases, to limit false
+positives), so the default mode merely logs:
+
+```yaml
+injection:
+  mode: log          # off | log | confirm | deny   (default: log)
+  patterns:          # optional extra Go-regexp patterns
+    - '(?i)\bcustomer-data-export\b'
+```
+
+- **`log`** (default, also in observe-only sessions): the result is
+  delivered and a `policy/decision` event with `rule_id: injection-scan`
+  records the finding. A false positive costs one log line.
+- **`confirm`**: delivery is paused for the human prompt (allow once /
+  allow session / deny); the outcome is recorded either way.
+- **`deny`**: the harness receives a structured `result_blocked` error
+  instead of the payload; the (redacted) original is still recorded as
+  evidence.
+- Findings are auditable (`tapelog inspect` shows them like any
+  decision), and `mode: off` disables scanning entirely.
+
+Heuristics are not proof — treat hits as signals to review, not verdicts.
+
+
   session log as `tool_call`/`tool_result` events with `tool` set to the
   method name, so `verify`, `inspect`, `replay`, and `what-if` all work.
 - In `tapelog mux`, surface calls are mediated the same way and routed

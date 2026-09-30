@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Caseymccallum/tapelog/internal/limits"
 	"github.com/Caseymccallum/tapelog/internal/mediator"
 	"github.com/Caseymccallum/tapelog/internal/mux"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
@@ -59,16 +58,13 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 					}
 				}
 			}
-			evaluator, policyID, policyHash, lim, err := loadEvaluator(policyPath)
+			evaluator, policyID, policyHash, pol, err := loadEvaluator(policyPath)
 			if err != nil {
 				return err
 			}
-			var limTracker *limits.Tracker
-			if lim.Enabled() {
-				limTracker, err = limits.NewTracker(lim)
-				if err != nil {
-					return err
-				}
+			limTracker, injScanner, injMode, err := buildGuards(pol)
+			if err != nil {
+				return err
 			}
 			if sessionID == "" {
 				sessionID = generateSessionID()
@@ -101,6 +97,8 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 				Plugins:        plugins,
 				Limits:         limTracker,
 				Schemas:        schemafire.New(),
+				Injection:      injScanner,
+				InjectionMode:  injMode,
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
 				Writer:         writer,

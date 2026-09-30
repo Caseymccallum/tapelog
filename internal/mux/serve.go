@@ -125,10 +125,10 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				continue
 			}
 			if v := mx.med.Result(msg.ID, isError, raw); v != nil {
-				// Over the payload cap: replace what the harness sees
-				// (the original is still recorded as evidence).
-				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool result over payload cap", map[string]any{
-					"code": "response_too_large", "rule_id": v.RuleID,
+				// Not deliverable as-is (payload cap / injection block):
+				// replace what the harness sees (original stays recorded).
+				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool result not deliverable", map[string]any{
+					"code": v.Code, "rule_id": v.RuleID,
 					"reason": v.Reason, "verdict": "deny",
 				}); err != nil {
 					return err
@@ -171,8 +171,8 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				continue
 			}
 			if v := mx.med.Result(msg.ID, false, raw); v != nil {
-				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool result over payload cap", map[string]any{
-					"code": "response_too_large", "rule_id": v.RuleID,
+				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool result not deliverable", map[string]any{
+					"code": v.Code, "rule_id": v.RuleID,
 					"reason": v.Reason, "verdict": "deny",
 				}); err != nil {
 					return err
