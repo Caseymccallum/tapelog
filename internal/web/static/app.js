@@ -199,7 +199,7 @@ async function refreshLog() {
       $("log-count").textContent = String(lastSeq);
       return;
     }
-    chainBroken = chainBroken || broken;
+    chainBroken = broken;
 
     for (const e of data.events || []) {
       addEvent(e);
