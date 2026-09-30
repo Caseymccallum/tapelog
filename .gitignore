@@ -17,3 +17,5 @@ Thumbs.db
 
 # Go
 coverage.out
+web-out.txt
+web-err.txt
