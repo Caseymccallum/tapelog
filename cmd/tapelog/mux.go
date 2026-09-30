@@ -6,10 +6,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Caseymccallum/tapelog/internal/limits"
 	"github.com/Caseymccallum/tapelog/internal/mediator"
 	"github.com/Caseymccallum/tapelog/internal/mux"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
 	"github.com/Caseymccallum/tapelog/internal/sandbox"
+	"github.com/Caseymccallum/tapelog/internal/schemafire"
 	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
@@ -57,9 +59,16 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 					}
 				}
 			}
-			evaluator, policyID, policyHash, err := loadEvaluator(policyPath)
+			evaluator, policyID, policyHash, lim, err := loadEvaluator(policyPath)
 			if err != nil {
 				return err
+			}
+			var limTracker *limits.Tracker
+			if lim.Enabled() {
+				limTracker, err = limits.NewTracker(lim)
+				if err != nil {
+					return err
+				}
 			}
 			if sessionID == "" {
 				sessionID = generateSessionID()
@@ -90,6 +99,8 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 				Evaluator:      evaluator,
 				Confirmer:      confirmer,
 				Plugins:        plugins,
+				Limits:         limTracker,
+				Schemas:        schemafire.New(),
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
 				Writer:         writer,

@@ -73,6 +73,7 @@ func (t *descriptorTracker) observe(direction string, raw []byte) {
 			}
 			hash, _ := t.med.HashDescriptor(tool)
 			t.med.PinDescriptor(desc.Name, hash) // drift detection lives in the mediator
+			_ = t.med.PinSchema(desc.Name, tool) // inbound schema firewall
 		}
 		t.med.RecordToolsList(result.Tools)
 	}

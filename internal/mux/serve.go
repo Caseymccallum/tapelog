@@ -124,7 +124,17 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				}
 				continue
 			}
-			mx.med.Result(msg.ID, isError, raw)
+			if v := mx.med.Result(msg.ID, isError, raw); v != nil {
+				// Over the payload cap: replace what the harness sees
+				// (the original is still recorded as evidence).
+				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool result over payload cap", map[string]any{
+					"code": "response_too_large", "rule_id": v.RuleID,
+					"reason": v.Reason, "verdict": "deny",
+				}); err != nil {
+					return err
+				}
+				continue
+			}
 			if isError {
 				var eobj jsonrpc.ErrorObj
 				if json.Unmarshal(raw, &eobj) == nil {

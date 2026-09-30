@@ -10,7 +10,7 @@
 Agents can read files, run commands, and call the network on our behalf — and today, when something goes wrong, we debug by printf-ing JSON blobs. Enterprise "agent governance" platforms exist (see [RESEARCH.md](RESEARCH.md) for the full landscape), but nobody ships the developer-grade basics:
 
 1. **Record everything** — a tamper-evident, hash-chained session log of every tool call, result, and policy verdict.
-2. **Enforce a hard boundary** — declarative allow/deny/confirm policy on tool calls with *explainable* deny reasons (a fully prompt-injected agent must not exceed its delegated authority).
+2. **Enforce a hard boundary** — declarative allow/deny/confirm policy with *explainable* deny reasons, an **inbound schema firewall** (arguments must satisfy the server's own `inputSchema`), **session budgets / rate limits / payload caps**, cross-tool taint rules, and tool-poisoning drift detection (a fully prompt-injected agent must not exceed its delegated authority).
 3. **Replay anything** — VCR-style deterministic re-execution of sessions for debugging, regression tests, and policy what-if analysis.
 
 ## How it works

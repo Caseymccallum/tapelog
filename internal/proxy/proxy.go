@@ -41,8 +41,10 @@ type Hooks struct {
 	OnToolCall func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData)
 
 	// OnToolResult is called for each server response that answers a
-	// previously seen tools/call request.
-	OnToolResult func(id json.RawMessage, isError bool, result json.RawMessage)
+	// previously seen tools/call request, BEFORE it reaches the harness.
+	// Returning DecisionDeny replaces the response with a structured
+	// error (used for payload caps); the original is still recorded.
+	OnToolResult func(id json.RawMessage, isError bool, result json.RawMessage) (Decision, *DenyData)
 
 	// OnRawMessage is called for every message in both directions,
 	// direction is "c2s" (client→server) or "s2c" (server→client).
@@ -148,7 +150,20 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 					if msg.Error != nil {
 						res, _ = json.Marshal(msg.Error)
 					}
-					hooks.OnToolResult(msg.ID, msg.Error != nil, res)
+					decision, denyData := hooks.OnToolResult(msg.ID, msg.Error != nil, res)
+					if decision == DecisionDeny {
+						// Replace the response the harness sees (e.g. over
+						// the payload cap) with a structured error.
+						resp := jsonrpc.DenyResponse(msg.ID, denyData)
+						out, _ := jsonrpc.Marshal(resp)
+						outMu.Lock()
+						_, werr := clientOut.Write(append(out, '\n'))
+						outMu.Unlock()
+						if werr != nil {
+							return fmt.Errorf("write replaced response: %w", werr)
+						}
+						continue
+					}
 				}
 			}
 			outMu.Lock()

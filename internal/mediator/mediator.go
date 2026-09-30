@@ -13,8 +13,10 @@ import (
 	"sync"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
+	"github.com/Caseymccallum/tapelog/internal/limits"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
 	"github.com/Caseymccallum/tapelog/internal/policy"
+	"github.com/Caseymccallum/tapelog/internal/schemafire"
 	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
@@ -25,6 +27,8 @@ type Options struct {
 	Evaluator      policy.Evaluator
 	Confirmer      approval.Confirmer
 	Plugins        *plugin.Chain // optional verdict/redact plugins
+	Limits         *limits.Tracker     // optional session budgets / caps
+	Schemas        *schemafire.Validator // optional inbound schema firewall
 	NonInteractive bool          // wording for confirm denials
 	DenyOnDrift    bool
 	Writer         *session.Writer
@@ -95,6 +99,22 @@ func (m *Mediator) Descriptor(tool string) (hash string, drift bool) {
 	return p.hash, p.drift
 }
 
+// PinSchema registers a tool's advertised inputSchema with the schema
+// firewall (extracted from the raw descriptor). Broken schemas are
+// reported and skipped (fail-open).
+func (m *Mediator) PinSchema(tool string, descriptor json.RawMessage) error {
+	if m.opts.Schemas == nil {
+		return nil
+	}
+	var d struct {
+		InputSchema json.RawMessage `json:"inputSchema"`
+	}
+	if err := json.Unmarshal(descriptor, &d); err != nil {
+		return err
+	}
+	return m.opts.Schemas.Set(tool, d.InputSchema)
+}
+
 // RecordToolsList appends a tools/list event to the session log.
 func (m *Mediator) RecordToolsList(tools []json.RawMessage) {
 	cleaned := make([]json.RawMessage, 0, len(tools))
@@ -121,7 +141,23 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		return Outcome{Allowed: false, Verdict: "deny", RuleID: "descriptor-drift", Reason: reason}
 	}
 
-	// 2. Flow rules (toxic-flow guards) take precedence over per-call rules.
+	// 2. Schema firewall: arguments must satisfy the advertised inputSchema.
+	if m.opts.Schemas != nil {
+		if ok, reason := m.opts.Schemas.Check(tool, args); !ok {
+			m.recordDecision(id, "deny", "schema-firewall", reason)
+			return Outcome{Allowed: false, Verdict: "deny", RuleID: "schema-firewall", Reason: reason}
+		}
+	}
+
+	// 3. Session limits: budgets, per-tool caps, rate limits.
+	if m.opts.Limits != nil {
+		if v := m.opts.Limits.Check(tool); v != nil {
+			m.recordDecision(id, "deny", v.RuleID, v.Reason)
+			return Outcome{Allowed: false, Verdict: "deny", RuleID: v.RuleID, Reason: v.Reason}
+		}
+	}
+
+	// 4. Flow rules (toxic-flow guards) take precedence over per-call rules.
 	var dec policy.Decision
 	decided := false
 	if fc, ok := m.opts.Evaluator.(policy.FlowChecker); ok {
@@ -135,7 +171,7 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		})
 	}
 
-	// 3. Plugin verdict hooks may TIGHTEN the decision (never loosen —
+	// 5. Plugin verdict hooks may TIGHTEN the decision (never loosen —
 	// host-enforced); plugin failures fail closed.
 	if !m.opts.Plugins.Empty() {
 		t := m.opts.Plugins.Tighten(context.Background(), plugin.Request{
@@ -145,7 +181,7 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		dec.Verdict, dec.Reason = policy.Verdict(t.Verdict), t.Reason
 	}
 
-	// 4. Human confirmation for `confirm` verdicts.
+	// 6. Human confirmation for `confirm` verdicts.
 	finalVerdict, reason := dec.Verdict, dec.Reason
 	if dec.Verdict == policy.VerdictConfirm {
 		switch m.opts.Confirmer.Confirm(tool, args) {
@@ -174,11 +210,18 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 	return Outcome{Allowed: true, Verdict: string(dec.Verdict), RuleID: dec.RuleID, Reason: reason}
 }
 
-// Result records a tool result for the call with the given id.
-func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessage) {
+// Result records a tool result for the call with the given id. A non-nil
+// Violation means the response exceeds limits.max_response_bytes: the
+// (redacted) result is still recorded as evidence, but the caller must
+// replace what the harness receives with an error.
+func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessage) *limits.Violation {
 	_, _ = m.opts.Writer.Append(session.EventToolResult, session.ToolResultPayload{
 		ID: id, IsError: isError, Result: m.opts.Redactor.RedactJSON(result),
 	})
+	if m.opts.Limits != nil {
+		return m.opts.Limits.CheckResponse(len(result))
+	}
+	return nil
 }
 
 func (m *Mediator) recordDecision(id json.RawMessage, verdict, ruleID, reason string) {

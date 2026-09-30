@@ -140,6 +140,7 @@ func (mx *Mux) tools(ctx context.Context) ([]json.RawMessage, error) {
 			_ = json.Unmarshal(named, &probe)
 			hash, _ := mx.med.HashDescriptor(named)
 			mx.med.PinDescriptor(probe.Name, hash)
+			_ = mx.med.PinSchema(probe.Name, named) // inbound schema firewall
 			out = append(out, named)
 		}
 	}

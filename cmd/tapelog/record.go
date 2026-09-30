@@ -15,10 +15,12 @@ import (
 	"github.com/Caseymccallum/tapelog/internal/approval"
 	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 	"github.com/Caseymccallum/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/limits"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
 	"github.com/Caseymccallum/tapelog/internal/policy"
 	"github.com/Caseymccallum/tapelog/internal/proxy"
 	"github.com/Caseymccallum/tapelog/internal/sandbox"
+	"github.com/Caseymccallum/tapelog/internal/schemafire"
 	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
@@ -61,9 +63,16 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				serverCmd = sandboxOpts.WrapCommand(exe, serverCmd)
 			}
 
-			evaluator, policyID, policyHash, err := loadEvaluator(policyPath)
+			evaluator, policyID, policyHash, lim, err := loadEvaluator(policyPath)
 			if err != nil {
 				return err
+			}
+			var limTracker *limits.Tracker
+			if lim.Enabled() {
+				limTracker, err = limits.NewTracker(lim)
+				if err != nil {
+					return err
+				}
 			}
 			if sessionID == "" {
 				sessionID = generateSessionID()
@@ -94,6 +103,8 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				Evaluator:      evaluator,
 				Confirmer:      confirmer,
 				Plugins:        plugins,
+				Limits:         limTracker,
+				Schemas:        schemafire.New(),
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
 				Writer:         writer,
@@ -131,8 +142,14 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 					}
 					return proxy.DecisionAllow, nil
 				},
-				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) {
-					med.Result(id, isError, result)
+				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) (proxy.Decision, *proxy.DenyData) {
+					if v := med.Result(id, isError, result); v != nil {
+						return proxy.DecisionDeny, &proxy.DenyData{
+							Code: "response_too_large", RuleID: v.RuleID,
+							Reason: v.Reason, Verdict: "deny",
+						}
+					}
+					return proxy.DecisionAllow, nil
 				},
 			}
 
@@ -157,21 +174,21 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 }
 
 // loadEvaluator resolves the policy (or observe-only mode) and returns the
-// policy id + file hash recorded in session/start.
-func loadEvaluator(policyPath string) (policy.Evaluator, string, string, error) {
+// policy id + file hash recorded in session/start, plus session limits.
+func loadEvaluator(policyPath string) (policy.Evaluator, string, string, limits.Limits, error) {
 	if policyPath == "" {
-		return policy.AllowAll{}, "observe", "", nil
+		return policy.AllowAll{}, "observe", "", limits.Limits{}, nil
 	}
 	p, err := policy.Load(policyPath)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", limits.Limits{}, err
 	}
 	data, err := os.ReadFile(policyPath)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", limits.Limits{}, err
 	}
 	sum := sha256.Sum256(data)
-	return p, policyPath, hex.EncodeToString(sum[:]), nil
+	return p, policyPath, hex.EncodeToString(sum[:]), p.Limits, nil
 }
 
 // buildConfirmer implements the confirm strategy: --auto-confirm allows

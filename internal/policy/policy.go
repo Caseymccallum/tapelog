@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Caseymccallum/tapelog/internal/limits"
 )
 
 // Verdict is the outcome of a policy evaluation.
@@ -117,10 +119,11 @@ func (r *Rule) matchesTool(tool string) bool {
 
 // Policy is a parsed YAML policy file.
 type Policy struct {
-	Version int    `yaml:"version"`
-	Default string `yaml:"default"`
-	Rules   []Rule `yaml:"rules"`
-	Flows   []Flow `yaml:"flows"` // optional cross-tool data-flow rules
+	Version int          `yaml:"version"`
+	Default string       `yaml:"default"`
+	Rules   []Rule       `yaml:"rules"`
+	Flows   []Flow       `yaml:"flows"`   // optional cross-tool data-flow rules
+	Limits  limits.Limits `yaml:"limits"` // optional session budgets / payload caps
 
 	now func() time.Time // test seam; defaults to time.Now
 }
@@ -194,6 +197,11 @@ func (p *Policy) normalize() error {
 	}
 	for i := range p.Flows {
 		if err := p.Flows[i].normalize(i); err != nil {
+			return err
+		}
+	}
+	if p.Limits.Enabled() {
+		if _, err := limits.NewTracker(p.Limits); err != nil {
 			return err
 		}
 	}

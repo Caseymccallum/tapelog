@@ -41,3 +41,11 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] WASM plugin API → **v1 shipped: `--plugin` chain (wazero), tighten-only `verdict_hook` + `redact_hook`, reactor ABI in docs/PLUGINS.md, reference plugin in examples/**
 - [x] Session-log schema as community spec → **v1 shipped: `spec/` (normative spec + JSON Schema + conformance vectors); foundation/community-process home is the launch-time follow-up**
 - [x] cgroup/landlock defense-in-depth hooks → **v1 shipped: `--sandbox-ro`/`--sandbox-rw` Landlock sandbox for spawned servers (strict by default, `--sandbox-lenient` opt-out; cgroup/seccomp limits deferred)**
+
+### Post-research gap fills (2026-09-29)
+- [x] Inbound schema firewall (args vs advertised inputSchema) — shipped
+- [x] Session limits: budgets, per-tool caps, rate limit, response payload cap — shipped
+- [x] Shell completion — shipped
+- [ ] Remote approval queue (async HITL web UI, "quarantine queue" per the gateway-pattern article)
+- [ ] Resource/prompt catalog policies (MCP Trail gates resources & prompts too, not just tools)
+- [ ] Prompt-injection heuristics in tool results

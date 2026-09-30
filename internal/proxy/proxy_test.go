@@ -103,10 +103,11 @@ func TestAllowForwardsAndReportsResult(t *testing.T) {
 					}
 					return DecisionAllow, nil
 				},
-				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) {
+				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) (Decision, *DenyData) {
 					mu.Lock()
 					defer mu.Unlock()
 					gotResultID, gotResult = string(id), string(result)
+					return DecisionAllow, nil
 				},
 			})
 	}()
@@ -125,6 +126,47 @@ func TestAllowForwardsAndReportsResult(t *testing.T) {
 	}
 	if !strings.Contains(gotResult, "ok") {
 		t.Fatalf("OnToolResult payload = %q", gotResult)
+	}
+}
+
+func TestResultVetoReplacesResponse(t *testing.T) {
+	var clientOut, serverOut syncBuffer
+	resultLine := `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"huge"}]}}`
+
+	serverR, serverW := io.Pipe()
+	go func() {
+		for i := 0; i < 200 && !strings.Contains(serverOut.String(), `"tools/call"`); i++ {
+			time.Sleep(5 * time.Millisecond)
+		}
+		fmt.Fprintln(serverW, resultLine)
+		serverW.Close()
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(context.Background(),
+			strings.NewReader(callLine+"\n"), &clientOut,
+			serverR, &serverOut,
+			Hooks{
+				OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
+					return DecisionAllow, nil
+				},
+				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) (Decision, *DenyData) {
+					return DecisionDeny, &DenyData{
+						Code: "response_too_large", RuleID: "limits.max_response_bytes",
+						Reason: "too big", Verdict: "deny",
+					}
+				},
+			})
+	}()
+	waitRun(t, done)
+
+	out := clientOut.String()
+	if strings.Contains(out, `"text":"huge"`) {
+		t.Fatalf("vetoed result reached the harness: %q", out)
+	}
+	if !strings.Contains(out, "response_too_large") || !strings.Contains(out, `"code":-32010`) {
+		t.Fatalf("harness did not receive the replacement error: %q", out)
 	}
 }
 

@@ -116,6 +116,46 @@ Notes:
 ## Tool-name globs
 
 `*` = any run, `?` = exactly one character. Anchored to the whole name
+## Session limits (budgets, rates, payload caps)
+
+```yaml
+limits:
+  max_calls: 200              # total tool-call attempts per session
+  max_calls_per_tool:         # attempts per tool glob
+    "shell_*": 5
+    "write_*": 20
+  max_per_minute: 30          # sliding 60s window over all tools
+  max_response_bytes: 1048576 # results over this are replaced with an error
+```
+
+- Zero/unset = unlimited. Violations deny with `rule_id` `limits.max_calls`,
+  `limits.max_calls_per_tool`, `limits.max_per_minute` — explainable like any
+  policy verdict.
+- **Attempts count**, including calls a policy rule would deny — limits are
+  anti-flood protection, not billing.
+- `max_response_bytes` is enforced when the result comes *back*: the harness
+  receives a structured `response_too_large` error instead of the payload,
+  while the (redacted) original is still recorded as evidence.
+
+## Schema firewall (inbound)
+
+Tool-call arguments are validated against the JSON Schema the MCP server
+itself advertised in the tool's `inputSchema` — automatically, for every
+`record` and `mux` session. "Allowing a tool name isn't enough; risk hides
+in the payload."
+
+- Invalid arguments (wrong types, missing required fields, properties the
+  schema forbids) are **denied before forwarding** with
+  `rule_id: schema-firewall`.
+- **Fail-open where there is nothing to validate against**: tools with no
+  `inputSchema`, or a schema that will not compile, pass through (the
+  error is reported at pin time). Servers cannot brick themselves with
+  broken schemas — but they also cannot smuggle bad arguments past a
+  schema they declared.
+- Validation happens after drift checks and before policy rules, so a
+  schema violation never consumes a policy rule's semantics (or a confirm
+  prompt's attention).
+
 (`read*` matches `read_file`, not `pread`).
 
 **Mux mode:** tool names are namespaced `<server>__<tool>` (e.g.
