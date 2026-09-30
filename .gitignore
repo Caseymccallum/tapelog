@@ -8,6 +8,7 @@ dist/
 *.jsonl
 !examples/calls.jsonl
 !test-fixtures/queue-session.jsonl
+!spec/test-vectors/*.jsonl
 
 # editor / OS noise
 .vscode/
