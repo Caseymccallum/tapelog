@@ -1,0 +1,11 @@
+# Value-level taint (CaMeL-style): only contaminated sinks are blocked.
+version: 1
+default: allow
+
+flows:
+  - id: no-secret-exfil
+    from: ["read_secrets"]
+    to: ["send_*"]
+    mode: value
+    action: deny
+    reason: "secret values must not reach a sink"

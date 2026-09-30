@@ -24,6 +24,7 @@ import (
 	"github.com/Caseymccallum/tapelog/internal/sandbox"
 	"github.com/Caseymccallum/tapelog/internal/schemafire"
 	"github.com/Caseymccallum/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/taint"
 	"github.com/Caseymccallum/tapelog/internal/web"
 )
 
@@ -73,7 +74,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 			if err != nil {
 				return err
 			}
-			limTracker, injScanner, injMode, err := buildGuards(pol)
+			limTracker, injScanner, injMode, valueStore, err := buildGuards(pol)
 			if err != nil {
 				return err
 			}
@@ -115,6 +116,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				Schemas:        schemafire.New(),
 				Injection:      injScanner,
 				InjectionMode:  injMode,
+				Values:         valueStore,
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
 				Writer:         writer,
@@ -206,20 +208,22 @@ func loadEvaluator(policyPath string) (policy.Evaluator, string, string, *policy
 }
 
 // buildGuards constructs the runtime guards from policy config: session
-// limits and the result-side injection scanner. Injection scanning is on
-// by default in `log` mode (observe-only sessions too) — heuristics warn,
+// limits, the result-side injection scanner, and (when flow rules use
+// value mode) the value-level taint store. Injection scanning is on by
+// default in `log` mode (observe-only sessions too) — heuristics warn,
 // operators opt into confirm/deny.
-func buildGuards(pol *policy.Policy) (*limits.Tracker, *inject.Scanner, string, error) {
+func buildGuards(pol *policy.Policy) (*limits.Tracker, *inject.Scanner, string, *taint.Store, error) {
 	var (
 		limTracker *limits.Tracker
 		injScanner *inject.Scanner
+		valueStore *taint.Store
 	)
 	injMode := "log"
 	if pol != nil {
 		if pol.Limits.Enabled() {
 			t, err := limits.NewTracker(pol.Limits)
 			if err != nil {
-				return nil, nil, "", err
+				return nil, nil, "", nil, err
 			}
 			limTracker = t
 		}
@@ -229,18 +233,21 @@ func buildGuards(pol *policy.Policy) (*limits.Tracker, *inject.Scanner, string, 
 			}
 			s, err := inject.New(pol.Injection.Patterns)
 			if err != nil {
-				return nil, nil, "", err
+				return nil, nil, "", nil, err
 			}
 			injScanner = s
+		}
+		if pol.HasValueFlows() {
+			valueStore = taint.New(0, 0)
 		}
 	} else {
 		s, err := inject.New(nil)
 		if err != nil {
-			return nil, nil, "", err
+			return nil, nil, "", nil, err
 		}
 		injScanner = s
 	}
-	return limTracker, injScanner, injMode, nil
+	return limTracker, injScanner, injMode, valueStore, nil
 }
 
 // buildConfirmer implements the confirm strategy, in precedence order:

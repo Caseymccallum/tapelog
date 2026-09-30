@@ -1,0 +1,6 @@
+tapelog: session 20260930T111937.231-fa22f5e254f77ea4 -> taint-e2e.jsonl (policy: test-fixtures\valueflow-policy.yaml)
+{"jsonrpc":"2.0","id":1,"result":{}}
+{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"read_secrets","description":"Read secrets","inputSchema":{"type":"object"}},{"name":"send_http","description":"Send data","inputSchema":{"type":"object"}}]}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"sk-CANARY-7f3a9b"}]}}
+{"jsonrpc":"2.0","id":4,"error":{"code":-32010,"message":"tool call denied by policy","data":{"code":"tool_denied","rule_id":"no-secret-exfil","reason":"secret values must not reach a sink [contaminated by: read_secrets]","verdict":"deny"}}}
+{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"sk-CANARY-7f3a9b"}]}}

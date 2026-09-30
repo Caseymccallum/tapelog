@@ -30,6 +30,12 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 - **Sandbox escape.** With `--sandbox-*` flags, mediated servers are Landlock-restricted (Linux). We make no claims about kernel exploits or Landlock bypasses; without the flags, a tool that is *allowed* runs with the server's full privileges. Use OS-level sandboxing (containers, seatbelt/landlock) alongside us.
 - **The approval queue's transport.** `--approval-listen` serves plain HTTP with a localhost-first trust model: anyone who can reach the socket can decide parked approvals (set `--approval-token`, and/or bind behind your own TLS). Decisions are authenticated only by reachability + optional bearer token.
 - **The web dashboard renders attacker-controlled data.** Tool names/args/results are displayed with `textContent` only under a `default-src 'self'` CSP, with loopback Host pinning (DNS rebinding) and same-origin-only POSTs (CSRF). These are defenses, not proofs — report any bypass as a security issue (SECURITY.md).
+- **Value-level taint is heuristic, not proof.** `flows: mode: value`
+  detects contamination by substring matching of recorded values;
+  transformations (base64, paraphrase, splitting) evade it — the model
+  can carry data beyond recognition. Must-never flows need `mode: session`
+  rules (and even those assume the model *can* exfiltrate via any allowed
+  sink — see the toxic-flow claim above).
 - **Semantic correctness.** We record and constrain; we don't judge whether an action is *wise*, only whether policy permits it.
 - **Toxic flows (value level).** Flow rules track taint per session (conservative). Tracking specific values *through the model* (CaMeL-style capabilities) is out of scope — the model's internal data flow is opaque to the boundary.
 - **Log confidentiality.** Redaction is best-effort pattern matching. Treat logs as sensitive.

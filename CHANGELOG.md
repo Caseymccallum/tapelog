@@ -3,6 +3,9 @@
 All notable changes to tapelog are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](https://semver.org/).
 
+### v0.3 in progress
+- **Value-level taint (`flows: mode: value`)** — CaMeL-inspired precision layer (experimental, ADR 0005): flow rules fire only when sink arguments are *contaminated* by recorded values from source-tool results (`[contaminated by: ...]` evidence in deny reasons); clean sinks pass. Bounded contamination store; honest heuristic limits documented (transformations evade matching — keep `mode: session` for must-never flows)
+
 ## [Unreleased]
 
 ### Added

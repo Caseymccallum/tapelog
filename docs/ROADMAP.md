@@ -59,4 +59,4 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] `tapelog doctor` (config/plugin/platform sanity) — **v1 shipped: preflight checks with ✓/!/✗ report + CI exit codes**
 - [x] OTel spans for policy decisions — **v1 shipped: `policy.decision` span events + verdict/rule/reason attributes**
 - [x] Web dashboard: multi-session support — **v1 shipped: `tapelog web --dir` session browser (list + per-session timeline, traversal-proof)**
-- Value-level taint tracking (CaMeL-style) research spike
+- [x] Value-level taint tracking (CaMeL-style) research spike — **shipped as experimental `flows: mode: value` (ADR 0005): contamination-matched value taint with results gate; session semantics preserved for must-never flows**

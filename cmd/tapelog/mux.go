@@ -66,7 +66,7 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 			if err != nil {
 				return err
 			}
-			limTracker, injScanner, injMode, err := buildGuards(pol)
+			limTracker, injScanner, injMode, valueStore, err := buildGuards(pol)
 			if err != nil {
 				return err
 			}
@@ -107,6 +107,7 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 				Schemas:        schemafire.New(),
 				Injection:      injScanner,
 				InjectionMode:  injMode,
+				Values:         valueStore,
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
 				Writer:         writer,

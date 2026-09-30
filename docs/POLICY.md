@@ -79,6 +79,32 @@ Semantics (session-scoped taint — deliberately conservative):
 `tapelog policy whatif` is sequence-aware: it walks the recorded session
 in order and builds taint from calls the candidate policy would permit.
 
+## Value-level taint (`flows` with `mode: value`) — experimental
+
+Session-mode flow rules block **every** sink call after a source runs.
+Value mode (CaMeL-inspired, ADR 0005) is precise: it fires only when the
+sink call's arguments **actually carry values from a source tool's
+result** (contamination matching):
+
+```yaml
+flows:
+  - id: no-secret-exfil
+    from: ["read_secrets"]
+    to: ["send_*"]
+    mode: value                    # session (default) | value
+    action: deny
+    reason: "secret values must not reach a sink"
+```
+
+A denied call's reason names the evidence:
+`... [contaminated by: read_secrets]`. Clean sinks pass (e2e-proven).
+
+**Honest limits**: contamination is detected by substring matching of
+recorded string values (bounded store: 512 values/source, 8 KiB/value).
+Base64, paraphrasing, splitting — any transformation — evades matching.
+Use `mode: value` for *precision*, `mode: session` for *must-never* flows.
+`tapelog fuzz` evaluates session semantics (documented).
+
 ## `where` — real Cedar
 
 > **Combinator semantics:** multiple `where` entries are **ANDed** — *every*

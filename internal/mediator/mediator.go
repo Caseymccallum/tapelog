@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
 	"github.com/Caseymccallum/tapelog/internal/inject"
@@ -19,6 +20,7 @@ import (
 	"github.com/Caseymccallum/tapelog/internal/policy"
 	"github.com/Caseymccallum/tapelog/internal/schemafire"
 	"github.com/Caseymccallum/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/taint"
 )
 
 // Options configures a Mediator.
@@ -32,6 +34,7 @@ type Options struct {
 	Schemas        *schemafire.Validator // optional inbound schema firewall
 	Injection      *inject.Scanner       // optional result injection scanning
 	InjectionMode  string                // log | confirm | deny ("" = log)
+	Values         *taint.Store          // optional value-level taint (CaMeL-style)
 	NonInteractive bool          // wording for confirm denials
 	DenyOnDrift    bool
 	Writer         *session.Writer
@@ -59,8 +62,9 @@ type Mediator struct {
 	opts  Options
 	taint policy.TaintState
 
-	mu   sync.Mutex
-	pins map[string]pin // tool -> descriptor pin
+	mu           sync.Mutex
+	pins         map[string]pin        // tool -> descriptor pin
+	pendingTools map[string]string     // JSON-RPC id -> tool (value taint)
 }
 
 type pin struct {
@@ -78,7 +82,7 @@ func New(opts Options) *Mediator {
 			return opts.Plugins.RedactText(context.Background(), s)
 		})
 	}
-	return &Mediator{opts: opts, pins: map[string]pin{}}
+	return &Mediator{opts: opts, pins: map[string]pin{}, pendingTools: map[string]string{}}
 }
 
 // HashDescriptor redacts + canonicalizes a tool descriptor and returns its
@@ -135,6 +139,24 @@ func (m *Mediator) RecordToolsList(tools []json.RawMessage) {
 	_, _ = m.opts.Writer.Append(session.EventToolsList, session.ToolsListPayload{Tools: cleaned})
 }
 
+// awaitResults blocks until every previously forwarded call has reported
+// its result (or timeout elapses). Value-level taint is derived from
+// RESULTS; without this gate a pipelined sink call could be evaluated
+// before the source call's data was recorded (a causal race the e2e
+// caught). Timeout degrades conservatively: session-mode rules still hold.
+func (m *Mediator) awaitResults(timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		m.mu.Lock()
+		n := len(m.pendingTools)
+		m.mu.Unlock()
+		if n == 0 {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 // Decide runs the full pipeline for one `tools/call` and records the
 // events. id is the JSON-RPC request id (recorded verbatim).
 func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage) Outcome {
@@ -146,6 +168,11 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 	})
 
 	// 1. Descriptor drift: possible tool poisoning (THREAT_MODEL #2).
+	// Value-level taint needs prior results recorded before we judge
+	// this call; wait briefly for in-flight calls to report.
+	if m.opts.Values != nil {
+		m.awaitResults(2 * time.Second)
+	}
 	if m.opts.DenyOnDrift && drift {
 		reason := "tool descriptor changed since first listing (possible tool poisoning)"
 		m.recordDecision(id, "deny", "descriptor-drift", reason)
@@ -168,12 +195,23 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		}
 	}
 
-	// 4. Flow rules (toxic-flow guards) take precedence over per-call rules.
+	// 4. Flow rules (toxic-flow guards) take precedence over per-call
+	// rules. Value-mode rules (CaMeL-style, precise) are consulted first:
+	// they fire only when the call's arguments carry contaminated values
+	// from a source tool's result. Session-mode rules then apply their
+	// conservative whole-session taint.
 	var dec policy.Decision
 	decided := false
-	if fc, ok := m.opts.Evaluator.(policy.FlowChecker); ok {
-		if fdec, applied := fc.CheckFlow(&m.taint, tool); applied {
+	if vfc, ok := m.opts.Evaluator.(policy.ValueFlowChecker); ok && m.opts.Values != nil {
+		if fdec, applied := vfc.CheckFlowValues(&m.taint, tool, m.opts.Values.ContaminatedBy(args)); applied {
 			dec, decided = fdec, true
+		}
+	}
+	if !decided {
+		if fc, ok := m.opts.Evaluator.(policy.FlowChecker); ok {
+			if fdec, applied := fc.CheckFlow(&m.taint, tool); applied {
+				dec, decided = fdec, true
+			}
 		}
 	}
 	if !decided {
@@ -230,7 +268,22 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		return Outcome{Allowed: false, Verdict: string(dec.Verdict), RuleID: dec.RuleID, Reason: reason}
 	}
 	m.taint.Record(tool) // permitted: its data enters the agent's context
+	m.noteCall(id, tool) // remember id -> tool for value taint at result time
 	return Outcome{Allowed: true, Verdict: string(dec.Verdict), RuleID: dec.RuleID, Reason: reason}
+}
+
+// noteCall remembers which tool a forwarded call belongs to so Result can
+// label its values with the right source (value-level taint).
+func (m *Mediator) noteCall(id json.RawMessage, tool string) {
+	if m.opts.Values == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.pendingTools) > 4096 {
+		m.pendingTools = map[string]string{} // pathological volume: drop oldest wholesale
+	}
+	m.pendingTools[string(id)] = tool
 }
 
 // Result records a tool result for the call with the given id. A non-nil
@@ -241,6 +294,16 @@ func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessa
 	_, _ = m.opts.Writer.Append(session.EventToolResult, session.ToolResultPayload{
 		ID: id, IsError: isError, Result: m.opts.Redactor.RedactJSON(result),
 	})
+	// Label the result's values with their source tool (value-level taint).
+	if m.opts.Values != nil {
+		m.mu.Lock()
+		tool := m.pendingTools[string(id)]
+		delete(m.pendingTools, string(id))
+		m.mu.Unlock()
+		if tool != "" {
+			m.opts.Values.Mark(tool, result)
+		}
+	}
 	if m.opts.Limits != nil {
 		if v := m.opts.Limits.CheckResponse(len(result)); v != nil {
 			return &ResultBlock{Code: "response_too_large", RuleID: v.RuleID, Reason: v.Reason}
