@@ -47,11 +47,19 @@ tapelog fuzz --policy prod.yaml --operator tool_case --operator tool_homoglyph s
 tapelog fuzz --policy prod.yaml --json s.jsonl > findings.json   # CI artifacts
 ```
 
-- **Operators** (all on by default): `tool_case`, `tool_space` (trailing
-  space / zero-width), `tool_homoglyph` (Cyrillic lookalikes),
-  `tool_traversal` (`../` name games), `arg_traversal` (`../` escapes in
-  string arguments — catches `like`-prefix rule evasions),
-  `arg_type`, `arg_overflow`, `swap_adjacent` (toxic-flow reordering).
+- **Operators** (all on by default; single-call + multi-call):
+  `tool_case`, `tool_space` (trailing space / zero-width), `tool_homoglyph`
+  (Cyrillic lookalikes), `tool_traversal` (`../` name games),
+  `tool_namespace` (`server__tool` prefix confusion), `arg_traversal`
+  (`../` escapes in string arguments — catches `like`-prefix rule
+  evasions), `arg_type`, `arg_overflow`, `arg_unicode` (zero-width /
+  homoglyph **value** evasions — escapes substring rules),
+  `arg_boundary` (empty / null / extreme values escaping glob rules),
+  `arg_encoding` (base64 / URL-encoded values), `swap_adjacent`
+  (toxic-flow reordering), `swap_rotate` (non-adjacent reorder — sink
+  moved before its source).
+  Note: mutation *semantics* live in `internal/fuzz/mutate.go`; new
+  operators must also be registered in the `Operators` list.
 - **Oracle = the policy**: findings are comparative (baseline deny →
   mutant allow), so they're precise — mutations the policy holds are
   silent. Each finding names the operator, the mutation, the rule that

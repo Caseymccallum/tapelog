@@ -38,8 +38,13 @@ var Operators = []string{
 	"tool_space",     // whitespace / zero-width padding
 	"tool_homoglyph", // Cyrillic lookalikes
 	"tool_traversal", // path-like tool names
+	"tool_namespace", // server__tool prefix confusion
 	"arg_traversal",  // ../ escapes in string arguments
 	"arg_type",       // string args flipped to numbers
 	"arg_overflow",   // oversized string args
+	"arg_unicode",    // zero-width / homoglyph value evasions
+	"arg_boundary",   // empty / null / extreme values
+	"arg_encoding",   // base64 / URL-encoded values
 	"swap_adjacent",  // toxic-flow reordering
+	"swap_rotate",    // non-adjacent reorder (sink before source)
 }

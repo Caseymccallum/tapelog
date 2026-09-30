@@ -86,5 +86,36 @@ func Run(tape *replay.Tape, ev policy.Evaluator, opts Options) []Finding {
 			}
 		}
 	}
+	// Non-adjacent reordering: move call i to position j. Generalizes
+	// swap_adjacent — catches order-dependent rules that adjacent swaps
+	// cannot reach (e.g. source -> N unrelated calls -> sink, sink moved
+	// ahead of the source).
+	if enabled["swap_rotate"] {
+		move := func(from, to int) []replay.Interaction {
+			probe := make([]replay.Interaction, 0, len(seq))
+			probe = append(probe, seq[:from]...)
+			probe = append(probe, seq[from+1:]...)
+			item := seq[from]
+			probe = append(probe[:to], append([]replay.Interaction{item}, probe[to:]...)...)
+			return probe
+		}
+		for i := 0; i < len(seq); i++ {
+			for j := i + 2; j < len(seq); j++ {
+				// forward: i -> j ; backward: j -> i
+				for _, mv := range [][2]int{{i, j}, {j, i}} {
+					from, to := mv[0], mv[1]
+					after := verdicts(move(from, to), ev)
+					if base[from] == "deny" && after[to] != "deny" {
+						m := Mutation{Operator: "swap_rotate",
+							Desc:  fmt.Sprintf("move position %d to %d", from+1, to+1),
+							ATLAS: "Exfiltration"}
+						if !emit(mkFinding(m, seq[from], "deny", after[to], ruleFor(ev, seq[from].Tool, seq[from].Args))) {
+							return findings
+						}
+					}
+				}
+			}
+		}
+	}
 	return findings
 }

@@ -60,8 +60,12 @@ Exits non-zero when any finding is reported.`,
 				enc.SetIndent("", "  ")
 				_ = enc.Encode(findings)
 			} else if len(findings) == 0 {
+				nOps := len(operators)
+				if nOps == 0 {
+					nOps = len(fuzz.Operators)
+				}
 				fmt.Printf("no boundary bypasses found (%d calls mutated across %d operators)\n",
-					len(tape.Interactions), len(fuzz.Operators))
+					len(tape.Interactions), nOps)
 			} else {
 				for _, f := range findings {
 					fmt.Printf("[%s] %s: %s\n", f.Operator, f.Tool, f.Mutation)

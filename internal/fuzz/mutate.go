@@ -39,6 +39,12 @@ func mutate(it replay.Interaction, enabled map[string]bool) []Mutation {
 		add("tool_traversal", "../"+name, nil, "traversal prefix", "Defense Evasion")
 		add("tool_traversal", name+"/..", nil, "traversal suffix", "Defense Evasion")
 	}
+	if enabled["tool_namespace"] {
+		add("tool_namespace", "x__"+name, nil, "namespaced as x__"+name, "Defense Evasion")
+		if i := strings.Index(name, "__"); i > 0 {
+			add("tool_namespace", name[i+2:], nil, "namespace stripped", "Defense Evasion")
+		}
+	}
 
 	// Argument tampering: rewrite every string value in the args object.
 	var obj map[string]any
@@ -67,6 +73,34 @@ func mutate(it replay.Interaction, enabled map[string]bool) []Mutation {
 			if enabled["arg_overflow"] {
 				if mutated, err := withValue(obj, key, s+strings.Repeat("A", 8192)); err == nil {
 					add("arg_overflow", "", mutated, key+": +8KB filler", "Impact")
+				}
+			}
+			if enabled["arg_unicode"] {
+				for _, m := range map[string]string{
+					insertZeroWidth(s): "zero-width split",
+					strings.NewReplacer("e", "е", "a", "а", "o", "о").Replace(s): "homoglyph value",
+				} {
+					if m == s {
+						continue
+					}
+					if mutated, err := withValue(obj, key, m); err == nil {
+						add("arg_unicode", "", mutated, key+": "+clip(m), "Defense Evasion")
+					}
+				}
+			}
+			if enabled["arg_boundary"] {
+				for _, b := range []string{"", "0", s + "\x00", s + "\nDROP"} {
+					if mutated, err := withValue(obj, key, b); err == nil {
+						add("arg_boundary", "", mutated, key+": string boundary", "Defense Evasion")
+					}
+				}
+			}
+			if enabled["arg_encoding"] {
+				if mutated, err := withValue(obj, key, b64(s)); err == nil {
+					add("arg_encoding", "", mutated, key+": base64", "Defense Evasion")
+				}
+				if mutated, err := withValue(obj, key, urlEncode(s)); err == nil {
+					add("arg_encoding", "", mutated, key+": url-encoded", "Defense Evasion")
 				}
 			}
 		}

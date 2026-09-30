@@ -4,6 +4,7 @@ All notable changes to tapelog are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](https://semver.org/).
 
 ### v0.3 in progress
+- **Fuzz operators v2** — 5 new boundary probes: `arg_unicode` (zero-width/homoglyph value evasions), `arg_boundary` (empty/null/extreme values), `arg_encoding` (base64/URL-encoded), `tool_namespace` (`server__tool` confusion), `swap_rotate` (non-adjacent reordering — sink moved before its source, the case `swap_adjacent` cannot reach); 13 operators total, all on the deny→allow oracle
 - **Value-level taint (`flows: mode: value`)** — CaMeL-inspired precision layer (experimental, ADR 0005): flow rules fire only when sink arguments are *contaminated* by recorded values from source-tool results (`[contaminated by: ...]` evidence in deny reasons); clean sinks pass. Bounded contamination store; honest heuristic limits documented (transformations evade matching — keep `mode: session` for must-never flows)
 
 ## [Unreleased]
