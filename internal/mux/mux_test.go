@@ -23,11 +23,12 @@ type fakeTransport struct {
 	cond  *sync.Cond
 	queue []*jsonrpc.Message
 	tools []json.RawMessage
-	calls []string // tool names that were invoked
+	calls []string // methods/tool names that were invoked
+	name  string   // server identity for catalog responses
 }
 
 func newFakeTransport(tools ...string) *fakeTransport {
-	f := &fakeTransport{cond: sync.NewCond(&sync.Mutex{})}
+	f := &fakeTransport{cond: sync.NewCond(&sync.Mutex{}), name: "fake"}
 	f.cond.L = &f.mu
 	for _, t := range tools {
 		f.tools = append(f.tools, json.RawMessage(`{"name":"`+t+`","description":"`+t+`"}`))
@@ -52,6 +53,34 @@ func (f *fakeTransport) Send(msg *jsonrpc.Message) error {
 		_ = json.Unmarshal(msg.Params, &p)
 		f.calls = append(f.calls, p.Name)
 		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(`{"content":[{"type":"text","text":"done"}]}`)}
+	case "resources/list":
+		f.calls = append(f.calls, "resources/list")
+		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID,
+			Result: json.RawMessage(`{"resources":[{"uri":"file://` + f.name + `.txt","name":"` + f.name + ` doc"}]}`)}
+	case "prompts/list":
+		f.calls = append(f.calls, "prompts/list")
+		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID,
+			Result: json.RawMessage(`{"prompts":[{"name":"` + f.name + `_prompt"}]}`)}
+	case "resources/templates/list":
+		f.calls = append(f.calls, "resources/templates/list")
+		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID,
+			Result: json.RawMessage(`{"resourceTemplates":[{"uriTemplate":"file://` + f.name + `/{{id}}"}]}`)}
+	case "resources/read":
+		f.calls = append(f.calls, "resources/read")
+		var p struct {
+			URI string `json:"uri"`
+		}
+		_ = json.Unmarshal(msg.Params, &p)
+		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID,
+			Result: json.RawMessage(`{"contents":[{"uri":"` + p.URI + `","text":"read-by-` + f.name + `"}]}`)}
+	case "prompts/get":
+		f.calls = append(f.calls, "prompts/get")
+		var p struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(msg.Params, &p)
+		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID,
+			Result: json.RawMessage(`{"messages":[],"name":"` + p.Name + `","_by":"` + f.name + `"}`)}
 	default:
 		f.calls = append(f.calls, msg.Method) // surface calls land here
 		resp = &jsonrpc.Message{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage(`{}`)}
@@ -229,6 +258,87 @@ rules:
 	}
 }
 
+
+func TestCatalogAggregationAndRouting(t *testing.T) {
+	writer, err := session.NewWriter(t.TempDir()+"/session.jsonl", "catalog-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+	policyPath := t.TempDir() + "/policy.yaml"
+	if err := os.WriteFile(policyPath, []byte("version: 1\ndefault: allow\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	med := mediator.New(mediator.Options{
+		SessionID: "catalog-test", Evaluator: p, Confirmer: approval.Deny{},
+		Writer: writer,
+	})
+	fa := newFakeTransport("read_file")
+	fa.name = "a"
+	fb := newFakeTransport("delete_file")
+	fb.name = "b"
+	mx := &Mux{
+		med:     med,
+		byName:  map[string]*Upstream{"a": {client: mcpclient.New(fa)}, "b": {client: mcpclient.New(fb)}},
+		version: "test",
+		resOwner: map[string]string{}, tmplOwner: map[string]string{},
+	}
+
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"prompts/list","params":{}}
+{"jsonrpc":"2.0","id":3,"method":"resources/templates/list","params":{}}
+{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"file://b.txt"}}
+{"jsonrpc":"2.0","id":5,"method":"prompts/get","params":{"name":"a__a_prompt"}}
+`)
+	var out bytes.Buffer
+	if err := mx.Serve(context.Background(), in, &out); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+
+	// Catalogs merged from both upstreams, annotated, prompts namespaced.
+	for _, want := range []string{
+		`"uri":"file://a.txt"`, `"uri":"file://b.txt"`,
+		`"_tapelog_server":"a"`, `"_tapelog_server":"b"`,
+		`"name":"a__a_prompt"`, `"name":"b__b_prompt"`,
+		`"uriTemplate":"file://a/{{id}}"`, `"uriTemplate":"file://b/{{id}}"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("catalog output missing %s:\n%s", want, got)
+		}
+	}
+
+	// Owner routing: file://b.txt went to b only (not first-success).
+	count := func(f *fakeTransport, m string) int {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		n := 0
+		for _, c := range f.calls {
+			if c == m {
+				n++
+			}
+		}
+		return n
+	}
+	if count(fa, "resources/read") != 0 || count(fb, "resources/read") != 1 {
+		t.Fatalf("owner routing failed: a=%v b=%v", fa.calls, fb.calls)
+	}
+	if !strings.Contains(got, "read-by-b") || strings.Contains(got, "read-by-a") {
+		t.Fatalf("wrong server answered the read:\n%s", got)
+	}
+
+	// Namespaced prompt routed to a with the un-namespaced name.
+	if count(fa, "prompts/get") != 1 || count(fb, "prompts/get") != 0 {
+		t.Fatalf("prompt routing failed: a=%v b=%v", fa.calls, fb.calls)
+	}
+	if !strings.Contains(got, `"name":"a_prompt"`) || !strings.Contains(got, `"_by":"a"`) {
+		t.Fatalf("prompt was not unwrapped+forwarded:\n%s", got)
+	}
+}
 
 func TestLoadConfigValidation(t *testing.T) {
 	path := t.TempDir() + "/mux.yaml"

@@ -236,10 +236,13 @@ Heuristics are not proof — treat hits as signals to review, not verdicts.
 
   session log as `tool_call`/`tool_result` events with `tool` set to the
   method name, so `verify`, `inspect`, `replay`, and `what-if` all work.
-- In `tapelog mux`, surface calls are mediated the same way and routed
-  **first-success in deterministic server-name order** (MCP resource URIs
-  and prompt names are not namespaced across servers, a documented v0
-  limitation; catalog aggregation is roadmap).
+- In `tapelog mux`, catalogs are **aggregated**: `resources/list`,
+  `prompts/list`, and `resources/templates/list` merge every upstream's
+  entries (annotated `_tapelog_server`); prompt names are namespaced
+  `<server>__<name>` and unwrapped on `prompts/get`. Resource URIs are
+  left intact but the mux **remembers each URI's owner** from the catalog
+  and routes `resources/read` precisely; only unknown URIs fall back to
+  first-success in deterministic server-name order.
 
 
 itself advertised in the tool's `inputSchema` — automatically, for every

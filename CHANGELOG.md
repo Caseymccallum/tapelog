@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 ## [Unreleased] — v0.1.0
 
 ### Research-driven gap fills (2026-09-29 internet research)
+- **mux catalog aggregation + precise routing** — `resources/list`, `prompts/list`, `resources/templates/list` merge across upstreams (annotated `_tapelog_server`); prompt names namespaced like tools; resource reads route to the catalog's owner (unknown URIs fall back to first-success) — closes the last research item
 - **Review web dashboard** — `--approval-listen` now serves a dependency-free dashboard on the same socket: parked approvals (with notes) + live session-log tail. XSS-safe rendering (`textContent` only + strict CSP), DNS-rebinding Host pinning, CSRF same-origin checks, `no-store`; `tapelog queue` CLI unchanged
 - **Remote approval queue ("quarantine queue")** — `--approval-listen` parks `confirm` verdicts at the boundary (held, then fail-closed to deny on `--approval-timeout`); `tapelog queue list|allow|allow_session|deny` decides from any terminal via a localhost JSON API (`--approval-token` optional); every decision is recorded with its provenance and note
 - **Injection scanning of results** — tool/surface results are scanned for prompt-injection markers (conservative built-ins + `injection.patterns`); `injection.mode: log` (default) records explainable `injection-scan` decisions, `confirm` routes through the HITL prompt, `deny` withholds the payload via the result-veto (original still recorded)

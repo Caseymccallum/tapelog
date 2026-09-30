@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
@@ -87,11 +88,16 @@ type Mux struct {
 	med     *mediator.Mediator
 	byName  map[string]*Upstream
 	version string
+
+	mu        sync.Mutex
+	resOwner  map[string]string // resource uri -> server (from resources/list)
+	tmplOwner map[string]string // uriTemplate -> server
 }
 
 // New connects and handshakes every upstream (fail-fast).
 func New(ctx context.Context, cfg *Config, med *mediator.Mediator) (*Mux, error) {
-	mx := &Mux{med: med, byName: map[string]*Upstream{}, version: "0.1.0"}
+	mx := &Mux{med: med, byName: map[string]*Upstream{}, version: "0.1.0",
+		resOwner: map[string]string{}, tmplOwner: map[string]string{}}
 	for _, sc := range cfg.Servers {
 		var t transport.Transport
 		var err error
@@ -150,6 +156,136 @@ func (mx *Mux) callFirst(ctx context.Context, method string, params json.RawMess
 		lastErr = fmt.Errorf("no upstream available")
 	}
 	return nil, lastErr
+}
+
+// callRouted forwards a surface call: catalog listings aggregate across
+// upstreams, resource reads route to the catalog's owner (falling back to
+// first-success), and namespaced prompt names route like tools.
+func (mx *Mux) callRouted(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, error) {
+	switch method {
+	case "resources/list", "prompts/list", "resources/templates/list":
+		return mx.aggregate(ctx, method)
+	case "resources/read":
+		if uri := paramStr(params, "uri"); uri != "" {
+			mx.mu.Lock()
+			owner := mx.resOwner[uri]
+			mx.mu.Unlock()
+			if owner != "" {
+				return mx.callServer(ctx, owner, method, params)
+			}
+		}
+	case "prompts/get":
+		if name := paramStr(params, "name"); name != "" {
+			if server, tool, ok := mediator.SplitNamespacedName(name); ok {
+				if np := withParam(params, "name", tool); np != nil {
+					return mx.callServer(ctx, server, method, np)
+				}
+			}
+		}
+	}
+	return mx.callFirst(ctx, method, params)
+}
+
+// aggregate merges one catalog listing from every upstream. Entries are
+// annotated with their server; prompt names are namespaced <server>__<name>
+// (unwrapped on prompts/get); resource URIs are left intact but their
+// owner is remembered for precise routing.
+func (mx *Mux) aggregate(ctx context.Context, method string) (json.RawMessage, error) {
+	key := map[string]string{
+		"resources/list":           "resources",
+		"prompts/list":             "prompts",
+		"resources/templates/list": "resourceTemplates",
+	}[method]
+	names := make([]string, 0, len(mx.byName))
+	for name := range mx.byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	merged := []json.RawMessage{}
+	for _, server := range names {
+		resp, err := mx.byName[server].client.Request(ctx, method, map[string]any{})
+		if err != nil || resp.Error != nil {
+			continue // catalog merge is best-effort per upstream
+		}
+		var result map[string]json.RawMessage
+		if json.Unmarshal(resp.Result, &result) != nil {
+			continue
+		}
+		var items []json.RawMessage
+		if json.Unmarshal(result[key], &items) != nil {
+			continue
+		}
+		for _, item := range items {
+			var entry map[string]any
+			if json.Unmarshal(item, &entry) != nil {
+				continue
+			}
+			entry["_tapelog_server"] = server
+			switch method {
+			case "prompts/list":
+				if name, ok := entry["name"].(string); ok {
+					entry["name"] = mediator.NamespacedName(server, name)
+				}
+			case "resources/list":
+				if uri, ok := entry["uri"].(string); ok {
+					mx.mu.Lock()
+					mx.resOwner[uri] = server
+					mx.mu.Unlock()
+				}
+			case "resources/templates/list":
+				if uri, ok := entry["uriTemplate"].(string); ok {
+					mx.mu.Lock()
+					mx.tmplOwner[uri] = server
+					mx.mu.Unlock()
+				}
+			}
+			raw, _ := json.Marshal(entry)
+			merged = append(merged, raw)
+		}
+	}
+	raw, _ := json.Marshal(map[string]any{key: merged})
+	return raw, nil
+}
+
+// callServer sends one surface call to a specific upstream.
+func (mx *Mux) callServer(ctx context.Context, server, method string, params json.RawMessage) (json.RawMessage, error) {
+	u := mx.byName[server]
+	if u == nil {
+		return mx.callFirst(ctx, method, params)
+	}
+	resp, err := u.client.Request(ctx, method, params)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", server, err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("%s: %s", server, resp.Error.Message)
+	}
+	return resp.Result, nil
+}
+
+// paramStr extracts a string parameter from raw params.
+func paramStr(params json.RawMessage, key string) string {
+	var m map[string]any
+	if json.Unmarshal(params, &m) != nil {
+		return ""
+	}
+	s, _ := m[key].(string)
+	return s
+}
+
+// withParam returns params with one string key replaced (nil on error).
+func withParam(params json.RawMessage, key, value string) json.RawMessage {
+	var m map[string]any
+	if json.Unmarshal(params, &m) != nil {
+		return nil
+	}
+	m[key] = value
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	return raw
 }
 
 func (mx *Mux) tools(ctx context.Context) ([]json.RawMessage, error) {

@@ -160,7 +160,7 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				}
 				continue
 			}
-			raw, err := mx.callFirst(ctx, msg.Method, msg.Params)
+			raw, err := mx.callRouted(ctx, msg.Method, msg.Params)
 			if err != nil {
 				eobj := &jsonrpc.ErrorObj{Code: -32603, Message: err.Error()}
 				rawErr, _ := json.Marshal(eobj)
