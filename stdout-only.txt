@@ -1,3 +1,0 @@
-{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"read_file","description":"Read a file"},{"name":"delete_file","description":"Delete a file"}]}}
-{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"done"}]}}
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"done"}]}}

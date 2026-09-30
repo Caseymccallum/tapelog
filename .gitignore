@@ -29,3 +29,5 @@ gr-check.log
 *-e2e*
 junit.xml
 smoke-junit.xml
+# blanket: transient test output at repo root (*.md is our doc format)
+/*.txt
