@@ -32,7 +32,7 @@ async function refreshPending() {
     data = await api("/api/pending");
     $("status").textContent = "live";
   } catch (e) {
-    $("status").textContent = "offline";
+    $("status").textContent = "offline — showing last known data";
     return;
   }
   const list = $("pending-list");

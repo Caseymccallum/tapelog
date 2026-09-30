@@ -82,6 +82,11 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				sessionID = generateSessionID()
 			}
 
+			// A flight recorder must not silently destroy evidence:
+			// warn loudly before truncating an existing log.
+			if st, err := os.Stat(logPath); err == nil && st.Size() > 0 {
+				fmt.Fprintf(os.Stderr, "tapelog: WARNING — %s exists (%d bytes) and will be OVERWRITTEN; copy it first if you want to keep it\n", logPath, st.Size())
+			}
 			writer, err := session.NewWriter(logPath, sessionID)
 			if err != nil {
 				return err
