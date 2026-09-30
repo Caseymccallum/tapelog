@@ -221,6 +221,62 @@ func TestDirModeSessionsAndChainBadges(t *testing.T) {
 	}
 }
 
+// The chain verdict must ride on /api/log so a tamper surfaces live in
+// BOTH dashboard modes (single-session record dashboard included) on the
+// next poll — no restart, no hard refresh.
+func TestLogAPIReportsChainStatus(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "session.jsonl")
+	w, err := session.NewWriter(logPath, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := w.Append(session.EventType("tools/call"), map[string]any{"tool": "t"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Close()
+
+	h := Handler(nil, logPath, "")
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/log?after=0", nil))
+	var body struct {
+		ChainOK     bool   `json:"chain_ok"`
+		FirstBadSeq uint64 `json:"first_bad_seq"`
+		Problem     string `json:"problem"`
+	}
+	if err := json.Unmarshal(rw.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.ChainOK || body.FirstBadSeq != 0 {
+		t.Fatalf("intact log must report chain_ok: %+v (%s)", body, rw.Body.String())
+	}
+
+	// Tamper mid-session: the very next poll must flag it.
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(data), `"tool":"t"`, `"tool":"x"`, 1)
+	if err := os.WriteFile(logPath, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/log?after=0", nil))
+	var body2 struct {
+		ChainOK     bool   `json:"chain_ok"`
+		FirstBadSeq uint64 `json:"first_bad_seq"`
+		Problem     string `json:"problem"`
+	}
+	if err := json.Unmarshal(rw2.Body.Bytes(), &body2); err != nil {
+		t.Fatal(err)
+	}
+	if body2.ChainOK || body2.FirstBadSeq == 0 || body2.Problem == "" {
+		t.Fatalf("tampered log must be flagged on the next poll: %+v (%s)", body2, rw2.Body.String())
+	}
+}
+
+
 func TestDirModeSessionsAndTraversalDefense(t *testing.T) {
 	dir := t.TempDir()
 	logA := `{"v":0,"seq":1,"ts":"2026-01-01T00:00:00Z","type":"session/start","session_id":"aaa","payload":{}}

@@ -13,23 +13,35 @@ import (
 
 // Writer appends hash-chained events to a session log file.
 // It is safe for concurrent use.
+//
+// The file is opened per append and closed again — deliberately no
+// long-lived handle. A held handle would (a) lock editors out of the
+// file (Windows sharing violations), and (b) after an external rewrite
+// keep appending at a stale offset into an orphaned handle, silently
+// losing events. With per-append opens every event lands at the true
+// end of whatever file is at the path, the session survives mid-session
+// tampering, and the hash chain exposes the edit.
 type Writer struct {
 	mu        sync.Mutex
-	f         *os.File
+	path      string
 	sessionID string
 	seq       uint64
 	prevHash  string
+	wrote     int64 // bytes written so far; drift = external modification
 	now       func() time.Time
 }
 
 // NewWriter creates (truncating) a session log at path and returns a Writer
-// bound to the given session ID.
+// bound to the given session ID. Nothing keeps the file open afterwards.
 func NewWriter(path, sessionID string) (*Writer, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("create session log: %w", err)
 	}
-	return &Writer{f: f, sessionID: sessionID, now: time.Now}, nil
+	if err := f.Close(); err != nil {
+		return nil, fmt.Errorf("close session log: %w", err)
+	}
+	return &Writer{path: path, sessionID: sessionID, now: time.Now}, nil
 }
 
 // SetClock overrides the time source (tests / deterministic recording).
@@ -40,6 +52,9 @@ func (w *Writer) SetClock(now func() time.Time) {
 }
 
 // Append marshals payload, builds the next chained event, and writes one line.
+// The file is opened for this append only (O_APPEND), so the write always
+// lands at the current end of the file even if the log was rewritten
+// externally between events.
 func (w *Writer) Append(t EventType, payload any) (*Event, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -67,24 +82,39 @@ func (w *Writer) Append(t EventType, payload any) (*Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal event: %w", err)
 	}
-	if _, err := w.f.Write(append(line, '\n')); err != nil {
+	if st, err := os.Stat(w.path); err == nil && st.Size() != w.wrote {
+		// The log changed under us: someone edited or replaced it
+		// mid-session. Record loudly and keep going — the chain
+		// (held in memory) continues from the last event WE wrote,
+		// so `tapelog verify` pinpoints exactly where the file
+		// stopped being ours.
+		fmt.Fprintf(os.Stderr, "tapelog: WARNING — %s changed on disk (%d bytes, expected %d): modified outside tapelog while recording; this append continues the chain and `tapelog verify` will flag the edit\n", w.path, st.Size(), w.wrote)
+		w.wrote = st.Size()
+	}
+	f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open session log: %w", err)
+	}
+	n, err := f.Write(append(line, '\n'))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("write event: %w", err)
 	}
+	w.wrote += int64(n)
 	w.seq = e.Seq
 	w.prevHash = e.Hash
 	return &e, nil
 }
 
-// Close flushes and closes the log.
+// Close flushes and closes the log. The writer holds no long-lived
+// handle (see the Writer doc comment), so this is a no-op kept for
+// API compatibility.
 func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.f == nil {
-		return nil
-	}
-	err := w.f.Close()
-	w.f = nil
-	return err
+	return nil
 }
 
 // VerifyResult reports the outcome of chain verification.

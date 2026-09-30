@@ -50,6 +50,63 @@ func TestVerifyIntact(t *testing.T) {
 	}
 }
 
+// A live session must survive its log being rewritten underneath it:
+// the writer holds no long-lived handle, so a mid-session tamper can
+// neither lock it out nor strand later appends on an orphaned handle.
+// Events appended after the tamper must land in the same file, and the
+// chain must expose the edit at the exact event it happened.
+func TestWriterSurvivesExternalEditMidSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	w, err := NewWriter(path, "live-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	w.SetClock(fixedClock)
+
+	for i := 0; i < 2; i++ {
+		if _, err := w.Append(EventToolCall, ToolCallPayload{ID: json.RawMessage(`1`), Tool: "read_file", Args: json.RawMessage(`{"path":"/tmp/a"}`)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// External tamper mid-session: an editor rewrites the file (this is
+	// possible at all only because the writer closes between appends).
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	lines[0] = strings.Replace(lines[0], "read_file", "delete_all", 1)
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The session continues: the next append must succeed and be present.
+	if _, err := w.Append(EventSessionEnd, SessionEndPayload{Reason: "client disconnect"}); err != nil {
+		t.Fatalf("append after external edit must not fail: %v", err)
+	}
+	out, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "client disconnect") {
+		t.Fatal("post-tamper append did not land in the log file")
+	}
+
+	// And the chain pinpoints where the file stopped being ours.
+	res, err := VerifyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK() {
+		t.Fatal("log tampered mid-session verified OK")
+	}
+	if res.FirstBadSeq != 1 {
+		t.Fatalf("want first bad seq 1, got %d (%s)", res.FirstBadSeq, res.Problem)
+	}
+}
+
 func TestVerifyDetectsTamper(t *testing.T) {
 	path := writeTestLog(t)
 	data, err := os.ReadFile(path)

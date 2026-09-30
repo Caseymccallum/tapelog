@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 //go:embed static
@@ -91,7 +92,16 @@ func newMux(s *server) http.Handler {
 			path = resolved
 		}
 		events, next := readLog(path, queryInt(r, "after"))
-		writeJSON(w, map[string]any{"events": events, "next": next})
+		// Verify the hash chain on every fetch (not just at page load):
+		// a tamper mid-session must surface live, in both single-session
+		// and directory mode, without a restart or a hard refresh.
+		resp := map[string]any{"events": events, "next": next}
+		if res, err := session.VerifyFile(path); err == nil {
+			resp["chain_ok"] = res.OK()
+			resp["first_bad_seq"] = res.FirstBadSeq
+			resp["problem"] = res.Problem
+		}
+		writeJSON(w, resp)
 	}
 	sessions := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
