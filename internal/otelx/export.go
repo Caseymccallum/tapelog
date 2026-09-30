@@ -103,18 +103,34 @@ func Export(ctx context.Context, path, endpoint string) error {
 			attrs = append(attrs, attribute.Bool("tapelog.descriptor_drift", true))
 		}
 		callEnd := callStart
+		var decPayload *session.PolicyDecisionPayload
+		var decAt time.Time
 		if dec, ok := decisions[string(p.ID)]; ok {
 			var dp session.PolicyDecisionPayload
 			_ = json.Unmarshal(dec.Payload, &dp)
+			decPayload = &dp
+			decAt, _ = time.Parse(tsLayout, dec.TS)
 			attrs = append(attrs,
 				attribute.String("tapelog.verdict", dp.Verdict),
 				attribute.String("tapelog.rule_id", dp.RuleID),
+				attribute.String("tapelog.reason", dp.Reason),
 			)
-			if t, _ := time.Parse(tsLayout, dec.TS); t.After(callEnd) {
-				callEnd = t
+			if decAt.After(callEnd) {
+				callEnd = decAt
 			}
 		}
 		_, span := tracer.Start(rootCtx, "execute_tool "+p.Tool, trace.WithTimestamp(callStart), trace.WithAttributes(attrs...))
+		if decPayload != nil {
+			// The boundary's decision as a first-class timeline event:
+			// queryable in any trace backend (Tempo/Jaeger/Jaeger UIs).
+			span.AddEvent("policy.decision",
+				trace.WithTimestamp(decAt),
+				trace.WithAttributes(
+					attribute.String("tapelog.verdict", decPayload.Verdict),
+					attribute.String("tapelog.rule_id", decPayload.RuleID),
+					attribute.String("tapelog.reason", decPayload.Reason),
+				))
+		}
 		if res, ok := results[string(p.ID)]; ok {
 			if t, _ := time.Parse(tsLayout, res.TS); t.After(callEnd) {
 				callEnd = t

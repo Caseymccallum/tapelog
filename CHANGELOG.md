@@ -6,6 +6,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 ## [Unreleased]
 
 ### v0.2 in progress — agent regression CI (mainline per docs/RESEARCH-EVOLUTION.md)
+- **`tapelog doctor`** — setup preflight: policy compiles (rules/Cedar/limits), WASM plugins load, platform capabilities (Landlock, terminal), log writability, node presence; ✓/!/✗ report, CI-friendly exit codes
+- **OTel decision spans** — `policy.decision` is now a first-class span event on every `execute_tool` span (verdict, rule_id, reason as both attributes and event fields): the boundary's decisions are queryable in any trace backend
+- **Policy packs** (`packs/`) — batteries-included policies for filesystem/git/fetch/postgres/slack/shell + a default-deny starter: deny the dangerous, confirm the risky, allow the routine. Every pack is Cedar-compiled in CI (`packs/packs_test.go`); live dogfooding caught and fixed an AND-vs-OR `where` authoring bug (now documented in POLICY.md)
 - **`tapelog fuzz`** — the boundary hardening lab: attack-shaped mutations of recorded sessions (tool-name case/space/homoglyph/traversal spoofing, argument traversal/type/overflow tampering, toxic-flow reordering) re-evaluated against the policy; a deny→allow flip is a reproducible boundary bypass with rule id + ATLAS tactic hint. CI exit codes + JSON output. (Research: nobody fuzzes the agent↔tool boundary — prompt fuzzers and ATLAS generators exist, policy-boundary fuzzing did not.)
 - **`tapelog test`** — behavioral regression at the tool boundary: YAML scenarios assert over recorded cassettes (`called`/`never_called`/`args`/`times`/`sequence`/`taint_never`/`result_contains`/`allowed`/`denied`/invariants), optional policy re-evaluation (what-if semantics), CI-native exit codes + `--plain`. Research note: the eval wave does prompt scoring; nobody does tool-call trajectory regression with hash-chained provenance
 

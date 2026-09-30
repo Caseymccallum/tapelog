@@ -55,8 +55,7 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 ## v0.2 candidates (prioritized per docs/RESEARCH-EVOLUTION.md)
 - [x] **`tapelog test` — agent regression CI** (mainline) — **v1 shipped: scenario DSL over cassettes, policy re-evaluation, CI exit codes (docs/TESTING.md)**
 - [x] **`tapelog fuzz` — boundary hardening lab** — **v1 shipped: 8 mutation operators, comparative deny→allow oracle, ATLAS hints, CI/JSON output (docs/TESTING.md)**
-- Policy packs for popular MCP servers (community rules repo)
+- [x] Policy packs for popular MCP servers (community rules repo) — **v1 shipped: 7 packs + CI-enforced Cedar compilation (packs/); caught a `where` AND-vs-OR authoring bug via live dogfooding**
+- [x] `tapelog doctor` (config/plugin/platform sanity) — **v1 shipped: preflight checks with ✓/!/✗ report + CI exit codes**
+- [x] OTel spans for policy decisions — **v1 shipped: `policy.decision` span events + verdict/rule/reason attributes**
 - Web dashboard: multi-session support (serve a directory of logs)
-- Value-level taint tracking (CaMeL-style) research spike
-- `tapelog doctor` (config/plugin/platform sanity)
-- OTel spans for policy decisions (currently tool calls only)
