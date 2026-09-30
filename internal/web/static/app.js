@@ -173,8 +173,10 @@ async function refreshLog() {
   if (refreshing) return; // boot + intervals can overlap; never double-render
   refreshing = true;
   try {
-    const url = "/api/log?after=" + lastSeq + (currentFile ? "&file=" + encodeURIComponent(currentFile) : "");
+    const file = currentFile; // capture: the picker may switch mid-poll
+    const url = "/api/log?after=" + lastSeq + (file ? "&file=" + encodeURIComponent(file) : "");
     const data = await api(url);
+    if (file !== currentFile) return; // stale response for a session we left
 
     // Chain status now rides on every poll (single-session mode too).
     showChain(data.chain_ok === undefined ? sessionInfo[currentFile] : data);
@@ -191,7 +193,7 @@ async function refreshLog() {
       lastSeq = 0;
       $("log-list").replaceChildren();
       $("log-count").textContent = "0";
-      const full = await api("/api/log?after=0" + (currentFile ? "&file=" + encodeURIComponent(currentFile) : ""));
+      const full = await api("/api/log?after=0" + (file ? "&file=" + encodeURIComponent(file) : ""));
       for (const e of full.events || []) addEvent(e);
       if (full.events && full.events.length) {
         lastSeq = full.events[full.events.length - 1].seq;
