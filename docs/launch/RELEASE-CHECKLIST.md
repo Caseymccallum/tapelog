@@ -41,6 +41,9 @@
 
 ## 👤 Human steps (before/at publish)
 
+> First: walk through **[TESTING-GUIDE.md](TESTING-GUIDE.md)** (~30 min,
+> copy-paste commands, all pre-validated) and tick its checklist.
+
 1. **Register `tapelog.dev`** (name audit says free — do this first)
 2. **Record the demo GIF / short video** from `examples/rogue-agent/demo.ps1`
    (screen capture; embed in README + Show HN post)
