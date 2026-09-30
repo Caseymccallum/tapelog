@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 func parkOne(t *testing.T, q *approval.Queue) int {
@@ -164,6 +165,60 @@ func TestLogAPIAndDecideRoundtrip(t *testing.T) {
 func itoa(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)
+}
+
+func TestDirModeSessionsAndChainBadges(t *testing.T) {
+	dir := t.TempDir()
+
+	// A real hash-chained log (Writer)...
+	w, err := session.NewWriter(filepath.Join(dir, "good.jsonl"), "s-good")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := w.Append(session.EventType("tools/call"), map[string]any{"tool": "t"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// ...and the same log with one event modified after writing.
+	good, err := os.ReadFile(filepath.Join(dir, "good.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(good), `"tool":"t"`, `"tool":"x"`, 1)
+	if err := os.WriteFile(filepath.Join(dir, "tampered.jsonl"), []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	h := DirHandler(dir, "")
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/sessions", nil))
+	var body struct {
+		Sessions []SessionInfo `json:"sessions"`
+	}
+	if err := json.Unmarshal(rw.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	byFile := map[string]SessionInfo{}
+	for _, s := range body.Sessions {
+		byFile[s.File] = s
+	}
+	if g, ok := byFile["good.jsonl"]; !ok || !g.ChainOK || g.FirstBadSeq != 0 {
+		t.Fatalf("good.jsonl must verify: %+v", byFile)
+	}
+	tp, ok := byFile["tampered.jsonl"]
+	if !ok {
+		t.Fatalf("tampered.jsonl missing: %+v", byFile)
+	}
+	if tp.ChainOK || tp.FirstBadSeq == 0 {
+		t.Fatalf("tampered.jsonl must be flagged broken: %+v", tp)
+	}
+	if tp.Problem == "" {
+		t.Fatalf("broken log must carry a problem description: %+v", tp)
+	}
 }
 
 func TestDirModeSessionsAndTraversalDefense(t *testing.T) {

@@ -5,16 +5,21 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 // SessionInfo summarizes one session log in a directory listing.
 type SessionInfo struct {
-	File      string `json:"file"`
-	SessionID string `json:"session_id,omitempty"`
-	Events    int    `json:"events"`
-	Denies    int    `json:"denies"`
-	FirstTS   string `json:"first_ts,omitempty"`
-	LastTS    string `json:"last_ts,omitempty"`
+	File        string `json:"file"`
+	SessionID   string `json:"session_id,omitempty"`
+	Events      int    `json:"events"`
+	Denies      int    `json:"denies"`
+	FirstTS     string `json:"first_ts,omitempty"`
+	LastTS      string `json:"last_ts,omitempty"`
+	ChainOK     bool   `json:"chain_ok"`
+	FirstBadSeq uint64 `json:"first_bad_seq,omitempty"` // 0 = intact
+	Problem     string `json:"problem,omitempty"`
 }
 
 // listSessions summarizes up to 200 *.jsonl logs in dir (newest name
@@ -38,9 +43,17 @@ func listSessions(dir string) []SessionInfo {
 	return out
 }
 
-// summarize scans one log for its header and counts.
+// summarize scans one log for its header and counts, and verifies its
+// hash chain — tampered logs must be visible, not silently rendered.
 func summarize(path string) SessionInfo {
 	info := SessionInfo{File: filepath.Base(path)}
+	if res, err := session.VerifyFile(path); err == nil {
+		info.ChainOK = res.OK()
+		info.FirstBadSeq = res.FirstBadSeq
+		info.Problem = res.Problem
+	} else {
+		info.Problem = err.Error()
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return info

@@ -86,6 +86,24 @@ async function decide(id, verdict, note) {
 
 /* ---- session picker (directory mode) ------------------------------- */
 
+const sessionInfo = {};
+
+function showChain(file) {
+  const warn = $("chain-warning");
+  if (!warn) return;
+  const s = sessionInfo[file];
+  if (s && s.chain_ok === false) {
+    warn.hidden = false;
+    warn.textContent =
+      "⚠ chain broken — first bad event: seq " + s.first_bad_seq +
+      (s.problem ? " (" + s.problem + ")" : "") +
+      ". This log was modified after writing; inspect it with `tapelog verify`.";
+  } else {
+    warn.hidden = true;
+    warn.textContent = "";
+  }
+}
+
 async function refreshSessions() {
   try {
     const data = await api("/api/sessions");
@@ -94,8 +112,10 @@ async function refreshSessions() {
     picker.hidden = false;
     picker.replaceChildren();
     for (const s of data.sessions) {
+      sessionInfo[s.file] = s;
       const opt = el("option", "",
-        s.file + "  ·  " + s.events + " events" + (s.denies ? "  ·  " + s.denies + " denied" : ""));
+        (s.chain_ok === false ? "⚠ " : "") + s.file +
+        "  ·  " + s.events + " events" + (s.denies ? "  ·  " + s.denies + " denied" : ""));
       opt.value = s.file;
       picker.appendChild(opt);
     }
@@ -104,9 +124,11 @@ async function refreshSessions() {
       lastSeq = 0;
       $("log-list").replaceChildren();
       $("log-count").textContent = "0";
+      showChain(currentFile);
       refreshLog();
     };
     currentFile = picker.value;
+    showChain(currentFile);
     refreshLog();
   } catch (e) {
     /* single-session mode: no picker */

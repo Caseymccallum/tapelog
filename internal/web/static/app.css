@@ -56,3 +56,9 @@ tr.decision-confirm td.v { color: var(--warn); }
 td.detail { color: var(--dim); word-break: break-all; }
 .tail { float: right; text-transform: none; letter-spacing: 0; cursor: pointer; }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+#chain-warning {
+margin: 10px 0; padding: 10px 14px; border: 1px solid var(--bad);
+border-radius: 8px; background: rgba(229, 83, 75, 0.12);
+color: var(--bad); font-size: 13px;
+}

@@ -15,6 +15,12 @@ cmd /c 'set PATH=C:\Program Files\Go\bin;%PATH% && go build -o bin\tapelog.exe .
 > Gotcha #1 (ours, not yours): if tests behave strangely after pulling
 > new code, rebuild first — a stale `bin\tapelog.exe` is the #1 false
 > alarm.
+>
+> Copy tip: copy only the command lines **inside** the boxes, not the
+> word `powershell` above them (it's a fence label; pasting it makes
+> PowerShell print a "term not recognized" error). And always run the
+> binary as `.\bin\tapelog.exe` — bare `tapelog.exe` triggers a
+> Windows "command not found, but exists in current location" note.
 
 ---
 
@@ -205,14 +211,20 @@ rule (usually a wildcard) and re-run until clean.
 .\bin\tapelog.exe web --dir . --listen 127.0.0.1:8930
 ```
 
-Open `http://127.0.0.1:8930` — you should see `my-session.jsonl`,
-`taint-demo.jsonl`, `tampered.jsonl` in the session list with event /
-denial counts; click one for the event timeline with policy decisions
-highlighted. (Read-only; loopback + strict CSP.) Stop the server with
-Ctrl+C.
+Open `http://127.0.0.1:8930` — you should see your session files in the
+dropdown with event / denial counts; click one for the event timeline
+with policy decisions highlighted. (Read-only; loopback + strict CSP.)
+Stop the server with Ctrl+C.
 
-✅ **Pass:** sessions list renders, timeline shows the deny from Test 4
-with its reason.
+**Tamper badges:** `tampered.jsonl` is flagged with a `⚠` in the
+dropdown, and selecting it shows a red banner:
+`⚠ chain broken — first bad event: seq 4 (hash mismatch...)` — the
+dashboard verifies every log's hash chain so modified evidence can't
+pass as authentic. `my-session.jsonl` and `taint-demo.jsonl` show no
+warning.
+
+✅ **Pass:** sessions list renders, `tampered.jsonl` carries the ⚠ +
+banner, and the timeline shows the deny from Test 4 with its reason.
 
 ---
 
