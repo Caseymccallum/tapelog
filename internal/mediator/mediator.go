@@ -195,18 +195,30 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 	// 6. Human confirmation for `confirm` verdicts.
 	finalVerdict, reason := dec.Verdict, dec.Reason
 	if dec.Verdict == policy.VerdictConfirm {
-		switch m.opts.Confirmer.Confirm(tool, args) {
+		choice, extra := m.ask(tool, args)
+		switch choice {
 		case approval.ChoiceAllowOnce:
 			finalVerdict = policy.VerdictAllow
-			reason += " (confirmed by human: allow once)"
+			if extra != "" {
+				reason += extra
+			} else {
+				reason += " (confirmed by human: allow once)"
+			}
 		case approval.ChoiceAllowSession:
 			finalVerdict = policy.VerdictAllow
-			reason += " (confirmed by human: allow for session)"
+			if extra != "" {
+				reason += extra
+			} else {
+				reason += " (confirmed by human: allow for session)"
+			}
 		default:
 			finalVerdict = policy.VerdictDeny
-			if m.opts.NonInteractive {
+			switch {
+			case extra != "":
+				reason += extra
+			case m.opts.NonInteractive:
 				reason += " (confirmation required; non-interactive session — use --auto-confirm or a terminal)"
-			} else {
+			default:
 				reason += " (denied by human)"
 			}
 		}
@@ -249,13 +261,19 @@ func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessa
 				args, _ := json.Marshal(map[string]any{
 					"note": "deliver tool result containing injection markers?", "findings": findings,
 				})
-				choice := m.opts.Confirmer.Confirm("injection-review", args)
+				choice, extra := m.ask("injection-review", args)
 				if choice != approval.ChoiceAllowOnce && choice != approval.ChoiceAllowSession {
 					reason += " (delivery blocked by human)"
+					if extra != "" {
+						reason += extra
+					}
 					m.recordDecision(id, "deny", "injection-scan", reason)
 					return &ResultBlock{Code: "result_blocked", RuleID: "injection-scan", Reason: reason}
 				}
 				reason += " (delivered with human approval)"
+				if extra != "" {
+					reason += extra
+				}
 				m.recordDecision(id, "allow", "injection-scan", reason)
 			default: // log
 				m.recordDecision(id, "allow", "injection-scan", reason)
@@ -263,6 +281,15 @@ func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessa
 		}
 	}
 	return nil
+}
+
+// ask consults the human for a confirm verdict, returning the choice plus
+// an audit suffix when the confirmer explains itself (approval queue).
+func (m *Mediator) ask(tool string, args json.RawMessage) (approval.Choice, string) {
+	if ec, ok := m.opts.Confirmer.(approval.ExplainedConfirmer); ok {
+		return ec.ConfirmExplain(tool, args)
+	}
+	return m.opts.Confirmer.Confirm(tool, args), ""
 }
 
 func (m *Mediator) recordDecision(id json.RawMessage, verdict, ruleID, reason string) {

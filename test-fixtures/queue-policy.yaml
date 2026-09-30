@@ -1,0 +1,9 @@
+# Write tools require a human OK — for approval-queue e2e tests.
+version: 1
+default: allow
+
+rules:
+  - id: writes-need-ok
+    tool: "delete_file"
+    action: confirm
+    reason: "deletes need a human"

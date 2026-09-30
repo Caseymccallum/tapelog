@@ -26,6 +26,7 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 
 	root.AddCommand(newRecordCmd())
 	root.AddCommand(newMuxCmd())
+	root.AddCommand(newQueueCmd())
 	root.AddCommand(newSandboxExecCmd())
 	root.AddCommand(newCompletionCmd())
 	root.AddCommand(newReplayCmd())

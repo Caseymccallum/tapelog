@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -28,6 +29,9 @@ func newMuxCmd() *cobra.Command {
 		sandboxRO    []string
 		sandboxRW    []string
 		sandboxLax   bool
+		approvalListen  string
+		approvalToken   string
+		approvalTimeout time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "mux",
@@ -82,7 +86,11 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 				return err
 			}
 
-			confirmer, nonInteractive := buildConfirmer(autoConfirm)
+			confirmer, nonInteractive, shutdown, err := buildConfirmer(autoConfirm, approvalListen, approvalToken, approvalTimeout)
+			if err != nil {
+				return err
+			}
+			defer shutdown()
 			plugins, err := plugin.NewChain(cmd.Context(), pluginPaths)
 			if err != nil {
 				return err
@@ -129,5 +137,8 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 	cmd.Flags().StringArrayVar(&sandboxRO, "sandbox-ro", nil, "sandbox stdio upstreams: allow read-only access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().StringArrayVar(&sandboxRW, "sandbox-rw", nil, "sandbox stdio upstreams: allow read-write access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().BoolVar(&sandboxLax, "sandbox-lenient", false, "degrade to unsandboxed with a warning instead of failing")
+	cmd.Flags().StringVar(&approvalListen, "approval-listen", "", "park confirm verdicts on a local approval queue at this address (e.g. 127.0.0.1:8923)")
+	cmd.Flags().StringVar(&approvalToken, "approval-token", "", "require Authorization: Bearer <token> on the approval queue API")
+	cmd.Flags().DurationVar(&approvalTimeout, "approval-timeout", 5*time.Minute, "how long a parked approval waits before failing closed (deny)")
 	return cmd
 }

@@ -192,6 +192,35 @@ injection:
   evidence.
 - Findings are auditable (`tapelog inspect` shows them like any
   decision), and `mode: off` disables scanning entirely.
+## Remote approval queue ("quarantine queue")
+
+`record`/`mux --approval-listen 127.0.0.1:8923` turns `confirm` verdicts
+into **parked approvals**: the call is held at the boundary (MCP
+request/response semantics preserved) until a human decides remotely —
+or `--approval-timeout` expires and it **fails closed to deny**.
+
+```bash
+tapelog record --policy p.yaml --approval-listen 127.0.0.1:8923 -- npx -y @mcp/server
+# ...elsewhere (another terminal, or a script, or a cron notifier):
+tapelog queue list   --url http://127.0.0.1:8923
+tapelog queue allow 3 --note "reviewed the diff"
+tapelog queue deny  4
+```
+
+- **API** (JSON): `GET /pending`, `POST /decide {"id","verdict":
+  allow|allow_session|deny,"note"}`, `GET /healthz`. Add
+  `--approval-token` to require `Authorization: Bearer <token>`.
+- **Trust model**: localhost-first — the listener is plain HTTP and
+  anyone who can reach it can decide. Keep it on 127.0.0.1 (or set a
+  token and put it behind your own TLS). See docs/THREAT_MODEL.md.
+- **Audit**: every decision lands in the hash-chained log with its
+  provenance and note — `"deletes need a human (approved via the
+  approval queue; e2e approved)"`. `allow_session` exempts the tool for
+  the rest of the session (like the terminal prompt's `[s]`).
+- Precedence: `--auto-confirm` > `--approval-listen` > terminal prompt >
+  fail closed. Works for `injection: mode: confirm` reviews too.
+
+
 
 Heuristics are not proof — treat hits as signals to review, not verdicts.
 

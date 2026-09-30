@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"time"
@@ -38,6 +39,9 @@ func newRecordCmd() *cobra.Command {
 		sandboxRO    []string
 		sandboxRW    []string
 		sandboxLax   bool
+		approvalListen  string
+		approvalToken   string
+		approvalTimeout time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "record [flags] -- <server command> [args...]",
@@ -88,7 +92,11 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				return err
 			}
 
-			confirmer, nonInteractive := buildConfirmer(autoConfirm)
+			confirmer, nonInteractive, shutdown, err := buildConfirmer(autoConfirm, approvalListen, approvalToken, approvalTimeout)
+			if err != nil {
+				return err
+			}
+			defer shutdown()
 			plugins, err := plugin.NewChain(cmd.Context(), pluginPaths)
 			if err != nil {
 				return err
@@ -170,6 +178,9 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 	cmd.Flags().StringArrayVar(&sandboxRO, "sandbox-ro", nil, "sandbox the server: allow read-only access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().StringArrayVar(&sandboxRW, "sandbox-rw", nil, "sandbox the server: allow read-write access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().BoolVar(&sandboxLax, "sandbox-lenient", false, "degrade to unsandboxed with a warning instead of failing")
+	cmd.Flags().StringVar(&approvalListen, "approval-listen", "", "park confirm verdicts on a local approval queue at this address (e.g. 127.0.0.1:8923)")
+	cmd.Flags().StringVar(&approvalToken, "approval-token", "", "require Authorization: Bearer <token> on the approval queue API")
+	cmd.Flags().DurationVar(&approvalTimeout, "approval-timeout", 5*time.Minute, "how long a parked approval waits before failing closed (deny)")
 	return cmd
 }
 
@@ -230,17 +241,25 @@ func buildGuards(pol *policy.Policy) (*limits.Tracker, *inject.Scanner, string, 
 	return limTracker, injScanner, injMode, nil
 }
 
-// buildConfirmer implements the confirm strategy: --auto-confirm allows
-// (recorded); otherwise prompt on the terminal; with no terminal available,
-// fail closed.
-func buildConfirmer(autoConfirm bool) (approval.Confirmer, bool) {
+// buildConfirmer implements the confirm strategy, in precedence order:
+// --auto-confirm (recorded), --approval-listen (remote quarantine queue),
+// an interactive terminal prompt; with none available, fail closed.
+func buildConfirmer(autoConfirm bool, listen, token string, timeout time.Duration) (approval.Confirmer, bool, func(), error) {
+	noop := func() {}
 	if autoConfirm {
-		return approval.Auto{}, false
+		return approval.Auto{}, false, noop, nil
+	}
+	if listen != "" {
+		q := approval.NewQueue(timeout)
+		srv := &http.Server{Addr: listen, Handler: approval.Handler(q, token)}
+		go func() { _ = srv.ListenAndServe() }()
+		fmt.Fprintf(os.Stderr, "tapelog: approval queue on http://%s — decide with: tapelog queue --url http://%s list|allow|deny\n", listen, listen)
+		return q, false, func() { _ = srv.Close() }, nil
 	}
 	if tty := approval.OpenTerminal(); tty != nil {
-		return approval.NewInteractive(tty, os.Stderr), false
+		return approval.NewInteractive(tty, os.Stderr), false, noop, nil
 	}
-	return approval.Deny{}, true
+	return approval.Deny{}, true, noop, nil
 }
 
 // generateSessionID returns a timestamped random session id.

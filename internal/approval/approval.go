@@ -31,6 +31,12 @@ type Confirmer interface {
 	Confirm(tool string, args json.RawMessage) Choice
 }
 
+// ExplainedConfirmer is an optional Confirmer that also returns a reason
+// suffix for the audit log (e.g. "expired in the approval queue").
+type ExplainedConfirmer interface {
+	ConfirmExplain(tool string, args json.RawMessage) (Choice, string)
+}
+
 // Auto always allows (the --auto-confirm mode). Everything is recorded.
 type Auto struct{}
 
