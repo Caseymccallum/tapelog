@@ -4,6 +4,7 @@ All notable changes to tapelog are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](https://semver.org/).
 
 ### v0.3 in progress
+- **Onboarding: `docs/CLIENT-SETUP.md`** — "put it in front of your agent" recipes for Roo Code, VS Code (Copilot), Claude Code/Desktop, and any stdio client; documents the client-driven `confirm` trap (stdin is the MCP channel → approval queue / `--auto-confirm` / deny-only) and a troubleshooting table. README gains an Install section (releases + go install) and a 2-minute "Connect your agent" quickstart
 - **Web dashboard: chain badges** — `tapelog web --dir` now verifies every session's hash chain on listing: tampered logs get a `⚠` in the session picker and a red "chain broken — first bad event: seq N" banner instead of silently rendering as authentic (spotted during product testing)
 - **Spec community materials** — `spec/OTel-COMPARE.md` (honest "why not just OpenTelemetry" comparison + bridging strategy via decision spans) and `spec/FAQ.md` (adoption/security/process, including the hash-chain non-claims); linked from `spec/README.md`. Community distribution happens with the Show HN launch
 - **`tapelog test` CI integrations** — `--junit <path>` JUnit XML report (GitLab/Jenkins/Azure/GitHub ingestion), `--annotate` GitHub Actions `::error` inline annotations (automatic on `GITHUB_ACTIONS`), and a CI dogfood job running tapelog's own scenario suite with the JUnit artifact uploaded

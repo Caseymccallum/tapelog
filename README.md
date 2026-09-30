@@ -35,10 +35,44 @@ real MCP servers (filesystem, git, fetch, ...)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
+## Install
+
+```bash
+# prebuilt binaries (Windows/macOS/Linux) — GitHub Releases, signed + SBOM:
+#   https://github.com/Caseymccallum/tapelog/releases
+
+go install github.com/Caseymccallum/tapelog/cmd/tapelog@latest   # or from source
+```
+
+## Connect your agent (2 minutes)
+
+tapelog sits between your MCP client and your MCP servers — you change
+**one config entry**. Example for Roo Code / `.roo/mcp.json` (other
+clients: [docs/CLIENT-SETUP.md](docs/CLIENT-SETUP.md)):
+
+```json
+{
+  "mcpServers": {
+    "filesystem-logged": {
+      "command": "C:\\path\\to\\tapelog.exe",
+      "args": ["record", "--log", "sessions/roo.jsonl",
+               "--approval-listen", "127.0.0.1:8923",
+               "--", "cmd", "/c", "npx", "-y",
+               "@modelcontextprotocol/server-filesystem", "."]
+    }
+  }
+}
+```
+
+The agent sees its tools as usual; every call now flows through policy +
+a hash-chained log. First run without `--policy` = observe-only. Note:
+under a client, `confirm` verdicts go to the approval queue (web UI on
+`127.0.0.1:8923`) — the interactive prompt only works in a terminal.
+
 ## Quick start
 
 ```bash
-go install github.com/Caseymccallum/tapelog/cmd/tapelog@latest   # once published
+# assumes tapelog is installed (see Install above)
 
 # Record a session while proxying a real MCP server:
 tapelog record --policy policy.yaml --log session.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
@@ -92,6 +126,7 @@ tapelog web --dir ./sessions
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, trust boundaries |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What we defend against — and what we honestly don't |
 | [docs/POLICY.md](docs/POLICY.md) | Policy language reference (rules, scoped grants, Cedar `where`) |
+| [docs/CLIENT-SETUP.md](docs/CLIENT-SETUP.md) | **Put it in front of your agent** — Roo Code, VS Code, Claude, any stdio client |
 | [docs/TESTING.md](docs/TESTING.md) | **Agent regression testing** — scenario DSL over cassettes (`tapelog test`) |
 | [spec/](spec/) | **The Agent Session Log Format spec** — normative rules, JSON Schema, conformance test vectors |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
