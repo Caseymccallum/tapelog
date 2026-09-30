@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 
 ## [Unreleased]
 
+### Added
+- **Release automation** — `release` workflow (tag `v*` or workflow_dispatch):
+  goreleaser builds 6 static binaries, per-archive SBOMs (syft), keyless
+  cosign-signed `checksums.txt`, and GitHub build-provenance attestation —
+  fulfilling the SECURITY.md supply-chain promise; `workflow_dispatch`
+  backfills older tags
+
 ## [0.2.0] — 2026-09-30
 
 The **agent regression CI & boundary hardening** release: behavioral

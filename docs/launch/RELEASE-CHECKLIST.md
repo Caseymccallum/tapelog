@@ -7,7 +7,16 @@
 - [x] CHANGELOG `[0.2.0]` section cut; version set to `0.2.0`
 - [x] All tests green (15 packages incl. packs harness), `go vet` clean
 - [x] Annotated tag `v0.2.0` prepared locally
-- [ ] **Human:** `git push origin main && git push origin v0.2.0`
+- [x] Release automation: `.github/workflows/release.yml` — goreleaser on
+      tag push with per-archive SBOMs (syft) + keyless cosign signatures
+      (SECURITY.md "Verifying releases" documents verification)
+- [x] Version bumped to `0.3.0-dev` on main
+- [x] Community readiness: bug/feature issue templates, PR template with
+      the fixture/test gotchas, CONTRIBUTING "hard-won gotchas"
+- [ ] **Human:** repo description + topics (`mcp`, `ai-agents`, `security`,
+      `observability`, `replay`, `go`) + homepage in GitHub settings
+- [ ] **Human:** `git push origin main` for these, then the next `v*` tag
+      will exercise the signed release pipeline end-to-end
 - [ ] **Human:** note v0.1.0's launch steps still stand (domain, demo GIF,
       contacts, Show HN) — v0.2.0 folds into the same launch
 

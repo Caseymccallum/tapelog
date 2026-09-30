@@ -1,0 +1,80 @@
+name: release
+
+# Publishes a signed GitHub Release for every v* tag: 6 static binaries,
+# checksums.txt (cosign-signed, keyless), one SBOM per archive (syft),
+# and GitHub build provenance attestation. Fulfills the SECURITY.md
+# supply-chain promise. workflow_dispatch backfills older tags.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "tag to (re)release, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: sigstore/cosign-installer@v4
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Release (build, SBOM, sign, publish)
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/checksums.txt
+            dist/*.sig
+            dist/*.pem
+
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # cosign keyless signing (OIDC)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history for the changelog
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install syft (SBOM generation)
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      - name: Install cosign
+        run: go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+      - name: Install goreleaser
+        run: go install github.com/goreleaser/goreleaser/v2@latest
+      - name: Release (archives + checksums + SBOM + signature)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: goreleaser release --clean

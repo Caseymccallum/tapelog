@@ -1,0 +1,30 @@
+name: Feature request
+description: An idea, a missing capability, or a policy pack request
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The pain first — solutions second. "As an agent operator, I can't…"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - record / session log
+        - policy engine
+        - replay / tapelog test
+        - tapelog fuzz
+        - web dashboard / approval queue
+        - policy packs
+        - spec (Agent Session Log Format)
+        - other
+    validations:
+      required: true

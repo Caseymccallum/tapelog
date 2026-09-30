@@ -28,6 +28,30 @@ See [ARCHITECTURE.md](ARCHITECTURE.md). In short: `cmd/tapelog` (CLI), `internal
 4. Update docs alongside code — **documentation is part of the change, not a follow-up.** If you touch the log format, update `spec/session-log-v0.md` + `spec/schema/*.json` + the hash-chain tests.
 5. Sign-off (`git commit -s`) is appreciated but not required pre-1.0.
 
+
+## Hard-won gotchas (please don't re-learn these)
+
+1. **Simulate CI before pushing.** CI sees *tracked files only* — your
+   working tree may contain ignored files that mask a failure:
+
+   ```bash
+   git clone . /tmp/tapelog-ci-sim && (cd /tmp/tapelog-ci-sim && go test ./...)
+   ```
+
+2. **Test fixtures vs `*.jsonl`.** `.gitignore` ignores `*.jsonl` ("session
+   logs are user data"). Any *fixture* `.jsonl` needs an explicit
+   `!path/to/fixture.jsonl` exception — otherwise it silently exists only
+   on your machine and CI fails mysteriously. Check with
+   `git status --ignored`.
+
+3. **Tests must be slow-machine safe.** CI runners are 2-core shared VMs.
+   Never bound a wait by iteration count; use `time.Now().Add(15*time.Second)`
+   deadlines. If a test needs a server response, make the fake server reply
+   *after* the request arrives (causality), never pre-loaded.
+
+4. **Rebuild `bin/tapelog.exe` before e2e demos.** The binary is not part
+   of `go build ./...` output. (Yes, this bit us three times.)
+
 ## Coding conventions
 
 - Standard `gofmt` / `go vet`; no heavy lint rule-churn early on.

@@ -1,6 +1,7 @@
 # goreleaser config — single static binaries for the platforms agents run on.
-# Release flow (from v0.1.0): git tag v0.1.0 && goreleaser release
-# Signed releases + SBOM land before the first public tag (SECURITY.md).
+# Release flow: push a v* tag (or workflow_dispatch the release workflow)
+# and it builds, SBOMs (syft), signs (cosign, SECURITY.md promise),
+# attests provenance, and publishes the GitHub Release.
 version: 2
 
 project_name: tapelog
@@ -29,6 +30,19 @@ archives:
 
 checksum:
   name_template: checksums.txt
+
+# One SBOM per archive (syft) — SECURITY.md promise.
+sboms:
+  - artifacts: archive
+
+# Sign the checksums file with cosign (keyless via the workflow's OIDC
+# identity); one signature covers every artifact hash.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args: ["sign-blob", "--output-signature=${signature}", "--output-certificate=${certificate}", "${artifact}", "--yes"]
+    artifacts: checksum
 
 changelog:
   sort: asc
