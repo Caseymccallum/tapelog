@@ -166,6 +166,41 @@ the plain server command.
 
 ---
 
+## Your agent may bypass MCP entirely (built-in tools)
+
+Most agent harnesses (Roo Code, Cline, Claude Code, VS Code agents)
+ship **built-in** file/exec tools alongside MCP. For routine file work
+the model prefers those — traffic that **never crosses tapelog**, so it
+is neither recorded nor enforced. Your log will show `session/start`,
+`tools/list`, resource listings… and zero `tools/call` for the work.
+
+Check what actually flowed at any time:
+
+```powershell
+tapelog inspect <log> --plain
+```
+
+To force traffic through the boundary, name the MCP server and tool
+explicitly in the prompt (Roo dispatches MCP via `use_mcp_tool`):
+
+> "Using the MCP server `filesystem-logged` — call its `read_file` tool
+> to read CHANGELOG.md. Do **not** use your built-in file tools; I am
+> testing MCP mediation."
+
+Same for writes (`write_file`, `edit_file`, …). Two more levers:
+
+- Disable/limit the harness's built-in tools in its settings where
+  possible (Roo's per-tool approvals), so risky work has only one path.
+- Give the harness an MCP server for a capability it *doesn't* have
+  built in (github, postgres, fetch) — those calls always cross the
+  boundary naturally.
+
+Rule of thumb: **tapelog enforces what flows through MCP.** Anything
+the harness does with its native tools is outside the boundary (this is
+stated in docs/THREAT_MODEL.md).
+
+---
+
 ## Any other stdio client (Cursor, custom harnesses)
 
 The recipe is always the same:

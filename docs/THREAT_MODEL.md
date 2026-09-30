@@ -26,6 +26,13 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 
 ## Out of scope — honest non-claims
 
+- **Harness built-in tools.** tapelog mediates the MCP traffic between
+  an agent harness and MCP servers. File/exec/search tools built into
+  the harness itself (Roo Code, Cline, Claude Code, …) never cross the
+  boundary: an agent that edits a file with its native tool is neither
+  recorded nor enforced. Route risky capabilities through MCP servers,
+  and/or restrict built-ins at the harness layer.
+
 - **Prompt injection at the model** (detecting/filtering malicious instructions) — optional defense-in-depth only; not our claim.
 - **Sandbox escape.** With `--sandbox-*` flags, mediated servers are Landlock-restricted (Linux). We make no claims about kernel exploits or Landlock bypasses; without the flags, a tool that is *allowed* runs with the server's full privileges. Use OS-level sandboxing (containers, seatbelt/landlock) alongside us.
 - **The approval queue's transport.** `--approval-listen` serves plain HTTP with a localhost-first trust model: anyone who can reach the socket can decide parked approvals (set `--approval-token`, and/or bind behind your own TLS). Decisions are authenticated only by reachability + optional bearer token.
