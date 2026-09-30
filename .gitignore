@@ -23,3 +23,7 @@ web-err.txt
 gr-check.log
 gr-check.log
 *.log
+# transient e2e/demo output (NEVER commit these)
+*-out.txt
+*-err.txt
+*-e2e*
