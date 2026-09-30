@@ -201,15 +201,24 @@ or `--approval-timeout` expires and it **fails closed to deny**.
 
 ```bash
 tapelog record --policy p.yaml --approval-listen 127.0.0.1:8923 -- npx -y @mcp/server
-# ...elsewhere (another terminal, or a script, or a cron notifier):
+# ...elsewhere (browser or terminal):
+open http://127.0.0.1:8923        # review dashboard: approvals + live session log
 tapelog queue list   --url http://127.0.0.1:8923
 tapelog queue allow 3 --note "reviewed the diff"
 tapelog queue deny  4
 ```
 
-- **API** (JSON): `GET /pending`, `POST /decide {"id","verdict":
-  allow|allow_session|deny,"note"}`, `GET /healthz`. Add
-  `--approval-token` to require `Authorization: Bearer <token>`.
+- **Review dashboard** (`http://<listen>`): parked approvals with
+  note-carrying allow/deny, plus a live tail of the session log
+  (the `inspect` timeline in a browser). Dependency-free, embedded
+  assets. Security posture: untrusted data rendered via `textContent`
+  only (tool output is attacker-controlled — no HTML, strict
+  `default-src 'self'` CSP), loopback Host pinning (DNS-rebinding
+  defense), same-origin-only POSTs (CSRF defense), `no-store` responses.
+- **API** (JSON): `GET /api/pending`, `POST /api/decide {"id","verdict":
+  allow|allow_session|deny,"note"}`, `GET /api/log?after=<seq>`,
+  `GET /healthz`. Add `--approval-token` to require
+  `Authorization: Bearer <token>` (and to allow non-loopback binds).
 - **Trust model**: localhost-first — the listener is plain HTTP and
   anyone who can reach it can decide. Keep it on 127.0.0.1 (or set a
   token and put it behind your own TLS). See docs/THREAT_MODEL.md.

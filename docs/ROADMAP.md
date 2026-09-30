@@ -49,4 +49,5 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Resource/prompt surface gating (no unmediated surface) — **v1 shipped: surface calls through the full pipeline; mux routes first-success (catalog aggregation still open)**
 - [x] Prompt-injection heuristics in tool results — **v1 shipped: `injection: mode: log|confirm|deny` with conservative built-ins + custom patterns**
 - [x] Remote approval queue (async HITL "quarantine queue") — **v1 shipped: `--approval-listen` + `tapelog queue` CLI, fail-closed timeout, note-carrying audit trail**
+- [x] Review web dashboard (approvals + live log tail) — **v1 shipped: XSS-safe embedded UI on the approval socket; token + host-pinning + CSRF defenses**
 - [ ] Resource/prompt catalog aggregation + namespacing in mux

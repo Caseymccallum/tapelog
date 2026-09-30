@@ -1,0 +1,166 @@
+package web
+
+import (
+	"encoding/json"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Caseymccallum/tapelog/internal/approval"
+)
+
+func parkOne(t *testing.T, q *approval.Queue) int {
+	t.Helper()
+	done := make(chan approval.Choice, 1)
+	go func() { done <- q.Confirm("write_file", json.RawMessage(`{"path":"/x"}`)) }()
+	for i := 0; i < 500; i++ {
+		if items := q.List(); len(items) == 1 {
+			return items[0].ID
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatal("call did not park")
+	return 0
+}
+
+func TestDashboardServesWithSecurityHeaders(t *testing.T) {
+	h := Handler(approval.NewQueue(time.Minute), "", "")
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, httptest.NewRequest("GET", "http://127.0.0.1:8923/", nil))
+	if rw.Code != 200 {
+		t.Fatalf("GET / status %d", rw.Code)
+	}
+	csp := rw.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "default-src 'self'") || strings.Contains(csp, "unsafe-inline") {
+		t.Fatalf("CSP too weak: %q", csp)
+	}
+	if rw.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("logs must not be cached")
+	}
+	if rw.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatal("nosniff missing")
+	}
+}
+
+func TestHostPinningBlocksDNSRebinding(t *testing.T) {
+	h := Handler(approval.NewQueue(time.Minute), "", "")
+	req := httptest.NewRequest("GET", "http://127.0.0.1:8923/api/pending", nil)
+	req.Host = "evil.example.com" // rebound domain
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+	if rw.Code != 403 {
+		t.Fatalf("non-loopback Host without token must be 403, got %d", rw.Code)
+	}
+	// Loopback Host is fine.
+	for _, host := range []string{"127.0.0.1:8923", "localhost:8923", "[::1]:8923"} {
+		req2 := httptest.NewRequest("GET", "http://127.0.0.1:8923/api/pending", nil)
+		req2.Host = host
+		rw2 := httptest.NewRecorder()
+		h.ServeHTTP(rw2, req2)
+		if rw2.Code != 200 {
+			t.Fatalf("host %s must be allowed, got %d", host, rw2.Code)
+		}
+	}
+}
+
+func TestCSRFRefusesCrossOriginPost(t *testing.T) {
+	q := approval.NewQueue(time.Minute)
+	h := Handler(q, "", "")
+	req := httptest.NewRequest("POST", "http://127.0.0.1:8923/api/decide", strings.NewReader(`{"id":1,"verdict":"allow"}`))
+	req.Header.Set("Origin", "https://evil.example") // cross-site form/fetch
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+	if rw.Code != 403 {
+		t.Fatalf("cross-origin POST must be 403, got %d", rw.Code)
+	}
+	// Same-origin POST is fine.
+	req2 := httptest.NewRequest("POST", "http://127.0.0.1:8923/api/decide", strings.NewReader(`{"id":1,"verdict":"allow"}`))
+	req2.Header.Set("Origin", "http://"+req2.Host)
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, req2) // unknown id -> 404 proves it passed the guard
+	if rw2.Code != 404 {
+		t.Fatalf("same-origin POST should pass the guard (404 expected), got %d", rw2.Code)
+	}
+}
+
+func TestTokenAuth(t *testing.T) {
+	h := Handler(approval.NewQueue(time.Minute), "", "sekret")
+
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/pending", nil))
+	if rw.Code != 401 {
+		t.Fatalf("no token must be 401, got %d", rw.Code)
+	}
+	rw2 := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "http://127.0.0.1:8923/api/pending", nil)
+	req.Header.Set("Authorization", "Bearer sekret")
+	h.ServeHTTP(rw2, req)
+	if rw2.Code != 200 {
+		t.Fatalf("valid token must pass, got %d", rw2.Code)
+	}
+	// With a token, non-loopback Host is acceptable (operator opted in).
+	rw3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest("GET", "http://127.0.0.1:8923/api/pending", nil)
+	req3.Host = "ops.internal:8923"
+	req3.Header.Set("Authorization", "Bearer sekret")
+	h.ServeHTTP(rw3, req3)
+	if rw3.Code != 200 {
+		t.Fatalf("token + LAN host must pass, got %d", rw3.Code)
+	}
+}
+
+func TestLogAPIAndDecideRoundtrip(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "session.jsonl")
+	lines := `{"v":0,"seq":1,"ts":"2026-01-01T00:00:00Z","type":"session/start","session_id":"s","payload":{}}
+{"v":0,"seq":2,"ts":"2026-01-01T00:00:01Z","type":"policy/decision","session_id":"s","payload":{"id":3,"verdict":"deny","rule_id":"no-x","reason":"nope"}}
+`
+	if err := os.WriteFile(logPath, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	q := approval.NewQueue(time.Minute)
+	h := Handler(q, logPath, "")
+
+	// Log API: after=0 returns both; after=1 returns only seq 2.
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/log?after=0", nil))
+	var body struct {
+		Events []json.RawMessage `json:"events"`
+		Next   int               `json:"next"`
+	}
+	if err := json.Unmarshal(rw.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Events) != 2 || body.Next != 2 {
+		t.Fatalf("after=0: %d events next=%d", len(body.Events), body.Next)
+	}
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, httptest.NewRequest("GET", "http://127.0.0.1:8923/api/log?after=1", nil))
+	if err := json.Unmarshal(rw2.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Events) != 1 || body.Next != 2 {
+		t.Fatalf("after=1: %d events next=%d", len(body.Events), body.Next)
+	}
+
+	// Decide roundtrip through the web API.
+	id := parkOne(t, q)
+	req := httptest.NewRequest("POST", "http://127.0.0.1:8923/api/decide",
+		strings.NewReader(`{"id":`+itoa(id)+`,"verdict":"allow","note":"via web"}`))
+	rw3 := httptest.NewRecorder()
+	h.ServeHTTP(rw3, req)
+	if rw3.Code != 200 {
+		t.Fatalf("decide via web: %d %s", rw3.Code, rw3.Body.String())
+	}
+	if len(q.List()) != 0 {
+		t.Fatal("queue should be empty after decide")
+	}
+}
+
+func itoa(n int) string {
+	b, _ := json.Marshal(n)
+	return string(b)
+}

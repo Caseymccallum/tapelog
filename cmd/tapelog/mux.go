@@ -86,7 +86,7 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 				return err
 			}
 
-			confirmer, nonInteractive, shutdown, err := buildConfirmer(autoConfirm, approvalListen, approvalToken, approvalTimeout)
+			confirmer, nonInteractive, shutdown, err := buildConfirmer(autoConfirm, approvalListen, approvalToken, approvalTimeout, logPath)
 			if err != nil {
 				return err
 			}

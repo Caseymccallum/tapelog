@@ -24,6 +24,7 @@ import (
 	"github.com/Caseymccallum/tapelog/internal/sandbox"
 	"github.com/Caseymccallum/tapelog/internal/schemafire"
 	"github.com/Caseymccallum/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/web"
 )
 
 func newRecordCmd() *cobra.Command {
@@ -92,11 +93,12 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				return err
 			}
 
-			confirmer, nonInteractive, shutdown, err := buildConfirmer(autoConfirm, approvalListen, approvalToken, approvalTimeout)
+			confirmer, nonInteractive, shutdown, err := buildConfirmer(autoConfirm, approvalListen, approvalToken, approvalTimeout, logPath)
 			if err != nil {
 				return err
 			}
 			defer shutdown()
+
 			plugins, err := plugin.NewChain(cmd.Context(), pluginPaths)
 			if err != nil {
 				return err
@@ -244,16 +246,16 @@ func buildGuards(pol *policy.Policy) (*limits.Tracker, *inject.Scanner, string, 
 // buildConfirmer implements the confirm strategy, in precedence order:
 // --auto-confirm (recorded), --approval-listen (remote quarantine queue),
 // an interactive terminal prompt; with none available, fail closed.
-func buildConfirmer(autoConfirm bool, listen, token string, timeout time.Duration) (approval.Confirmer, bool, func(), error) {
+func buildConfirmer(autoConfirm bool, listen, token string, timeout time.Duration, logPath string) (approval.Confirmer, bool, func(), error) {
 	noop := func() {}
 	if autoConfirm {
 		return approval.Auto{}, false, noop, nil
 	}
 	if listen != "" {
 		q := approval.NewQueue(timeout)
-		srv := &http.Server{Addr: listen, Handler: approval.Handler(q, token)}
+		srv := &http.Server{Addr: listen, Handler: web.Handler(q, logPath, token)}
 		go func() { _ = srv.ListenAndServe() }()
-		fmt.Fprintf(os.Stderr, "tapelog: approval queue on http://%s — decide with: tapelog queue --url http://%s list|allow|deny\n", listen, listen)
+		fmt.Fprintf(os.Stderr, "tapelog: review dashboard on http://%s (approvals + session log; API: /api/pending /api/decide /api/log)\n", listen)
 		return q, false, func() { _ = srv.Close() }, nil
 	}
 	if tty := approval.OpenTerminal(); tty != nil {

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tapelog — review</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header>
+  <h1>tapelog</h1>
+  <span class="sub">approval queue &amp; session log</span>
+  <span id="status" class="pill">connecting…</span>
+</header>
+<main>
+  <section id="approvals">
+    <h2>Parked approvals <span id="pending-count" class="pill">0</span></h2>
+    <div id="pending-list"></div>
+  </section>
+  <section id="log">
+    <h2>Session log <span id="log-count" class="pill">0</span>
+      <label class="tail"><input type="checkbox" id="tail" checked> auto-tail</label>
+    </h2>
+    <div id="log-list"></div>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
