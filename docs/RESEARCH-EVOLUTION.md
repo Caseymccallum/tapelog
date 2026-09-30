@@ -39,6 +39,9 @@ from the original brainstorm (RESEARCH.md). Verified live this date.
 
 ## Recommendation
 
+> *(2026-09-29 snapshot — v0.1.0 and v0.2.0 have since shipped; see
+> docs/ROADMAP.md for current state.)*
+
 1. **Keep tapelog as the mainline** and evolve it into lane 1 + 2
    (`tapelog test` + `tapelog fuzz`) — the market is arriving at our
    doorstep and the hard parts are already built. Release v0.1.0 as planned.
