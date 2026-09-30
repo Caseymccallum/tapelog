@@ -12,14 +12,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tapelog-dev/tapelog/internal/approval"
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
-	"github.com/tapelog-dev/tapelog/internal/mediator"
-	"github.com/tapelog-dev/tapelog/internal/plugin"
-	"github.com/tapelog-dev/tapelog/internal/policy"
-	"github.com/tapelog-dev/tapelog/internal/proxy"
-	"github.com/tapelog-dev/tapelog/internal/sandbox"
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/approval"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/plugin"
+	"github.com/Caseymccallum/tapelog/internal/policy"
+	"github.com/Caseymccallum/tapelog/internal/proxy"
+	"github.com/Caseymccallum/tapelog/internal/sandbox"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 func newRecordCmd() *cobra.Command {

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 func newVerifyCmd() *cobra.Command {

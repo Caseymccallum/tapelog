@@ -8,8 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
-	"github.com/tapelog-dev/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/mediator"
 )
 
 // Serve runs the harness-facing stdio MCP server. Messages are processed

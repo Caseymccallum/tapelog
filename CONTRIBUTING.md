@@ -7,7 +7,7 @@ Thanks for your interest! Tapelog is in early construction — the highest-value
 Requirements: **Go ≥ 1.27**, `git`. (Windows/macOS/Linux all supported.)
 
 ```bash
-git clone https://github.com/tapelog-dev/tapelog
+git clone https://github.com/Caseymccallum/tapelog
 cd tapelog
 go build ./...        # build everything
 go test ./...         # run the test suite

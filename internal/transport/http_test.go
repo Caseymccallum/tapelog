@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 )
 
 func TestHTTPSingleJSONResponse(t *testing.T) {

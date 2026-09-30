@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 ## [Unreleased] — v0.1.0
 
 ### Project identity
-- **Renamed `cassette` → `tapelog`** after a full availability audit (docs/launch/NAMING.md): npm/PyPI/crates all clear, GitHub org `tapelog-dev`, Go module `github.com/tapelog-dev/tapelog`. The replay type is now `replay.Tape`; logs are "tapelogs". Also fixes a long-standing `.gitignore` bug (bare `cassette` pattern had silently excluded `cmd/` from git since the first commit)
+- **Renamed `cassette` → `tapelog`** after a full availability audit (docs/launch/NAMING.md): npm/PyPI/crates all clear, GitHub org `tapelog-dev`, Go module `github.com/Caseymccallum/tapelog`. The replay type is now `replay.Tape`; logs are "tapelogs". Also fixes a long-standing `.gitignore` bug (bare `cassette` pattern had silently excluded `cmd/` from git since the first commit)
 
 ### Post-plan development — v2, part 5 (roadmap complete)
 - **OS sandbox for spawned servers** — `--sandbox-ro`/`--sandbox-rw` (repeatable) run MCP servers under Landlock filesystem restrictions via a hidden re-exec wrapper (`__sandbox_exec` + `syscall.Exec`); strict by default, `--sandbox-lenient` degrades with a warning; baselines keep binaries runnable (`/usr`, `/lib`, … RO, `/tmp` RW). Linux enforcement + gated kernel test; cross-platform wrapping tested everywhere

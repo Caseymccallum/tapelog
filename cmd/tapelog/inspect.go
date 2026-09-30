@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tapelog-dev/tapelog/internal/tui"
+	"github.com/Caseymccallum/tapelog/internal/tui"
 )
 
 func newInspectCmd() *cobra.Command {

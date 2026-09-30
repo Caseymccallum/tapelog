@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tapelog-dev/tapelog/internal/replay"
+	"github.com/Caseymccallum/tapelog/internal/replay"
 )
 
 func newDiffCmd() *cobra.Command {

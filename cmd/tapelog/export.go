@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tapelog-dev/tapelog/internal/otelx"
+	"github.com/Caseymccallum/tapelog/internal/otelx"
 )
 
 func newExportCmd() *cobra.Command {

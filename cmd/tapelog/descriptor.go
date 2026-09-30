@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
-	"github.com/tapelog-dev/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/mediator"
 )
 
 // descriptorTracker watches tools/list traffic in the transparent-proxy

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 )
 
 // syncBuffer is a goroutine-safe output sink for tests.

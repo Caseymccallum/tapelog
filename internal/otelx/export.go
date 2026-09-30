@@ -21,7 +21,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 const tsLayout = "2006-01-02T15:04:05.000Z"

@@ -22,7 +22,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 // Interaction is one recorded tool call with its recorded result.

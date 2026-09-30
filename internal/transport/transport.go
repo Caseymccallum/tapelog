@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 )
 
 // Transport sends and receives JSON-RPC messages. Implementations must be

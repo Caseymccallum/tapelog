@@ -36,7 +36,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/THREAT_MODEL.md](docs/THREAT_MO
 ## Quick start
 
 ```bash
-go install github.com/tapelog-dev/tapelog/cmd/tapelog@latest   # once published
+go install github.com/Caseymccallum/tapelog/cmd/tapelog@latest   # once published
 
 # Record a session while proxying a real MCP server:
 tapelog record --policy policy.yaml --log session.jsonl -- npx -y @modelcontextprotocol/server-filesystem .

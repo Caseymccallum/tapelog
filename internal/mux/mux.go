@@ -18,9 +18,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/tapelog-dev/tapelog/internal/mcpclient"
-	"github.com/tapelog-dev/tapelog/internal/mediator"
-	"github.com/tapelog-dev/tapelog/internal/transport"
+	"github.com/Caseymccallum/tapelog/internal/mcpclient"
+	"github.com/Caseymccallum/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/transport"
 )
 
 // ServerConfig describes one upstream MCP server: either a command

@@ -12,7 +12,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 )
 
 // Decision mirrors policy.Verdict semantics without importing policy:

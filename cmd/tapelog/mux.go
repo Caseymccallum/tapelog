@@ -6,11 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tapelog-dev/tapelog/internal/mediator"
-	"github.com/tapelog-dev/tapelog/internal/mux"
-	"github.com/tapelog-dev/tapelog/internal/plugin"
-	"github.com/tapelog-dev/tapelog/internal/sandbox"
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/mux"
+	"github.com/Caseymccallum/tapelog/internal/plugin"
+	"github.com/Caseymccallum/tapelog/internal/sandbox"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 func newMuxCmd() *cobra.Command {

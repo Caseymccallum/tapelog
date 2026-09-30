@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tapelog-dev/tapelog/internal/sandbox"
+	"github.com/Caseymccallum/tapelog/internal/sandbox"
 )
 
 // newSandboxExecCmd is the internal re-exec entry point: apply OS sandbox

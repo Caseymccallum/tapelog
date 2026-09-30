@@ -1,4 +1,4 @@
-module github.com/tapelog-dev/tapelog
+module github.com/Caseymccallum/tapelog
 
 go 1.27.0
 

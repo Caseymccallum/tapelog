@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 )
 
 // DefaultProtocolVersion is the MCP protocol version the replay server

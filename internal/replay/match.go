@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 // MatchMode selects how live arguments are matched to recordings.

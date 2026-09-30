@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 const vectorsDir = "spec/test-vectors"

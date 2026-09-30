@@ -10,8 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/tapelog-dev/tapelog/internal/jsonrpc"
-	"github.com/tapelog-dev/tapelog/internal/transport"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/transport"
 )
 
 // ProtocolVersion is the MCP protocol version we speak.

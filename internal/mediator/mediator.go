@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tapelog-dev/tapelog/internal/approval"
-	"github.com/tapelog-dev/tapelog/internal/plugin"
-	"github.com/tapelog-dev/tapelog/internal/policy"
-	"github.com/tapelog-dev/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/approval"
+	"github.com/Caseymccallum/tapelog/internal/plugin"
+	"github.com/Caseymccallum/tapelog/internal/policy"
+	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
 // Options configures a Mediator.
