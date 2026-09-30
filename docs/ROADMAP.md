@@ -60,3 +60,9 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] OTel spans for policy decisions — **v1 shipped: `policy.decision` span events + verdict/rule/reason attributes**
 - [x] Web dashboard: multi-session support — **v1 shipped: `tapelog web --dir` session browser (list + per-session timeline, traversal-proof)**
 - [x] Value-level taint tracking (CaMeL-style) research spike — **shipped as experimental `flows: mode: value` (ADR 0005): contamination-matched value taint with results gate; session semantics preserved for must-never flows**
+
+## v0.3 candidates / launch prep (2026-09-30)
+- [x] Fuzz operators v2 — **shipped: `arg_unicode`, `arg_boundary`, `arg_encoding`, `tool_namespace`, `swap_rotate` (13 operators total)**
+- [x] `tapelog test` CI integrations — **shipped: `--junit` JUnit XML, `--annotate` GitHub annotations, CI dogfood job**
+- [x] Spec community materials — **shipped: `spec/OTel-COMPARE.md` + `spec/FAQ.md`**
+- [ ] Human launch TODOs: register `tapelog.dev`, demo GIF, repo topics, Show HN post (`docs/launch/SHOW-HN.md`)

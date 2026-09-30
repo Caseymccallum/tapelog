@@ -8,6 +8,8 @@ Standalone: everything an implementation needs lives in this directory.
 | [session-log-v0.md](session-log-v0.md) | **The normative specification** (RFC 2119) |
 | [schema/session-event.v0.schema.json](schema/session-event.v0.schema.json) | JSON Schema (draft 2020-12) for one event |
 | [test-vectors/](test-vectors/) | Machine-readable conformance vectors |
+| [OTel-COMPARE.md](OTel-COMPARE.md) | Why not "just OpenTelemetry"? |
+| [FAQ.md](FAQ.md) | Adoption, security, and process questions |
 
 ## Why this exists
 
