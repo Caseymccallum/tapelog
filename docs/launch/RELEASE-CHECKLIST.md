@@ -1,6 +1,6 @@
 # Release Checklist
 
-## v0.4.0 (current — launch candidate `4f777cf`+)
+## v0.4.0 (released 2026-10-01 — launch candidate `4f777cf`+)
 
 - [x] Feature cut: MCP compat lab (hermetic matrix + real-world tier),
       signed checkpoints (SSHSIG/cosign + Rekor witness), DENIED provenance
@@ -9,7 +9,7 @@
       (spec §6.1/§6.2), external-audit fixes (P0 boundary rejections,
       replay verify-first, conservative value-taint), raw-protocol
       fail-closed invariant, `docs/QUICKSTART.md`
-- [ ] **Release-day version transition** — every `0.4.0-dev` reference in
+- [x] **Release-day version transition** — every `0.4.0-dev` reference in
       the public onboarding path must become the release version:
       `internal/buildinfo/buildinfo.go` (source of truth; goreleaser
       stamps binaries from it at tag time), README status block,
@@ -17,7 +17,7 @@
       docs/launch/TESTING-GUIDE.md (doctor output line), CONTRIBUTING.md,
       CHANGELOG.md status note. **Verify with
       `git grep -n "0\.4\.0-dev"` — expect zero hits outside historical CHANGELOG entries and this checklist after the bump.**
-- [ ] CHANGELOG `v0.4` section cut + version set to `0.4.0`
+- [x] CHANGELOG `v0.4` section cut + version set to `0.4.0`
 - [ ] Demo GIF + human launch TODOs (domain, contacts, Show HN) — see
       `docs/ROADMAP.md` and `docs/launch/SHOW-HN.md` (post body now leads
       with the trajectory demo story)

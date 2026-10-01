@@ -7,4 +7,4 @@
 package buildinfo
 
 // Version is the tapelog build version (stamped at release; dev default).
-var Version = "0.4.0-dev"
+var Version = "0.4.0"

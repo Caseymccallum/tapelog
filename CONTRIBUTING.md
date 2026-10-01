@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for your interest! Tapelog is pre-1.0 and moving fast (current
-main: `v0.4.0-dev` — see the README status block) — issues labeled
+Thanks for your interest! Tapelog is pre-1.0 and moving fast (see the
+README status block for the current version) — issues labeled
 `help-wanted` and `good-first-issue` are fair game anytime.
 
 ## The five-minute test (acceptance criterion)

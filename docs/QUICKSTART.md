@@ -28,7 +28,7 @@ replay the rest.
 ```bash
 # prebuilt binaries: https://github.com/Caseymccallum/tapelog/releases
 go install github.com/Caseymccallum/tapelog/cmd/tapelog@latest
-tapelog version    # tapelog 0.4.0-dev (or your release)
+tapelog version    # tapelog 0.4.0
 ```
 
 ## 2–3 min — Put it in front of one MCP server

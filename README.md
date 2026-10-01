@@ -3,7 +3,7 @@
 **Record every tool call. Replay any session. Test agent behaviour deterministically.**
 `rr` for tool-calling agents — a tamper-evident flight recorder and a hard policy boundary for MCP tool traffic.
 
-> **Status:** latest release **v0.2.0** · current main **v0.4.0-dev**
+> **Status:** **v0.4.0 released** (2026-10-01)
 > (the build version in [`internal/buildinfo`](internal/buildinfo/buildinfo.go) is the single source of truth).
 > **Stable:** `record` · `mux` · `policy` · `replay` · `verify` · `test` · `fuzz` · `inspect` · `export`.
 > **Experimental:** value-level taint · signed checkpoints · the MCP compat lab.

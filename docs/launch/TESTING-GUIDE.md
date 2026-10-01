@@ -33,7 +33,7 @@ cmd /c 'set PATH=C:\Program Files\Go\bin;%PATH% && go build -o bin\tapelog.exe .
 You should see mostly `✓`, maybe some `!` (warnings are fine):
 
 ```
-✓ runtime — tapelog 0.4.0-dev, windows/amd64
+✓ runtime — tapelog 0.4.0, windows/amd64
 ! policy — none given — record/mux will run with no policy rules (boundary protections stay active; add --policy to enforce rules)
 ! plugins — none configured (optional)
 ! os-sandbox — no OS enforcement on this platform (Linux required); policy still enforces
