@@ -32,6 +32,10 @@ type Cell struct {
 	Transport Transport
 	Command   []string // stdio cells: full argv (fakecmd or a pinned real server)
 	URL       string   // http cells: MCP endpoint
+	// Adaptive selects the catalog-driven conversation (real-world tier)
+	// instead of the hermetic fixture conversation. Safe-by-construction:
+	// see liveconv.go.
+	Adaptive bool
 }
 
 // Report is what one full-loop run produced — everything assertions need.
@@ -49,6 +53,9 @@ type Report struct {
 	WhatIfChanged int
 	WhatIfOut     string
 	Errs          []string
+	// Plan is the adaptive conversation's intent record (nil for the
+	// hermetic fixture conversation) — live assertions condition on it.
+	Plan *LivePlan
 }
 
 // loopPolicy is the lab's policy: a rule deny (delete_file) plus a
@@ -137,9 +144,41 @@ func RunCell(ctx context.Context, cell Cell, workDir string) (*Report, error) {
 	defer m.Close()
 
 	var harness bytes.Buffer
-	conv := strings.Join(harnessConversation, "\n") + "\n"
-	if err := m.Serve(ctx, strings.NewReader(conv), &harness); err != nil {
-		return nil, fmt.Errorf("cell %s/%s: serve: %w", cell.Name, cell.Era, err)
+	if cell.Adaptive {
+		// Real-world tier: discover the catalog first, then run the
+		// safe-by-construction adaptive conversation (liveconv.go). Pass A
+		// ends with the taint-source call; Pass B issues the taint sink
+		// once the source's RECORDED result yields a contaminating value —
+		// recorded values are what what-if re-evaluation matches on, so
+		// parity holds by construction.
+		if err := m.Serve(ctx, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`+"\n"), &harness); err != nil {
+			return nil, fmt.Errorf("cell %s/%s: discover: %w", cell.Name, cell.Era, err)
+		}
+		catalog := CatalogFromHarnessOutput(harness.String())
+		passA, plan := planLive(catalog)
+		if len(passA) > 0 {
+			if err := m.Serve(ctx, strings.NewReader(strings.Join(passA, "\n")+"\n"), &harness); err != nil {
+				return nil, fmt.Errorf("cell %s/%s: serve: %w", cell.Name, cell.Era, err)
+			}
+		}
+		if plan.TaintSource != "" {
+			if tape, err := replay.Load(rep.LogPath); err == nil {
+				if sinkLines, sink := planTaintSink(catalog, sourceResult(tape, plan.TaintSource)); sink != "" {
+					plan.TaintSink = sink
+					plan.WantDenies = append(plan.WantDenies, "no-secret-exfil")
+					plan.Probes = append(plan.Probes, "taint-sink: "+sink)
+					if err := m.Serve(ctx, strings.NewReader(strings.Join(sinkLines, "\n")+"\n"), &harness); err != nil {
+						return nil, fmt.Errorf("cell %s/%s: serve: %w", cell.Name, cell.Era, err)
+					}
+				}
+			}
+		}
+		rep.Plan = &plan
+	} else {
+		conv := strings.Join(harnessConversation, "\n") + "\n"
+		if err := m.Serve(ctx, strings.NewReader(conv), &harness); err != nil {
+			return nil, fmt.Errorf("cell %s/%s: serve: %w", cell.Name, cell.Era, err)
+		}
 	}
 	rep.HarnessOut = harness.String()
 
@@ -151,11 +190,18 @@ func RunCell(ctx context.Context, cell Cell, workDir string) (*Report, error) {
 		rep.VerifyProblem = v.Problem
 	}
 
-	// Redaction: the secret-shaped arg must be masked and the raw secret
-	// must not survive anywhere in the log.
+	// Redaction: secret-shaped args must be masked and the raw canaries
+	// must not survive anywhere in the log (hermetic probe value AND the
+	// live tier's pattern-matching canary). The masking marker is only
+	// required when a redaction probe was actually sent.
 	logBytes, _ := os.ReadFile(rep.LogPath)
-	rep.RedactedOK = bytes.Contains(logBytes, []byte("[REDACTED]")) &&
-		!bytes.Contains(logBytes, []byte("sk-live-SECRET-VALUE-123456"))
+	wantMarker := true
+	if rep.Plan != nil && !rep.Plan.Redaction {
+		wantMarker = false
+	}
+	rep.RedactedOK = (!wantMarker || bytes.Contains(logBytes, []byte("[REDACTED]"))) &&
+		!bytes.Contains(logBytes, []byte("sk-live-SECRET-VALUE-123456")) &&
+		!bytes.Contains(logBytes, []byte(LiveRedactionCanary))
 
 	// Replay: the tape must load and carry the full trajectory.
 	tape, err := replay.Load(rep.LogPath)

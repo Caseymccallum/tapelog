@@ -31,7 +31,8 @@ type Item struct {
 	Type    string
 	Label   string
 	Kind    Kind
-	Payload string // pretty-printed JSON payload
+	Payload string   // pretty-printed JSON payload
+	Extra   []string // causal provenance lines (deny events)
 }
 
 // Summary aggregates a session at a glance.
@@ -44,14 +45,16 @@ type Summary struct {
 	Drift     int
 }
 
-// Load parses a session log into renderable items + summary.
-func Load(path string) ([]Item, Summary, error) {
+// Load parses a session log into renderable items, summary, and the
+// causal story (denied calls with provenance).
+func Load(path string) ([]Item, Summary, Story, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, Summary{}, err
+		return nil, Summary{}, Story{}, err
 	}
 	defer f.Close()
 
+	var events []session.Event
 	var items []Item
 	var sum Summary
 	sc := bufio.NewScanner(f)
@@ -65,6 +68,7 @@ func Load(path string) ([]Item, Summary, error) {
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			continue
 		}
+		events = append(events, e)
 		item := itemFromEvent(e)
 		items = append(items, item)
 		sum.Events++
@@ -82,7 +86,42 @@ func Load(path string) ([]Item, Summary, error) {
 			sum.Drift++
 		}
 	}
-	return items, sum, sc.Err()
+	if err := sc.Err(); err != nil {
+		return nil, Summary{}, Story{}, err
+	}
+
+	// Correlate denied calls with their provenance and attach the block
+	// to the matching decision item (detail pane + plain rendering).
+	story := buildStory(events)
+	for i := range items {
+		if items[i].Kind != KindDeny {
+			continue
+		}
+		for _, d := range story.Denied {
+			if d.DecSeq != items[i].Seq {
+				continue
+			}
+			items[i].Extra = append(items[i].Extra,
+				fmt.Sprintf("call #%d · session %s", d.CallSeq, d.SessionID))
+			if d.Tool != "" {
+				items[i].Extra = append(items[i].Extra, d.Tool+" "+d.Args)
+			}
+			for _, pv := range d.Provenance {
+				where := fmt.Sprintf("call #%d", pv.CallSeq)
+				if pv.CallSeq == 0 {
+					where = "call not found in this log"
+				}
+				if pv.ResultSeq > 0 {
+					where += fmt.Sprintf(" (result #%d)", pv.ResultSeq)
+				}
+				items[i].Extra = append(items[i].Extra,
+					fmt.Sprintf("provenance: value from %s — produced at %s", pv.Source, where))
+			}
+			items[i].Extra = append(items[i].Extra, "causal story: "+causalLine(d))
+			break
+		}
+	}
+	return items, sum, story, sc.Err()
 }
 
 // itemFromEvent turns a log event into a list item.
@@ -154,8 +193,9 @@ func compact(raw json.RawMessage) string {
 	return s
 }
 
-// Plain renders a non-interactive listing (used by --plain and CI).
-func Plain(items []Item, sum Summary) string {
+// Plain renders a non-interactive listing (used by --plain and CI),
+// followed by the DENIED section (causal blocks with provenance).
+func Plain(items []Item, sum Summary, story Story) string {
 	var b strings.Builder
 	for _, it := range items {
 		marker := " "
@@ -173,5 +213,6 @@ func Plain(items []Item, sum Summary) string {
 	}
 	fmt.Fprintf(&b, "\n%d events · %d calls · %d allowed · %d confirmed · %d denied · %d drift\n",
 		sum.Events, sum.Calls, sum.Allowed, sum.Confirmed, sum.Denied, sum.Drift)
+	b.WriteString(renderDenied(story))
 	return b.String()
 }

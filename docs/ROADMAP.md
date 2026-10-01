@@ -67,21 +67,30 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
       6 CI-blocking cells) driving the full loop (discover → connect → tools/list → tools/call →
       errors → `_meta` → MRTR → redaction → policy → recording → replay → what-if) with
       server-side wire observations; `internal/compat/fakecmd` is the standalone server binary.
-      Real-world tier scaffolded (`TAPELOG_COMPAT_LIVE=<cmd>`, scheduled/non-blocking) —
-      running it against pinned real servers (server-filesystem, fetch, github, postgres) is
-      the remaining v0.4 work. (This cycle found `mux` dropping `_meta`/MRTR `inputResponses`
+      Real-world tier **wired up and validated live** (`tools/compat-live.ps1` +
+      `.github/workflows/compat-live.yml`, scheduled/never blocks CI): pinned
+      `server-filesystem@2026.8.31`, `mcp-server-fetch@2026.8.18`, `server-github@2025.4.8`,
+      `server-postgres@0.6.2` — all 4 ran green locally (catalog-driven, safe-by-construction
+      conversations via `internal/compat/liveconv.go`; `TestAdaptiveAgainstFixtureServer` proves
+      the live logic hermetically). (This cycle found `mux` dropping `_meta`/MRTR `inputResponses`
       and `server/discover` being policy-mediated — both would have been matrix row failures.)
-- [ ] **Signed session checkpoints** — `tapelog checkpoint` emits {session, seq, chain_head, timestamp, signature}:
-      cosign keyless (Sigstore/Rekor transparency log) or SSH key; `verify --checkpoint <file>` verifies against it.
-      Signature proves *who*; the transparency log / timestamp proves *when* — that's what makes "this trajectory
-      existed in this exact form" true rather than merely signed. Periodic checkpoints for long sessions;
-      `verify --expect` stays the zero-dependency anchor.
+- [x] **Signed session checkpoints** — **shipped** (`tapelog checkpoint` / `verify --checkpoint`):
+      {session, seq, chain_head, created_at} + signature (SSH SSHSIG — `ssh-keygen -Y verify`
+      interoperable — or cosign keyless) **and the transparency-log witness**: a Rekor `rekord`
+      entry verified fully offline (entry binding → signed entry timestamp → RFC 6962 inclusion →
+      signed tree head) against the pinned log key. Signature proves *who*; the witness proves
+      *when* — "this trajectory existed in this exact form" is now true, not merely signed.
+      `--witness none` is an explicit opt-out that `verify` flags loudly. Periodic checkpoints
+      via `--seq N` for long sessions; `verify --expect` stays the zero-dependency anchor.
+      Live-validated against rekor.sigstore.dev (docs/CHECKPOINTS.md).
 - [ ] **Trajectory assertions in `tapelog test`** — **core shipped**: `attempted:` (answered + denied),
       `denied:`/`allowed:` over the full boundary (previously blind to denied calls), `sequence:`,
       `times:`, `taint_never:`, `result_contains:`, `invariant: no_deny_bypassed`; remaining:
       count ceilings (max N), flow assertions as scenario checks, max depth
-- [ ] Richer inspection/explanation — DENIED blocks with event #, session id, contamination provenance;
-      `inspect` renders the causal story of a trajectory.
+- [x] Richer inspection/explanation — **shipped**: DENIED blocks with event #, session id,
+      contamination provenance ("value from read_secrets — produced at call #1 (result #2)") and a
+      one-line causal story per denied call (a result recorded despite a deny is flagged
+      `no_deny_bypassed`); `inspect --plain` renders the causal story of a trajectory.
 - [ ] Session schema v0: add optional causation/correlation fields (parent seq / `_meta.traceparent` passthrough)
       so v0.6 async events attach without a schema break (prep work, not a break).
 - [ ] Blob refs for large payloads — store `args`/`result` out-of-band with a digest reference (spec/FAQ.md gap; replay needs the blob store)
@@ -113,5 +122,5 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
       while `verify` pins the edit (the money line) → `--expect` catches truncation. Real-world validation
       continues with the compat lab's live tier
 - [x] CLI polish: **startup checklist shipped** (✓ boundary/policy/recording/audit-mode; mux reports each
-      upstream's negotiated protocol era). Remaining: DENIED output with event #/session/provenance in
-      `inspect`
+      upstream's negotiated protocol era). DENIED output with event #/session/provenance in
+      `inspect` shipped (see "Richer inspection/explanation" above).

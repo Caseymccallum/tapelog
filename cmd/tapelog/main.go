@@ -37,6 +37,7 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 	root.AddCommand(newCompletionCmd())
 	root.AddCommand(newReplayCmd())
 	root.AddCommand(newVerifyCmd())
+	root.AddCommand(newCheckpointCmd())
 	root.AddCommand(newDiffCmd())
 	root.AddCommand(newInspectCmd())
 	root.AddCommand(newExportCmd())

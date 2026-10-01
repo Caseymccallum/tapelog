@@ -7,7 +7,7 @@ import (
 
 // Inspect runs the interactive session viewer over a loaded log.
 func Inspect(path string) error {
-	items, sum, err := Load(path)
+	items, sum, _, err := Load(path)
 	if err != nil {
 		return err
 	}

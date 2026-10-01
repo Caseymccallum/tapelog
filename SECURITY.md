@@ -45,6 +45,25 @@ The signing identity is the release workflow itself — a signature is only
 as trustworthy as the repository's CI. Report suspected supply-chain
 issues via the private channel above.
 
+## Verifying session evidence
+
+Session logs are hash-chained, but a chain alone does not prove *who*
+attested it or *when* (see `spec/FAQ.md`). `tapelog checkpoint` closes
+that gap: signed checkpoints (SSH key or cosign) with a **transparency-
+log witness** (Rekor) make "this trajectory existed in this exact form"
+verifiable. Checkpoint verification is fully offline: entry binding,
+signed entry timestamp, RFC 6962 inclusion proof, and signed tree head
+against the pinned log key.
+
+```bash
+tapelog checkpoint session.jsonl --signer ssh --key ~/.ssh/id_ed25519
+tapelog verify session.jsonl --checkpoint session.jsonl.checkpoint.json
+```
+
+A checkpoint created with `--witness none` verifies its signature but
+`verify` warns loudly: signed but NOT witnessed — the "when" is unproven.
+See `docs/CHECKPOINTS.md`.
+
 Per docs/THREAT_MODEL.md, tapelog is a security-adjacent tool. We therefore hold ourselves to:
 
 - **Signed releases** (Sigstore/cosign) + published checksums — **automated**:

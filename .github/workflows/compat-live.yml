@@ -1,0 +1,68 @@
+name: compat-live
+
+# Real-world compatibility matrix (docs/ROADMAP.md v0.4): the adaptive
+# live tier against pinned third-party MCP servers. Scheduled and
+# non-blocking by design — the hermetic matrix in ci.yml gates merges;
+# this workflow produces evidence that the loop holds against real
+# servers. Artifacts keep the session logs from every run.
+on:
+  schedule:
+    - cron: "17 4 * * 1" # weekly, Monday 04:17 UTC (off the top of the hour)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true # never blocks anything
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - server: filesystem
+            command: "npx -y @modelcontextprotocol/server-filesystem@2026.8.31 /tmp/tapelog-compat-scratch"
+          - server: fetch
+            command: "uvx mcp-server-fetch@2026.8.18"
+          - server: github
+            command: "npx -y @modelcontextprotocol/server-github@2025.4.8"
+            needs_token: true
+          - server: postgres
+            command: "npx -y @modelcontextprotocol/server-postgres@0.6.2 postgresql://postgres:postgres@localhost:5432/postgres"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Install uv (mcp-server-fetch)
+        run: pipx install uv
+      - name: Run live cell
+        if: ${{ !matrix.needs_token || secrets.GITHUB_TOKEN != '' }}
+        env:
+          TAPELOG_COMPAT_LIVE: ${{ matrix.command }}
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/tapelog-compat-scratch
+          go test ./internal/compat/ -run TestLiveStdio -count=1 -v | tee live-${{ matrix.server }}.log
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compat-live-${{ matrix.server }}
+          path: live-${{ matrix.server }}.log
+          if-no-files-found: ignore

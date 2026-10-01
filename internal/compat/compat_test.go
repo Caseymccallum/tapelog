@@ -45,6 +45,55 @@ func buildFakeCmd(t *testing.T) string {
 	return fakeCmd
 }
 
+// TestAdaptiveAgainstFixtureServer drives the REAL-WORLD tier's adaptive
+// conversation against the fakecmd fixture server (whose catalog has
+// delete_file / read_secrets / send_http): the plan must fire the rule
+// deny AND the value-taint deny through the safe-by-construction probes,
+// with what-if parity intact. This is the live tier's logic proven
+// hermetically.
+func TestAdaptiveAgainstFixtureServer(t *testing.T) {
+	bin := buildFakeCmd(t)
+	workDir := t.TempDir()
+	rep, err := RunCell(context.Background(), Cell{
+		Name: "Fixture server", Era: Era2026, Transport: TransportStdio,
+		Command: []string{bin, "-era", string(Era2026)}, Adaptive: true,
+	}, workDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range rep.Errs {
+		t.Error(e)
+	}
+	if rep.Plan == nil {
+		t.Fatal("adaptive cell must produce a plan")
+	}
+	// fakecmd's catalog covers both deny shapes: both must fire.
+	denies := strings.Join(rep.DenyRules, ",")
+	if !strings.Contains(denies, "no-delete") {
+		t.Errorf("rule deny missing (got %q)", denies)
+	}
+	if rep.Plan.TaintSink == "" {
+		t.Fatal("taint sink must be planned against fakecmd (read_secrets + send_http exist)")
+	}
+	if !strings.Contains(denies, "no-secret-exfil") {
+		t.Errorf("value-taint deny missing (got %q)", denies)
+	}
+	if !rep.Plan.Redaction || !rep.RedactedOK {
+		t.Error("redaction probe must run and hold against fakecmd")
+	}
+	if !rep.VerifyOK {
+		t.Errorf("session log failed verification: %s", rep.VerifyProblem)
+	}
+	if rep.WhatIfChanged != 0 {
+		t.Errorf("what-if parity broken on adaptive conversation, %d changed:\n%s",
+			rep.WhatIfChanged, rep.WhatIfOut)
+	}
+	// The taint source produced a result; the sink never executed.
+	if rep.Unanswered < 2 {
+		t.Errorf("both deny probes must be unanswered (got %d)", rep.Unanswered)
+	}
+}
+
 // TestHermeticMatrix is the CI-blocking compatibility matrix: every
 // (era x transport) cell runs the full tapelog loop against an era-variant
 // scripted server and must reproduce verdicts, redact, record, verify,

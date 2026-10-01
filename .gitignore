@@ -11,6 +11,10 @@ dist/
 !test-fixtures/queue-session.jsonl
 !spec/test-vectors/*.jsonl
 
+# checkpoint artifacts are user data too (tapelog checkpoint output)
+*.checkpoint.json
+ckpt*.json
+
 # editor / OS noise
 .vscode/
 .idea/

@@ -127,6 +127,7 @@ func (w *Writer) Close() error {
 // VerifyResult reports the outcome of chain verification.
 type VerifyResult struct {
 	Events      int    `json:"events"`
+	SessionID   string `json:"session_id,omitempty"` // session id of the first event
 	FirstBadSeq uint64 `json:"first_bad_seq,omitempty"` // 0 = intact
 	Problem     string `json:"problem,omitempty"`
 	LastHash    string `json:"last_hash,omitempty"` // chain head (last event hash)
@@ -134,6 +135,50 @@ type VerifyResult struct {
 
 // OK reports whether the verified log is fully intact.
 func (r *VerifyResult) OK() bool { return r.FirstBadSeq == 0 }
+
+// HashAt returns the hash of the event at the given sequence number —
+// the chain head as of that event (used to pin mid-session checkpoints).
+// The chain through seq is verified as a side effect.
+func HashAt(path string, seq uint64) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open session log: %w", err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	prevHash := ""
+	var wantSeq uint64 = 1
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var e Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			return "", fmt.Errorf("event %d: invalid JSON: %w", wantSeq, err)
+		}
+		if e.Seq != wantSeq {
+			return "", fmt.Errorf("sequence gap: got seq %d, want %d", e.Seq, wantSeq)
+		}
+		if e.PrevHash != prevHash {
+			return "", fmt.Errorf("broken chain link at seq %d", e.Seq)
+		}
+		h, err := e.ComputeHash()
+		if err != nil || h != e.Hash {
+			return "", fmt.Errorf("event %d hash mismatch", e.Seq)
+		}
+		prevHash = e.Hash
+		if e.Seq == seq {
+			return e.Hash, nil
+		}
+		wantSeq++
+	}
+	if err := sc.Err(); err != nil {
+		return "", fmt.Errorf("read session log: %w", err)
+	}
+	return "", fmt.Errorf("seq %d not found", seq)
+}
 
 // VerifyFile verifies the hash chain of a session log file.
 func VerifyFile(path string) (*VerifyResult, error) {
@@ -172,6 +217,9 @@ func Verify(r io.Reader) (*VerifyResult, error) {
 			res.FirstBadSeq = e.Seq
 			res.Problem = fmt.Sprintf("sequence gap: got seq %d, want %d", e.Seq, wantSeq)
 			return res, nil
+		}
+		if res.SessionID == "" {
+			res.SessionID = e.SessionID
 		}
 		if e.Version != SchemaVersion {
 			res.FirstBadSeq = e.Seq

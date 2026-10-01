@@ -93,6 +93,12 @@ func (m model) renderDetail(width, height int) string {
 	lines = append(lines, styleTitle.Render(fmt.Sprintf("seq %d · %s", it.Seq, it.Type)))
 	lines = append(lines, styleDim.Render(it.TS))
 	lines = append(lines, kindStyle[it.Kind].Render(it.Label))
+	if len(it.Extra) > 0 {
+		lines = append(lines, "")
+		for _, x := range it.Extra {
+			lines = append(lines, kindStyle[KindDeny].Render(x))
+		}
+	}
 	lines = append(lines, "")
 	lines = append(lines, strings.Split(it.Payload, "\n")...)
 

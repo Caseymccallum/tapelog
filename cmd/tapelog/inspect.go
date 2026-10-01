@@ -18,11 +18,11 @@ verdicts color-coded, drift flagged), the full event payload on the right.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if plain {
-				items, sum, err := tui.Load(args[0])
+				items, sum, story, err := tui.Load(args[0])
 				if err != nil {
 					return err
 				}
-				fmt.Print(tui.Plain(items, sum))
+				fmt.Print(tui.Plain(items, sum, story))
 				return nil
 			}
 			return tui.Inspect(args[0])
