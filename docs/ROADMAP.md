@@ -107,7 +107,28 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
       re-hashes blobs (digest mismatch fails; absent store warns); replay/`test`/`whatif`/`inspect`
       resolve placeholders and fail loud when the store is missing.
 
+## v0.4.x — operating mode: launch and learn (post-0.4.0)
+
+Features and the security architecture are **frozen** at v0.4.0. The next
+engineering priorities are not features — they are what real users expose,
+in this order: **UX → interoperability → reliability → documentation →
+integrations** (onboarding friction, installation problems, MCP
+compatibility reports, replay failures, confusing policy semantics,
+requested integrations). What people actually record, put into CI, and ask
+TapeLog to do next is the input that shapes v0.5 — observation from
+outside the project, not feature invention from inside it.
+
 ## v0.5 — Agent trajectory control
+
+*The unifying idea: an agent session isn't just a log — it's a behavioural
+artifact TapeLog can understand and constrain over time. Call-level
+authorization says "you may do A"; trajectory control says "you may do B
+only after A, and C only if A produced X; no chain deeper than N; this
+capability, for five minutes." That's behavioural security rather than
+call-level authorization — and the same machinery is a test harness
+("don't just evaluate what an agent says; test the trajectory of what it
+does").*
+
 - [ ] Cross-event constraints as *live* policy (depth, ordering windows, phase budgets beyond today's flows/limits)
 - [ ] Scoped approvals: `allow once` (today) vs invocation-pattern / time-boxed (N minutes) / session-wide grants — today's `allow_session` is session-wide per tool (documented behaviour; maturity step, not a bug)
 - [ ] Drift vs a known-good trajectory baseline — descriptor drift exists; trajectory-level comparison is the
@@ -120,6 +141,41 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [ ] Long-running Tasks + progress/event recording with causal linkage (request → task → progress → server
       event → agent reaction → new call) — capture causality, not just new methods
 - [ ] Asynchronous replay that reorders streams deterministically
+
+## After v0.6 — the question (decided by adoption)
+
+The question is no longer "what features should TapeLog add?" — it is
+**what does the world start doing once agent behaviour becomes a
+replayable, verifiable artifact?** v0.4 establishes the artifact
+(capture → enforce → evidence → verify → replay → test), v0.5 teaches it
+to understand trajectories over time, v0.6 teaches it to do that for
+async, event-driven agents. What follows is deliberately **not** a
+roadmap: adoption chooses the branch, and the current architecture
+supports all of them without a rewrite.
+
+| Branch | TapeLog becomes… | The signal that points there |
+|---|---|---|
+| **A — Agent testing** | Playwright/Cypress/VCR for agents: "test the trajectory of what it does, not just evaluate what it says" | session fixtures committed to repos; `replay` in CI; trajectory-diff requests |
+| **B — Agent security** | the local security boundary + policy engine | "I tried to break the boundary with X" issues; shared policy packs |
+| **C — Evidence** | the canonical replayable evidence artifact (`incident.tape`: packet capture + test fixture + trace + security evidence bundle + cassette) | production incidents arrive as session logs instead of 4GB of application logs |
+| **D — Agent infrastructure** | foundational middleware between agents and tools | integrations want the boundary, not just the recorder |
+| **E — Session ecosystem** | an open format for agent trajectories — own the artifact model and reference tooling, not the whole stack | third-party tools produce/consume the artifact without the CLI |
+| **F — Eval ↔ production** | the bridge: production behaviour *is* the test artifact | incidents become regression tests; golden trajectories come from real sessions; model/policy upgrades get run through `whatif` over recorded history |
+
+Branch F is the deepest loop in the list — production → record →
+evidence → test → change → replay → production — and it falls out
+naturally if A and C prove out; a policy violation becomes a security
+test, a successful trajectory becomes a golden one.
+
+**Identity to protect through all of it:** a flight recorder for agent
+behaviour that happens to have a hard policy boundary. Security makes
+TapeLog stronger; it does not have to be the entire product.
+
+**The trap to avoid:** becoming an enterprise governance platform before
+the basic workflow has earned adoption. The path is real and the pieces
+already exist (approvals, session repositories, shared packs, signed
+evidence, incident investigation) — it is also exactly where promising
+open-source projects lose their way. Not now.
 
 ## v0.3 candidates / launch prep (2026-09-30)
 - [x] Fuzz operators v2 — **shipped: `arg_unicode`, `arg_boundary`, `arg_encoding`, `tool_namespace`, `swap_rotate` (13 operators total)**
