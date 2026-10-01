@@ -46,6 +46,13 @@ type Hooks struct {
 	// error (used for payload caps); the original is still recorded.
 	OnToolResult func(id json.RawMessage, isError bool, result json.RawMessage) (Decision, *DenyData)
 
+	// OnMalformedCall is called when a tools/call request cannot be
+	// parsed (bad params, missing tool name). The relay rejects such
+	// requests with a structured JSON-RPC error and NEVER forwards them
+	// (nothing crosses the boundary unmediated); this hook exists so the
+	// rejection can be recorded as evidence.
+	OnMalformedCall func(id json.RawMessage, params json.RawMessage, cause error)
+
 	// OnRawMessage is called for every message in both directions,
 	// direction is "c2s" (client→server) or "s2c" (server→client).
 	OnRawMessage func(direction string, raw []byte)
@@ -56,6 +63,12 @@ type Hooks struct {
 // plumbing set is treated as a surface call named after its method
 // (resources/read, prompts/get, ...), so nothing that can feed the agent's
 // context crosses the boundary unmediated.
+//
+// Returns (nil, nil) for plumbing/notifications — forward untouched.
+// Returns (nil, err) for a MALFORMED tools/call — the caller must reject
+// it (JSON-RPC -32602) and must NOT forward it: a call the boundary
+// cannot parse is a call the boundary cannot mediate, and the product
+// promise is that calls crossing the boundary are subject to it.
 //
 // The plumbing set is protocol machinery that carries no agent-facing
 // payload and MUST NOT be policy-gated (a deny would break compliant
@@ -68,18 +81,18 @@ type Hooks struct {
 //
 // Notifications (method, no id) are never mediated at all — there is no
 // response to deny with, and they carry no result payload.
-func mediatedCall(msg *jsonrpc.Message) *jsonrpc.ToolCallParams {
+func mediatedCall(msg *jsonrpc.Message) (*jsonrpc.ToolCallParams, error) {
 	switch msg.Method {
 	case "initialize", "ping", "tools/list", "server/discover":
-		return nil
+		return nil, nil
 	case "tools/call":
 		call, err := msg.ToolCall()
 		if err != nil {
-			return nil // malformed: forwarded untouched (protocol safety)
+			return nil, err // malformed: reject at the boundary, never forward
 		}
-		return call
+		return call, nil
 	default:
-		return &jsonrpc.ToolCallParams{Name: msg.Method, Arguments: msg.Params}
+		return &jsonrpc.ToolCallParams{Name: msg.Method, Arguments: msg.Params}, nil
 	}
 }
 
@@ -127,13 +140,42 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 				continue
 			}
 			if msg.IsRequest() {
-				if call := mediatedCall(msg); call != nil {
+				call, merr := mediatedCall(msg)
+				if merr != nil {
+					// Malformed tools/call: the boundary rejects it and it
+					// is NEVER forwarded (nothing crosses unmediated).
+					// The hook records the rejection as evidence.
+					if hooks.OnMalformedCall != nil {
+						hooks.OnMalformedCall(msg.ID, msg.Params, merr)
+					}
+					resp := jsonrpc.ErrorResponse(msg.ID, jsonrpc.CodeInvalidParams,
+						"invalid tools/call params", map[string]any{
+							"code": "invalid_params", "rule_id": "malformed-request",
+							"reason": merr.Error(), "verdict": "deny",
+						})
+					out, _ := jsonrpc.Marshal(resp)
+					outMu.Lock()
+					_, werr := clientOut.Write(append(out, '\n'))
+					outMu.Unlock()
+					if werr != nil {
+						return fmt.Errorf("write rejection response: %w", werr)
+					}
+					continue // never forwarded
+				}
+				if call != nil {
 					idMu.Lock()
 					toolIDs[idKey(msg.ID)] = true
 					idMu.Unlock()
 					if hooks.OnToolCall != nil {
 						decision, denyData := hooks.OnToolCall(msg.ID, call)
 						if decision == DecisionDeny {
+							// The synthesized deny response below IS the
+							// response: no upstream reply will come, so
+							// forget the id now (denied requests must not
+							// accumulate in toolIDs).
+							idMu.Lock()
+							delete(toolIDs, idKey(msg.ID))
+							idMu.Unlock()
 							resp := jsonrpc.DenyResponse(msg.ID, denyData)
 							out, _ := jsonrpc.Marshal(resp)
 							outMu.Lock()

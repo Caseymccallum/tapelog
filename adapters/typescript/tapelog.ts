@@ -22,7 +22,7 @@ export interface McpServerConfig {
 }
 
 export interface TapelogOptions {
-  /** Policy YAML file. Omit for observe-only recording. */
+  /** Policy YAML file. Omit for no-policy recording (default allow; boundary protections stay active). */
   policy?: string;
   /** Session log output path (default: session.jsonl). */
   log?: string;

@@ -107,9 +107,15 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				return err
 			}
 		case "tools/call":
-			call, err := msg.ToolCall()
-			if err != nil {
-				if err := fail(msg.ID, -32602, "invalid tools/call params", nil); err != nil {
+			call, perr := msg.ToolCall()
+			if perr != nil {
+				// Malformed tools/call: reject at the boundary and record
+				// the rejection — never dispatched to any upstream.
+				mx.med.MalformedCall(msg.ID, msg.Params, perr)
+				if err := fail(msg.ID, jsonrpc.CodeInvalidParams, "invalid tools/call params", map[string]any{
+					"code": "invalid_params", "rule_id": "malformed-request",
+					"reason": perr.Error(), "verdict": "deny",
+				}); err != nil {
 					return err
 				}
 				continue

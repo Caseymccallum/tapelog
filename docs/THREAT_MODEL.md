@@ -42,7 +42,10 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
   transformations (base64, paraphrase, splitting) evade it — the model
   can carry data beyond recognition. Must-never flows need `mode: session`
   rules (and even those assume the model *can* exfiltrate via any allowed
-  sink — see the toxic-flow claim above).
+  sink — see the toxic-flow claim above). Under *unresolved in-flight
+  source calls* (a source still running at the result-wait deadline),
+  value flows degrade **conservatively** — the source is assumed to taint
+  the sink — never to a silent pass.
 - **Semantic correctness.** We record and constrain; we don't judge whether an action is *wise*, only whether policy permits it.
 - **Toxic flows (value level).** Flow rules track taint per session (conservative). Tracking specific values *through the model* (CaMeL-style capabilities) is out of scope — the model's internal data flow is opaque to the boundary.
 - **Log confidentiality.** Redaction is best-effort pattern matching. Treat logs as sensitive.

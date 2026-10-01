@@ -154,7 +154,7 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 		},
 	}
 	cmd.Flags().StringVar(&configPath, "config", "", "mux config YAML (required)")
-	cmd.Flags().StringVar(&policyPath, "policy", "", "policy YAML file (omit for observe-only recording)")
+	cmd.Flags().StringVar(&policyPath, "policy", "", "policy YAML file (omit for no-policy recording: default-allow rules; boundary protections stay active)")
 	cmd.Flags().StringVar(&logPath, "log", "session.jsonl", "session log output path")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "session id (generated if omitted)")
 	cmd.Flags().StringVar(&harness, "harness", "unknown", "name of the agent harness being proxied")

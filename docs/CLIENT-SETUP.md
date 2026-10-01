@@ -82,8 +82,8 @@ Notes that matter on Windows:
   lookup the way your shell does).
 - `npx` needs the `cmd /c` wrapper on Windows (Roo's own docs do the
   same); everything after `--` is the original server command **verbatim**.
-- Drop `--policy` for a first observe-only run (everything is recorded,
-  nothing is enforced) — see step 3.
+- Drop `--policy` for a first no-policy run (everything is recorded; no
+  policy rules — but the boundary's other protections stay active) — see step 3.
 - Optional `"alwaysAllow": ["tool_a"]` in the entry is *Roo's* auto-
   approve list; it does not affect tapelog policy.
 
@@ -95,7 +95,8 @@ from the agent's view nothing changed.
 
 ### 3. Prove the pipe, then enforce
 
-First run **observe-only** (no `--policy`): ask Roo to read a file,
+First run **without a policy** (no `--policy` — no policy rules;
+boundary protections stay active): ask Roo to read a file,
 then check the evidence:
 
 ```powershell
@@ -229,7 +230,7 @@ The recipe is always the same:
 | Server won't start in client | relative path to tapelog | use absolute path in `command` |
 | Server starts, zero tools | inner command broken (`npx` w/o `cmd /c` on Windows) | run the inner command alone in a terminal first |
 | Agent hangs on a call | `confirm` policy + no approval path | add `--approval-listen` or `--auto-confirm` |
-| Calls denied immediately | policy pack too strict for your tools | first run observe-only; then `tapelog policy whatif` |
+| Calls denied immediately | policy pack too strict for your tools | first run without `--policy`; then `tapelog policy whatif` |
 | Log grows but verify fails | something rewrote the log | check the ⚠ banner (live in both dashboards) or `tapelog verify`; that's tampering or a tool editing files. Recording survives mid-session edits and flags them — see CHANGELOG |
 
 

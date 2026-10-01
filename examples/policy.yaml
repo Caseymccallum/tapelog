@@ -3,7 +3,7 @@
 version: 1
 
 # Fail-closed: anything not explicitly allowed is denied.
-# Use `default: allow` for observe-only logging instead.
+# Use `default: allow` for permissive, log-everything policies instead.
 default: deny
 
 rules:

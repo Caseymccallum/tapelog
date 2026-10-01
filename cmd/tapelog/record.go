@@ -171,6 +171,9 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 					}
 					return proxy.DecisionAllow, nil
 				},
+				OnMalformedCall: func(id json.RawMessage, params json.RawMessage, cause error) {
+					med.MalformedCall(id, params, cause)
+				},
 				OnToolResult: func(id json.RawMessage, isError bool, result json.RawMessage) (proxy.Decision, *proxy.DenyData) {
 					if v := med.Result(id, isError, result); v != nil {
 						return proxy.DecisionDeny, &proxy.DenyData{
@@ -193,7 +196,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 			return runErr
 		},
 	}
-	cmd.Flags().StringVar(&policyPath, "policy", "", "policy YAML file (omit for observe-only recording)")
+	cmd.Flags().StringVar(&policyPath, "policy", "", "policy YAML file (omit for no-policy recording: default-allow rules; boundary protections stay active)")
 	cmd.Flags().StringVar(&logPath, "log", "session.jsonl", "session log output path")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "session id (generated if omitted)")
 	cmd.Flags().StringVar(&harness, "harness", "unknown", "name of the agent harness being proxied")
@@ -213,9 +216,9 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 	return cmd
 }
 
-// loadEvaluator resolves the policy (or observe-only mode) and returns the
+// loadEvaluator resolves the policy (or no-policy mode) and returns the
 // policy id + file hash recorded in session/start plus the parsed policy
-// (nil in observe-only mode).
+// (nil in no-policy mode).
 func loadEvaluator(policyPath string) (policy.Evaluator, string, string, *policy.Policy, error) {
 	if policyPath == "" {
 		return policy.AllowAll{}, "observe", "", nil, nil
@@ -235,7 +238,7 @@ func loadEvaluator(policyPath string) (policy.Evaluator, string, string, *policy
 // buildGuards constructs the runtime guards from policy config: session
 // limits, the result-side injection scanner, and (when flow rules use
 // value mode) the value-level taint store. Injection scanning is on by
-// default in `log` mode (observe-only sessions too) — heuristics warn,
+// default in `log` mode (no-policy sessions too) — heuristics warn,
 // operators opt into confirm/deny.
 func buildGuards(pol *policy.Policy) (*limits.Tracker, *inject.Scanner, string, *taint.Store, error) {
 	var (

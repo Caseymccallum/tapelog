@@ -59,6 +59,11 @@ type Options struct {
 	// Nil Blobs or threshold <= 0 keeps payloads inline (default).
 	Blobs         *session.BlobStore
 	BlobThreshold int
+	// ResultWait bounds how long a decision waits for in-flight calls to
+	// report results before value-level taint evaluation (0 = 2s default).
+	// See awaitResults: an unresolved source degrades value flows to
+	// conservative semantics, never to a silent pass.
+	ResultWait time.Duration
 }
 
 // Audit modes for Options.AuditMode.
@@ -223,18 +228,31 @@ func (m *Mediator) RecordToolsList(tools []json.RawMessage) {
 // its result (or timeout elapses). Value-level taint is derived from
 // RESULTS; without this gate a pipelined sink call could be evaluated
 // before the source call's data was recorded (a causal race the e2e
-// caught). Timeout degrades conservatively: session-mode rules still hold.
-func (m *Mediator) awaitResults(timeout time.Duration) {
+// caught).
+//
+// It returns the tool names of calls still in flight at timeout (nil =
+// fully drained). Callers MUST treat those as unresolved sources: value
+// flows degrade to conservative semantics for them (assumed tainting),
+// never to a silent pass — the precision model must not quietly become
+// a timing-dependent model.
+func (m *Mediator) awaitResults(timeout time.Duration) []string {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		m.mu.Lock()
 		n := len(m.pendingTools)
 		m.mu.Unlock()
 		if n == 0 {
-			return
+			return nil
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pending := make([]string, 0, len(m.pendingTools))
+	for _, tool := range m.pendingTools {
+		pending = append(pending, tool)
+	}
+	return pending
 }
 
 // Decide runs the full pipeline for one `tools/call` and records the
@@ -281,9 +299,16 @@ func (m *Mediator) DecideMeta(id json.RawMessage, tool string, args, meta json.R
 
 	// 1. Descriptor drift: possible tool poisoning (THREAT_MODEL #2).
 	// Value-level taint needs prior results recorded before we judge
-	// this call; wait briefly for in-flight calls to report.
+	// this call; wait briefly for in-flight calls to report. Sources
+	// still unresolved at timeout are assumed to taint this call below
+	// (conservative degradation — see awaitResults).
+	var unresolved []string
 	if m.opts.Values != nil {
-		m.awaitResults(2 * time.Second)
+		wait := m.opts.ResultWait
+		if wait <= 0 {
+			wait = 2 * time.Second
+		}
+		unresolved = m.awaitResults(wait)
 	}
 	if m.opts.DenyOnDrift && drift {
 		reason := "tool descriptor changed since first listing (possible tool poisoning)"
@@ -315,7 +340,16 @@ func (m *Mediator) DecideMeta(id json.RawMessage, tool string, args, meta json.R
 	var dec policy.Decision
 	decided := false
 	if vfc, ok := m.opts.Evaluator.(policy.ValueFlowChecker); ok && m.opts.Values != nil {
-		if fdec, applied := vfc.CheckFlowValues(&m.taint, tool, m.opts.Values.ContaminatedBy(args)); applied {
+		contaminated := m.opts.Values.ContaminatedBy(args)
+		if len(unresolved) > 0 {
+			// Conservative degradation: a source call that has not
+			// reported yet cannot prove its result is clean, so it is
+			// assumed to taint this call. Precision yields to safety
+			// under unresolved in-flight requests; the decision reason
+			// names the assumption.
+			contaminated = append(contaminated, unresolved...)
+		}
+		if fdec, applied := vfc.CheckFlowValues(&m.taint, tool, contaminated); applied {
 			dec, decided = fdec, true
 		}
 	}
@@ -519,6 +553,23 @@ func (m *Mediator) ask(tool string, args json.RawMessage) (approval.Choice, stri
 		return ec.ConfirmExplain(tool, args)
 	}
 	return m.opts.Confirmer.Confirm(tool, args), ""
+}
+
+// MalformedCall records a boundary rejection of an unparseable
+// tools/call. Nothing crosses the boundary unmediated: a call whose
+// params cannot be parsed is denied at the boundary, recorded as
+// evidence (tool name empty — none was extractable), and never
+// forwarded. The harness receives JSON-RPC -32602 (the proxy/mux layer
+// synthesizes it). Recording failures latch audit-degraded like any
+// other event.
+func (m *Mediator) MalformedCall(id, params json.RawMessage, cause error) {
+	reason := fmt.Sprintf("malformed tools/call: %v (rejected at the boundary, never forwarded)", cause)
+	_, _ = m.appendEvent(session.EventToolCall, session.ToolCallPayload{
+		ID:   id,
+		Tool: "",
+		Args: m.opts.Redactor.RedactJSON(params),
+	})
+	_ = m.recordDecision(id, "deny", "malformed-request", reason)
 }
 
 func (m *Mediator) recordDecision(id json.RawMessage, verdict, ruleID, reason string) error {

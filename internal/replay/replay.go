@@ -47,6 +47,35 @@ type Tape struct {
 	Unanswered   []Interaction     // calls without results (e.g. denied)
 }
 
+// LoadVerified parses a session log AFTER verifying its hash chain.
+// It refuses to serve altered evidence as "the recorded session"
+// (first bad seq + problem are named in the error) unless
+// allowUnverified — the explicit escape hatch for tamper-testing
+// workflows. The returned VerifyResult is always the chain verdict, so
+// callers can surface a loud warning when replaying unverified.
+//
+// Plain Load stays permissive by design: `tapelog test`/fuzz/whatif
+// assert over cassettes (behavioural semantics), and integrity is
+// `tapelog verify`'s job. `tapelog replay` is the trust-bearing
+// surface and uses this gate.
+func LoadVerified(path string, allowUnverified bool) (*Tape, *session.VerifyResult, error) {
+	res, err := session.VerifyFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !res.OK() && !allowUnverified {
+		return nil, res, fmt.Errorf(
+			"session log failed verification (first bad event: seq %d: %s)\n"+
+				"replay will not serve altered evidence as the recorded session; use --allow-unverified to replay anyway (tamper-testing workflows)",
+			res.FirstBadSeq, res.Problem)
+	}
+	tape, err := Load(path)
+	if err != nil {
+		return nil, res, err
+	}
+	return tape, res, nil
+}
+
 // Load parses a session log produced by `tapelog record`. Blob
 // references in args/result are resolved from the content-addressed
 // store next to the log (`<log>.blobs/` — spec/session-log-v0.md §6.2)

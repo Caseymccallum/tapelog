@@ -168,7 +168,7 @@ func (p *Policy) normalize() error {
 		return fmt.Errorf("unsupported policy version %d (want 1)", p.Version)
 	}
 	if p.Default == "" {
-		p.Default = string(VerdictDeny) // fail-closed; set `default: allow` for observe-only
+		p.Default = string(VerdictDeny) // fail-closed; set `default: allow` for permissive, log-everything policies
 	}
 	if !validAction(p.Default) {
 		return fmt.Errorf("invalid default action %q (want allow|deny|confirm)", p.Default)
@@ -257,8 +257,10 @@ func (p *Policy) Evaluate(req Request) Decision {
 	}
 }
 
-// AllowAll is an observe-only evaluator used when no policy file is given:
-// everything is permitted (and recorded) but nothing is enforced.
+// AllowAll is the evaluator used when no policy file is given: every
+// call is allowed and recorded. No policy RULES are enforced in this
+// mode, but the boundary's other protections remain active (schema
+// firewall, limits, drift pinning, injection scan, redaction).
 type AllowAll struct{}
 
 // Evaluate implements Evaluator.
@@ -266,7 +268,7 @@ func (AllowAll) Evaluate(Request) Decision {
 	return Decision{
 		Verdict: VerdictAllow,
 		RuleID:  "observe",
-		Reason:  "no policy configured; observe-only recording",
+		Reason:  "no policy rules; boundary protections remain active",
 	}
 }
 

@@ -9,7 +9,7 @@ session log.
 
 ```yaml
 version: 1
-default: deny            # omitted => deny (fail-closed). Use `allow` for observe-only.
+default: deny            # omitted => deny (fail-closed). Use `allow` for permissive, log-everything policies.
 rules:
   - id: allow-reads      # optional; auto-assigned rule-N
     tool: ["read*", "list*"]   # glob(s): * and ? ; string or list
@@ -249,7 +249,7 @@ injection:
     - '(?i)\bcustomer-data-export\b'
 ```
 
-- **`log`** (default, also in observe-only sessions): the result is
+- **`log`** (default, including no-policy sessions): the result is
   delivered and a `policy/decision` event with `rule_id: injection-scan`
   records the finding. A false positive costs one log line.
 - **`confirm`**: delivery is paused for the human prompt (allow once /
@@ -339,20 +339,20 @@ hashes of the *redacted canonical* descriptor; tool calls wait for in-flight
 The session log is the product, so a failed append is never silent
 (`--audit-mode`, on `record` and `mux`):
 
-- **`strict` (default)** — nothing executes unrecorded. The first failed
+- **`strict` (default)** ï¿½ nothing executes unrecorded. The first failed
   append latches an `audit-degraded` state: the affected call is denied,
   every later call fails closed (`rule_id: audit-degraded`), and a
   `tools/result` that cannot be recorded is not delivered to the harness.
   Availability is sacrificed for audit integrity.
-- **`best-effort`** — explicit opt-out: a loud stderr WARNING and
+- **`best-effort`** ï¿½ explicit opt-out: a loud stderr WARNING and
   enforcement continues. The log may be missing events from the failure
   onward; `tapelog verify` still proves whatever chain exists.
 
 ## Policy sees what the log sees
 
-`where:` conditions evaluate the **redacted** argument object — the same
+`where:` conditions evaluate the **redacted** argument object ï¿½ the same
 deterministic form recorded in the log. That means `tapelog policy whatif`
 re-evaluation reproduces live verdicts exactly (no raw/redacted drift).
 If a rule must match secret-looking *values*, use value-level taint
-(`flows: mode: value`) instead — it inspects raw arguments precisely
+(`flows: mode: value`) instead ï¿½ it inspects raw arguments precisely
 because it is hunting secrets.

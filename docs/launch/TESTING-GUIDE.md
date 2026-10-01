@@ -33,8 +33,8 @@ cmd /c 'set PATH=C:\Program Files\Go\bin;%PATH% && go build -o bin\tapelog.exe .
 You should see mostly `✓`, maybe some `!` (warnings are fine):
 
 ```
-✓ runtime — tapelog 0.3.0-dev, windows/amd64
-! policy — none given — record/mux will run observe-only (add --policy to enforce)
+✓ runtime — tapelog 0.4.0-dev, windows/amd64
+! policy — none given — record/mux will run with no policy rules (boundary protections stay active; add --policy to enforce rules)
 ! plugins — none configured (optional)
 ! os-sandbox — no OS enforcement on this platform (Linux required); policy still enforces
 ✓ terminal — interactive approval prompts available
@@ -69,7 +69,7 @@ secret redaction is on by default):
     1  session/start   harness=unknown policy=observe
     2  tools/list      2 tools
 >   3  tools/call      read_file {"api_key":"[REDACTED]","path":"/tmp/a.txt"}
-+   4  policy/decision allow (observe) — no policy configured; observe-only recording
++   4  policy/decision allow (observe) — no policy rules; boundary protections remain active
 >   5  tools/call      delete_file {"path":"/tmp/a.txt"}
 ...
 ```
@@ -242,7 +242,7 @@ banner, and the timeline shows the deny from Test 4 with its reason.
 
 | Test | Command | What to look for |
 |---|---|---|
-| Replay determinism | `.\bin\tapelog.exe replay my-session.jsonl` (then point an MCP client at it) | recorded answers served verbatim; unknown calls answered with error `-32011` (fail-loud) |
+| Replay determinism | `.\bin\tapelog.exe replay my-session.jsonl` (then point an MCP client at it) | hash chain verified first (tampered logs refused — `--allow-unverified` is the escape hatch); recorded answers served verbatim; unknown calls answered with error `-32011` (fail-loud) |
 | Signed checkpoint | `.\bin\tapelog.exe checkpoint my-session.jsonl --signer ssh --key <key> --witness none` then `verify my-session.jsonl --checkpoint my-session.jsonl.checkpoint.json` | WHO attested the chain head (signature); `--witness rekor` (default) additionally proves WHEN via a transparency log — see docs/CHECKPOINTS.md |
 | Large payloads | `record --blob-threshold 65536 --log big.jsonl …` then `verify big.jsonl` | oversized `args`/`result` live in `big.jsonl.blobs/` with digests in the chain; verify reports `N blob reference(s), all digests verified` |
 | Diff two sessions | `.\bin\tapelog.exe diff my-session.jsonl my-session.jsonl` | `identical` / exit 0 |

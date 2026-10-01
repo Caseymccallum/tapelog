@@ -172,6 +172,54 @@ func TestResultVetoReplacesResponse(t *testing.T) {
 	}
 }
 
+// TestMalformedToolCallRejectedNotForwarded pins the boundary contract
+// (P0): a tools/call the boundary cannot parse is NEVER forwarded to an
+// upstream. It is rejected with structured JSON-RPC -32602 and recorded
+// via OnMalformedCall — calls crossing the boundary are subject to it.
+func TestMalformedToolCallRejectedNotForwarded(t *testing.T) {
+	var clientOut, serverOut syncBuffer
+	var malformed, mediated int
+	done := make(chan error, 1)
+	input := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":"not-an-object"}` + "\n" +
+		`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{}}` + "\n" +
+		`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"arguments":{}}}` + "\n"
+	go func() {
+		done <- Run(context.Background(),
+			strings.NewReader(input), &clientOut,
+			strings.NewReader(""), &serverOut,
+			Hooks{
+				OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
+					mediated++
+					return DecisionAllow, nil
+				},
+				OnMalformedCall: func(id json.RawMessage, params json.RawMessage, cause error) {
+					malformed++
+				},
+			})
+	}()
+	waitRun(t, done)
+
+	if malformed != 3 {
+		t.Fatalf("all three malformed shapes must hit OnMalformedCall, got %d", malformed)
+	}
+	if mediated != 0 {
+		t.Fatalf("malformed calls must never reach OnToolCall, got %d", mediated)
+	}
+	got := clientOut.String()
+	if n := strings.Count(got, `-32602`); n != 3 {
+		t.Fatalf("want 3 structured -32602 rejections, got %d:\n%s", n, got)
+	}
+	if !strings.Contains(got, "malformed-request") || !strings.Contains(got, "invalid_params") {
+		t.Fatalf("rejection must carry structured data (rule/verdict), got:\n%s", got)
+	}
+	if strings.Count(got, `"id":7`) < 1 || strings.Count(got, `"id":9`) < 1 {
+		t.Fatalf("rejections must echo the request ids, got:\n%s", got)
+	}
+	if serverOut.String() != "" {
+		t.Fatalf("malformed tools/call must never reach the server, got:\n%s", serverOut.String())
+	}
+}
+
 func TestCoreMethodPassesUnmediated(t *testing.T) {
 	var clientOut, serverOut syncBuffer
 	line := `{"jsonrpc":"2.0","id":7,"method":"ping","params":{}}`

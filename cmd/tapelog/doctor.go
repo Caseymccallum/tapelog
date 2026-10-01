@@ -49,7 +49,7 @@ approval, and the log location is writable. Exits non-zero on failures.`,
 
 			// 2. Policy compiles (including Cedar conditions + limits).
 			if policyPath == "" {
-				report("!", "policy", "none given — record/mux will run observe-only (add --policy to enforce)")
+				report("!", "policy", "none given — record/mux will run with no policy rules (boundary protections stay active; add --policy to enforce rules)")
 			} else if p, err := policy.Load(policyPath); err != nil {
 				report("✗", "policy", fmt.Sprintf("%s: %v", policyPath, err))
 			} else {

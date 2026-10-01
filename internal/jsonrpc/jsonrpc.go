@@ -12,6 +12,12 @@ import (
 // denies a tool call. Data carries the structured decision.
 const CodeToolDenied = -32010
 
+// CodeInvalidParams is the JSON-RPC error code tapelog returns when a
+// tools/call request cannot be parsed at the boundary (malformed
+// params, missing tool name). The call is rejected and recorded — it
+// never reaches an MCP server.
+const CodeInvalidParams = -32602
+
 // ErrorObj is a JSON-RPC error object.
 type ErrorObj struct {
 	Code    int             `json:"code"`
@@ -60,6 +66,9 @@ type ToolCallParams struct {
 }
 
 // ToolCall extracts MCP tools/call parameters from a request message.
+// A tools/call without a parseable params object or without a tool name
+// is malformed: the boundary must reject it (never forward it), so
+// failure here is a hard error, not a "nothing to mediate" signal.
 func (m *Message) ToolCall() (*ToolCallParams, error) {
 	if m.Method != "tools/call" {
 		return nil, fmt.Errorf("not a tools/call request (method=%q)", m.Method)
@@ -67,6 +76,9 @@ func (m *Message) ToolCall() (*ToolCallParams, error) {
 	var p ToolCallParams
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return nil, fmt.Errorf("decode tools/call params: %w", err)
+	}
+	if p.Name == "" {
+		return nil, fmt.Errorf("tools/call params: missing tool name")
 	}
 	return &p, nil
 }
@@ -100,13 +112,20 @@ func TraceparentOf(meta json.RawMessage) string {
 // DenyResponse synthesizes a structured JSON-RPC error response for a
 // denied tool call. The original request id is echoed back.
 func DenyResponse(id json.RawMessage, data any) *Message {
+	return ErrorResponse(id, CodeToolDenied, "tool call denied by policy", data)
+}
+
+// ErrorResponse synthesizes a JSON-RPC error response with an explicit
+// error code (e.g. CodeInvalidParams for malformed requests the
+// boundary refuses). The original request id is echoed back.
+func ErrorResponse(id json.RawMessage, code int, message string, data any) *Message {
 	dataRaw, _ := json.Marshal(data)
 	return &Message{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error: &ErrorObj{
-			Code:    CodeToolDenied,
-			Message: "tool call denied by policy",
+			Code:    code,
+			Message: message,
 			Data:    dataRaw,
 		},
 	}

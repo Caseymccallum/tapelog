@@ -13,11 +13,16 @@ import (
 func newReplayCmd() *cobra.Command {
 	var match string
 	var strict bool
+	var allowUnverified bool
 	cmd := &cobra.Command{
 		Use:   "replay <session.jsonl>",
 		Short: "Replay a recorded session as a hermetic MCP server",
 		Long: `Serves recorded tool traffic over stdio: any MCP client (e.g. an agent
 harness in CI) can connect and receive exactly the recorded responses.
+
+The session's hash chain is verified first: replay will not quietly
+serve an altered cassette as "the recorded session" (use
+--allow-unverified to replay anyway, e.g. for tamper-testing workflows).
 
 Matching is done on redacted canonical arguments (--match exact|subset|tool).
 Each recording is consumed once; calls without a matching recording are
@@ -28,9 +33,13 @@ answered with error -32011 (fail-loud) and counted.`,
 			if err != nil {
 				return err
 			}
-			tapelog, err := replay.Load(args[0])
+			tapelog, chain, err := replay.LoadVerified(args[0], allowUnverified)
 			if err != nil {
 				return err
+			}
+			if chain != nil && !chain.OK() {
+				fmt.Fprintf(os.Stderr, "tapelog: WARNING — replaying an UNVERIFIED log (first bad event: seq %d: %s); this is not the recorded session\n",
+					chain.FirstBadSeq, chain.Problem)
 			}
 			player := replay.NewPlayer(tapelog, mode)
 			server := &replay.Server{Player: player, Version: version}
@@ -54,5 +63,6 @@ answered with error -32011 (fail-loud) and counted.`,
 	}
 	cmd.Flags().StringVar(&match, "match", "exact", "argument matching: exact|subset|tool")
 	cmd.Flags().BoolVar(&strict, "strict", false, "exit non-zero if any call had no recording")
+	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "replay even if the hash chain fails verification (tamper-testing escape hatch; default refuses altered evidence)")
 	return cmd
 }

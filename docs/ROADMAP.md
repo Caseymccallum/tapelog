@@ -109,6 +109,7 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 
 ## v0.5 — Agent trajectory control
 - [ ] Cross-event constraints as *live* policy (depth, ordering windows, phase budgets beyond today's flows/limits)
+- [ ] Scoped approvals: `allow once` (today) vs invocation-pattern / time-boxed (N minutes) / session-wide grants — today's `allow_session` is session-wide per tool (documented behaviour; maturity step, not a bug)
 - [ ] Drift vs a known-good trajectory baseline — descriptor drift exists; trajectory-level comparison is the
       extension (`tapelog diff` is the seed)
 - [ ] Golden-trajectory regression: recorded trajectories as CI release gates (`tapelog test`)
