@@ -127,6 +127,16 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 			}
 			defer m.Close()
 
+			fmt.Fprintf(os.Stderr, "tapelog: ✓ boundary up — %d upstream(s)\n", len(cfg.Servers))
+			for name, proto := range m.UpstreamProtocols() {
+				era := "legacy handshake"
+				if proto == "2026-07-28" {
+					era = "modern, stateless"
+				}
+				fmt.Fprintf(os.Stderr, "tapelog: ✓ upstream %s — protocol %s (%s)\n", name, proto, era)
+			}
+			fmt.Fprintf(os.Stderr, "tapelog: ✓ policy loaded (%s)\n", policyID)
+			fmt.Fprintf(os.Stderr, "tapelog: ✓ recording to %s (audit mode: %s)\n", logPath, auditMode)
 			fmt.Fprintf(os.Stderr, "tapelog: mux session %s -> %s (%d servers, policy: %s)\n",
 				sessionID, logPath, len(cfg.Servers), policyID)
 			runErr := m.Serve(cmd.Context(), os.Stdin, os.Stdout)

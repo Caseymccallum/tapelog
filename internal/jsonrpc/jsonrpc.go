@@ -83,6 +83,29 @@ func DenyResponse(id json.RawMessage, data any) *Message {
 	}
 }
 
+// WithResultType ensures a result carries the `resultType` discriminator
+// the 2026-07-28 spec requires on every result ("complete" unless the
+// result already declares one, e.g. MRTR "input_required"). Results that
+// are not JSON objects are returned untouched.
+func WithResultType(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+	if _, ok := m["resultType"]; ok {
+		return raw
+	}
+	m["resultType"] = json.RawMessage(`"complete"`)
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
 // Marshal serializes a Message to a single wire line (without newline).
 func Marshal(m *Message) ([]byte, error) {
 	return json.Marshal(m)

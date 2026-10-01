@@ -27,7 +27,12 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 	result := func(id json.RawMessage, v any) error {
 		raw, _ := json.Marshal(v)
-		return write(&jsonrpc.Message{JSONRPC: "2.0", ID: id, Result: raw})
+		// Spec 2026-07-28: every result MUST carry `resultType`. Synthesized
+		// and relayed results get one when absent ("complete"); upstreams
+		// that already declare one (e.g. MRTR "input_required") pass through
+		// untouched. The session log keeps the upstream's verbatim bytes —
+		// this normalization is harness-facing only.
+		return write(&jsonrpc.Message{JSONRPC: "2.0", ID: id, Result: jsonrpc.WithResultType(raw)})
 	}
 	fail := func(id json.RawMessage, code int, msg string, data any) error {
 		var raw json.RawMessage

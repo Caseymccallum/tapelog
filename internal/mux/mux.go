@@ -249,6 +249,16 @@ func (mx *Mux) aggregate(ctx context.Context, method string) (json.RawMessage, e
 	return raw, nil
 }
 
+// UpstreamProtocols reports the negotiated protocol version per upstream
+// (for the startup checklist).
+func (mx *Mux) UpstreamProtocols() map[string]string {
+	out := map[string]string{}
+	for name, u := range mx.byName {
+		out[name] = u.client.Negotiated()
+	}
+	return out
+}
+
 // callServer sends one surface call to a specific upstream.
 func (mx *Mux) callServer(ctx context.Context, server, method string, params json.RawMessage) (json.RawMessage, error) {
 	u := mx.byName[server]

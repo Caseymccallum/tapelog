@@ -7,6 +7,7 @@ dist/
 # session logs are user data — never commit
 *.jsonl
 !examples/calls.jsonl
+!examples/trajectory-demo/agent.jsonl
 !test-fixtures/queue-session.jsonl
 !spec/test-vectors/*.jsonl
 
@@ -29,5 +30,6 @@ gr-check.log
 *-e2e*
 junit.xml
 smoke-junit.xml
+examples/trajectory-demo/scenario-tampered.yaml
 # blanket: transient test output at repo root (*.md is our doc format)
 /*.txt

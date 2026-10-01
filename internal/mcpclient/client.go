@@ -178,6 +178,14 @@ func (c *Client) setProtocol(v string) {
 	c.protocol = v
 }
 
+// Negotiated returns the protocol version agreed with the server
+// ("" before Connect).
+func (c *Client) Negotiated() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.protocol
+}
+
 // currentProtocol returns the negotiated version, defaulting to ours.
 func (c *Client) currentProtocol() string {
 	c.mu.Lock()

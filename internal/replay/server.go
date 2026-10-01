@@ -50,7 +50,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 	result := func(id json.RawMessage, v any) error {
 		raw, _ := json.Marshal(v)
-		return write(&jsonrpc.Message{JSONRPC: "2.0", ID: id, Result: raw})
+		return write(&jsonrpc.Message{JSONRPC: "2.0", ID: id, Result: jsonrpc.WithResultType(raw)})
 	}
 	fail := func(id json.RawMessage, code int, msg string, data any) error {
 		return write(&jsonrpc.Message{

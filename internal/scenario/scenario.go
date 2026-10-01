@@ -13,18 +13,26 @@ import (
 
 // Scenario is one test file: a cassette fixture plus assertions.
 type Scenario struct {
-	Version int    `yaml:"version"`
-	Name    string `yaml:"scenario"`
-	Fixture string `yaml:"fixture"` // recorded session JSONL (cassette)
-	Policy  string `yaml:"policy"`  // optional: re-evaluate verdicts under this policy
+	Version int     `yaml:"version"`
+	Name    string  `yaml:"scenario"`
+	Fixture string  `yaml:"fixture"` // recorded session JSONL (cassette)
+	Policy  string  `yaml:"policy"`  // optional: re-evaluate verdicts under this policy
 	Assert  []Check `yaml:"assert"`
 }
 
 // CalledSpec matches tool calls: glob tool, optional args subset, count.
 type CalledSpec struct {
-	Tool string         `yaml:"tool"`
-	Args map[string]any `yaml:"args"`
+	Tool  string         `yaml:"tool"`
+	Args  map[string]any `yaml:"args"`
 	Times *int           `yaml:"times"` // exact count; nil = at least one
+}
+
+// AttemptSpec matches calls that reached the boundary (answered OR
+// denied) — "the agent tried this", regardless of what the boundary did.
+type AttemptSpec struct {
+	Tool  string         `yaml:"tool"`
+	Args  map[string]any `yaml:"args"`
+	Times *int           `yaml:"times"`
 }
 
 // TaintSpec forbids a flow: no `To` call after a `From` call.
@@ -41,22 +49,24 @@ type ResultSpec struct {
 
 // Check is one assertion. Exactly one field is set (enforced at parse):
 //
-//	called:        {tool, args?, times?}
-//	never_called:  glob
+//	called:        {tool, args?, times?}  (answered calls)
+//	attempted:     {tool, args?, times?}  (answered + denied — boundary saw it)
+//	never_called:  glob                  (answered calls)
 //	sequence:      [tool, tool, ...]   (ordered subsequence of the trajectory)
 //	taint_never:   {from, to}
 //	result_contains: {tool, text}
-//	allowed / denied: glob             (verdict assertions)
+//	allowed / denied: glob             (verdict assertions, answered + denied)
 //	invariant:     name                (boundary invariant)
 type Check struct {
-	Called        *CalledSpec `yaml:"called,omitempty"`
-	NeverCalled   string      `yaml:"never_called,omitempty"`
-	Sequence      []string    `yaml:"sequence,omitempty"`
-	TaintNever    *TaintSpec  `yaml:"taint_never,omitempty"`
-	ResultContains *ResultSpec `yaml:"result_contains,omitempty"`
-	Allowed       string      `yaml:"allowed,omitempty"`
-	Denied        string      `yaml:"denied,omitempty"`
-	Invariant     string      `yaml:"invariant,omitempty"`
+	Called         *CalledSpec  `yaml:"called,omitempty"`
+	Attempted      *AttemptSpec `yaml:"attempted,omitempty"`
+	NeverCalled    string       `yaml:"never_called,omitempty"`
+	Sequence       []string     `yaml:"sequence,omitempty"`
+	TaintNever     *TaintSpec   `yaml:"taint_never,omitempty"`
+	ResultContains *ResultSpec  `yaml:"result_contains,omitempty"`
+	Allowed        string       `yaml:"allowed,omitempty"`
+	Denied         string       `yaml:"denied,omitempty"`
+	Invariant      string       `yaml:"invariant,omitempty"`
 }
 
 // Load parses one scenario file and validates it.
@@ -78,6 +88,9 @@ func Load(path string) (*Scenario, error) {
 	for i, c := range sc.Assert {
 		n := 0
 		if c.Called != nil {
+			n++
+		}
+		if c.Attempted != nil {
 			n++
 		}
 		if c.NeverCalled != "" {

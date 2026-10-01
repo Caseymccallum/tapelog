@@ -62,23 +62,24 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Value-level taint tracking (CaMeL-style) research spike — **shipped as experimental `flows: mode: value` (ADR 0005): contamination-matched value taint with results gate; session semantics preserved for must-never flows**
 
 ## v0.4 — Trusted evidence (feedback-driven; per external plan 2026-09-30)
-- [ ] **MCP compatibility laboratory** — permanent in-repo integration matrix (era × transport × implementation):
-      hermetic scripted servers for 2026-07-28 / 2025-11-25 / legacy over stdio + HTTP (deterministic, CI-blocking;
-      `internal/mcpclient`'s scriptedServer + `mux`'s fakeTransport are the seed) **plus** pinned real-world servers
-      (server-filesystem, fetch, github, postgres — scheduled/non-blocking so CI never depends on live npx fetches).
-      Every cell drives the full loop: discover → connect → tools/list → tools/call → errors → `_meta` → MRTR →
-      redaction → policy → recording → replay → what-if. Expectations drawn from `spec/` conformance vectors.
-      (This cycle found `mux` dropping `_meta`/MRTR `inputResponses` and `server/discover` being policy-mediated —
-      both would have been matrix row failures on day one.)
+- [x] **MCP compatibility laboratory** — **hermetic tier shipped** (`internal/compat/`):
+      era-variant scripted servers (2026-07-28 / 2025-11-25 / 2024-11-05 × stdio + HTTP —
+      6 CI-blocking cells) driving the full loop (discover → connect → tools/list → tools/call →
+      errors → `_meta` → MRTR → redaction → policy → recording → replay → what-if) with
+      server-side wire observations; `internal/compat/fakecmd` is the standalone server binary.
+      Real-world tier scaffolded (`TAPELOG_COMPAT_LIVE=<cmd>`, scheduled/non-blocking) —
+      running it against pinned real servers (server-filesystem, fetch, github, postgres) is
+      the remaining v0.4 work. (This cycle found `mux` dropping `_meta`/MRTR `inputResponses`
+      and `server/discover` being policy-mediated — both would have been matrix row failures.)
 - [ ] **Signed session checkpoints** — `tapelog checkpoint` emits {session, seq, chain_head, timestamp, signature}:
       cosign keyless (Sigstore/Rekor transparency log) or SSH key; `verify --checkpoint <file>` verifies against it.
       Signature proves *who*; the transparency log / timestamp proves *when* — that's what makes "this trajectory
       existed in this exact form" true rather than merely signed. Periodic checkpoints for long sessions;
       `verify --expect` stays the zero-dependency anchor.
-- [ ] **Trajectory assertions in `tapelog test`** — post-hoc cross-event constraints: ordering (A before B,
-      X never after Y), counts (max N calls to X), flow assertions (secret value → external sink must not occur),
-      max depth. Note: the *enforcement* half already exists (`flows:` session + value mode, `limits.max_calls_per_tool`,
-      `action: confirm`) — this is the trajectory **testing** half, expressible without live enforcement config.
+- [ ] **Trajectory assertions in `tapelog test`** — **core shipped**: `attempted:` (answered + denied),
+      `denied:`/`allowed:` over the full boundary (previously blind to denied calls), `sequence:`,
+      `times:`, `taint_never:`, `result_contains:`, `invariant: no_deny_bypassed`; remaining:
+      count ceilings (max N), flow assertions as scenario checks, max depth
 - [ ] Richer inspection/explanation — DENIED blocks with event #, session id, contamination provenance;
       `inspect` renders the causal story of a trajectory.
 - [ ] Session schema v0: add optional causation/correlation fields (parent seq / `_meta.traceparent` passthrough)
@@ -106,9 +107,11 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Live chain verdict in the dashboards — **shipped: `/api/log` re-verifies the chain every poll; ⚠ banner in both dashboards; full re-render on break/truncation**
 - [x] Windows + Roo/Cline integration fix — **shipped (docs): 8.3 short-path recipe in `docs/CLIENT-SETUP.md`, root-caused against Roo 3.54.0 spawn code**
 - [ ] Human launch TODOs: register `tapelog.dev`, demo GIF, repo topics, Show HN post (`docs/launch/SHOW-HN.md`)
-- [ ] **Canonical trajectory demo** (one demo, not ten): scripted agent → tapelog → filesystem server →
-      secret-producing tool → external sink; show normal run → recorded trajectory → policy block → replay →
-      what-if → tamper → verification failure in one artifact (`examples/rogue-agent/` + the TESTING-GUIDE Test 4
-      taint demo are the pieces; assemble into one story). This *is* the real-world validation the plan calls for.
-- [ ] CLI polish: startup checklist (protocol era, policy loaded, audit mode, recording on), DENIED output with
-      event #/session/provenance — first-five-minutes quality
+- [x] **Canonical trajectory demo** — **shipped: `examples/trajectory-demo/`** (demo.ps1 + policy + agent
+      script + scenario): record → trajectory → rule deny + value-taint deny with provenance → verify +
+      chain head → 9 assertions green → what-if 0 changed → replay → tamper → `tapelog test` still GREEN
+      while `verify` pins the edit (the money line) → `--expect` catches truncation. Real-world validation
+      continues with the compat lab's live tier
+- [x] CLI polish: **startup checklist shipped** (✓ boundary/policy/recording/audit-mode; mux reports each
+      upstream's negotiated protocol era). Remaining: DENIED output with event #/session/provenance in
+      `inspect`

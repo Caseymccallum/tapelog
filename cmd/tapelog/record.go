@@ -175,6 +175,9 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				},
 			}
 
+			fmt.Fprintf(os.Stderr, "tapelog: ✓ boundary up — transparent stdio proxy\n")
+			fmt.Fprintf(os.Stderr, "tapelog: ✓ policy loaded (%s)\n", policyID)
+			fmt.Fprintf(os.Stderr, "tapelog: ✓ recording to %s (audit mode: %s)\n", logPath, auditMode)
 			fmt.Fprintf(os.Stderr, "tapelog: session %s -> %s (policy: %s)\n", sessionID, logPath, policyID)
 			runErr := proxy.Run(cmd.Context(), os.Stdin, os.Stdout, serverStdout, serverStdin, hooks)
 			if _, err := writer.Append(session.EventSessionEnd, session.SessionEndPayload{Reason: "client disconnect"}); err != nil {

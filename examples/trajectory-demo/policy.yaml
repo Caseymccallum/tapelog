@@ -1,0 +1,15 @@
+# Canonical trajectory demo policy: one hard rule + one value-taint flow.
+version: 1
+default: allow
+rules:
+  - id: no-delete
+    tool: "delete_file"
+    action: deny
+    reason: "deletes are not delegated to agents"
+flows:
+  - id: no-secret-exfil
+    from: ["read_secrets"]
+    to: ["send_*"]
+    mode: value
+    action: deny
+    reason: "secret values must not reach a sink"
