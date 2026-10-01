@@ -61,10 +61,42 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Web dashboard: multi-session support — **v1 shipped: `tapelog web --dir` session browser (list + per-session timeline, traversal-proof)**
 - [x] Value-level taint tracking (CaMeL-style) research spike — **shipped as experimental `flows: mode: value` (ADR 0005): contamination-matched value taint with results gate; session semantics preserved for must-never flows**
 
-## v0.4 candidates (feedback-driven)
-- [ ] Signed session checkpoints — sign the chain head at session end (cosign/keyless or SSH key) so the `verify --expect` anchor becomes self-certifying instead of manually recorded
-- [ ] `subscriptions/listen` support — the 2026-07-28 long-lived server→client notification stream; mux currently serves list changes via per-request refresh only (MRTR `input_required`/`inputResponses` flows through today)
+## v0.4 — Trusted evidence (feedback-driven; per external plan 2026-09-30)
+- [ ] **MCP compatibility laboratory** — permanent in-repo integration matrix (era × transport × implementation):
+      hermetic scripted servers for 2026-07-28 / 2025-11-25 / legacy over stdio + HTTP (deterministic, CI-blocking;
+      `internal/mcpclient`'s scriptedServer + `mux`'s fakeTransport are the seed) **plus** pinned real-world servers
+      (server-filesystem, fetch, github, postgres — scheduled/non-blocking so CI never depends on live npx fetches).
+      Every cell drives the full loop: discover → connect → tools/list → tools/call → errors → `_meta` → MRTR →
+      redaction → policy → recording → replay → what-if. Expectations drawn from `spec/` conformance vectors.
+      (This cycle found `mux` dropping `_meta`/MRTR `inputResponses` and `server/discover` being policy-mediated —
+      both would have been matrix row failures on day one.)
+- [ ] **Signed session checkpoints** — `tapelog checkpoint` emits {session, seq, chain_head, timestamp, signature}:
+      cosign keyless (Sigstore/Rekor transparency log) or SSH key; `verify --checkpoint <file>` verifies against it.
+      Signature proves *who*; the transparency log / timestamp proves *when* — that's what makes "this trajectory
+      existed in this exact form" true rather than merely signed. Periodic checkpoints for long sessions;
+      `verify --expect` stays the zero-dependency anchor.
+- [ ] **Trajectory assertions in `tapelog test`** — post-hoc cross-event constraints: ordering (A before B,
+      X never after Y), counts (max N calls to X), flow assertions (secret value → external sink must not occur),
+      max depth. Note: the *enforcement* half already exists (`flows:` session + value mode, `limits.max_calls_per_tool`,
+      `action: confirm`) — this is the trajectory **testing** half, expressible without live enforcement config.
+- [ ] Richer inspection/explanation — DENIED blocks with event #, session id, contamination provenance;
+      `inspect` renders the causal story of a trajectory.
+- [ ] Session schema v0: add optional causation/correlation fields (parent seq / `_meta.traceparent` passthrough)
+      so v0.6 async events attach without a schema break (prep work, not a break).
 - [ ] Blob refs for large payloads — store `args`/`result` out-of-band with a digest reference (spec/FAQ.md gap; replay needs the blob store)
+
+## v0.5 — Agent trajectory control
+- [ ] Cross-event constraints as *live* policy (depth, ordering windows, phase budgets beyond today's flows/limits)
+- [ ] Drift vs a known-good trajectory baseline — descriptor drift exists; trajectory-level comparison is the
+      extension (`tapelog diff` is the seed)
+- [ ] Golden-trajectory regression: recorded trajectories as CI release gates (`tapelog test`)
+
+## v0.6 — Async/event-native MCP (deliberately last)
+- [ ] `subscriptions/listen` — the 2026-07-28 long-lived server→client notification stream (mux serves list
+      changes via per-request refresh today; MRTR `input_required`/`inputResponses` already flows through)
+- [ ] Long-running Tasks + progress/event recording with causal linkage (request → task → progress → server
+      event → agent reaction → new call) — capture causality, not just new methods
+- [ ] Asynchronous replay that reorders streams deterministically
 
 ## v0.3 candidates / launch prep (2026-09-30)
 - [x] Fuzz operators v2 — **shipped: `arg_unicode`, `arg_boundary`, `arg_encoding`, `tool_namespace`, `swap_rotate` (13 operators total)**
@@ -74,3 +106,9 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Live chain verdict in the dashboards — **shipped: `/api/log` re-verifies the chain every poll; ⚠ banner in both dashboards; full re-render on break/truncation**
 - [x] Windows + Roo/Cline integration fix — **shipped (docs): 8.3 short-path recipe in `docs/CLIENT-SETUP.md`, root-caused against Roo 3.54.0 spawn code**
 - [ ] Human launch TODOs: register `tapelog.dev`, demo GIF, repo topics, Show HN post (`docs/launch/SHOW-HN.md`)
+- [ ] **Canonical trajectory demo** (one demo, not ten): scripted agent → tapelog → filesystem server →
+      secret-producing tool → external sink; show normal run → recorded trajectory → policy block → replay →
+      what-if → tamper → verification failure in one artifact (`examples/rogue-agent/` + the TESTING-GUIDE Test 4
+      taint demo are the pieces; assemble into one story). This *is* the real-world validation the plan calls for.
+- [ ] CLI polish: startup checklist (protocol era, policy loaded, audit mode, recording on), DENIED output with
+      event #/session/provenance — first-five-minutes quality
