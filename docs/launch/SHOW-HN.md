@@ -14,42 +14,62 @@ resonates more than security framing, and "rr" is a known-good analogy.
 ## Post body (draft)
 
 > We kept debugging agents by printf-ing JSON blobs, so we built tapelog:
-> a local-first boundary layer between agent harnesses (Claude Code, Codex
-> CLI, anything MCP) and their tool servers.
+> a flight recorder for agent tool use — a local-first boundary layer
+> between agent harnesses (Claude Code, Codex CLI, anything MCP) and
+> their tool servers.
 >
-> Four things, one binary:
+> The whole product in one story (this is the demo — it's in the repo,
+> runnable in about a minute, no agent needed):
 >
-> 1. **Record everything.** Every tool call, result and policy verdict goes
->    into a hash-chained session log. Secrets are redacted before hashing;
->    `tapelog verify` detects any modification, deletion or reordering —
->    including edited events whose hashes were recomputed (the next link
->    exposes them). An attacker who rewrites the *entire* log can produce a
->    self-consistent chain, so each run prints a chain head — record it
->    somewhere outside the log (CI output, a ticket) and `verify --expect`
->    catches whole-log rewrites and truncation too.
+> 1. An agent makes a dangerous call — exfiltrating a secret to a sink.
+> 2. tapelog **denies it at the boundary**; the call never executes.
+> 3. Evidence shows exactly **why**: the rule, the reason, and the
+>    provenance ("value from read_secrets — produced at call #1").
+> 4. `verify` proves the evidence chain and prints a chain head you can
+>    anchor outside the log.
+> 5. `replay` turns the session into a **hermetic MCP server** — the same
+>    answers, forever, in CI.
+> 6. `policy whatif` shows exactly which verdicts **another policy** would
+>    have produced.
+> 7. Tamper with the log.
+> 8. The behavioural assertions still see the cassette... but integrity
+>    verification catches the alteration. The money line: *behavioural
+>    tests pass on a tampered log; the hash chain doesn't.*
+>
+> Under the hood, one binary, four capabilities:
+>
+> 1. **Record everything.** Every tool call, result and policy verdict
+>    goes into a hash-chained session log. Secrets are redacted before
+>    hashing; `tapelog verify` detects any modification, deletion or
+>    reordering — including edited events whose hashes were recomputed.
+>    Each run prints a chain head for external anchoring, and signed
+>    checkpoints prove *who* attested it and *when*.
 > 2. **A hard boundary.** YAML policies (`allow`/`confirm`/`deny`) with
 >    explainable decisions, scoped grants with expiry, and argument
->    conditions written in Cedar (we didn't invent an expression language).
->    A denied call never reaches the server. Tool descriptors are
->    hash-pinned — if a server changes its tool's behavior mid-session
->    (poisoning/rug pull), `--deny-on-drift` stops it.
+>    conditions written in Cedar (we didn't invent an expression
+>    language). A denied call never reaches the server. Tool descriptors
+>    are hash-pinned — if a server changes its tool's behavior
+>    mid-session (poisoning/rug pull), `--deny-on-drift` stops it.
 > 3. **Deterministic replay.** The log *is* a tapelog: `tapelog replay`
 >    serves a recorded session as a hermetic MCP server for agent
 >    regression tests. VCR semantics: redaction-aware matching (a fresh
 >    secret still matches its recording), consume-once, fail-loud on
 >    missing recordings. Plus `diff` and `policy whatif` for CI.
 > 4. **Regression CI for tool trajectories.** `tapelog test` asserts over
->    recorded sessions (called/never_called/sequence/invariants — no LLM
->    judge), `tapelog fuzz` mutates recorded calls hunting policy holes,
->    `tapelog doctor` preflights the setup. The eval wave scores prompts;
->    nobody scores the tool-call trajectory.
+>    recorded sessions (called/never_called/sequence/flows/invariants —
+>    no LLM judge), `tapelog fuzz` mutates recorded calls hunting policy
+>    holes, `tapelog doctor` preflights the setup. The eval wave scores
+>    prompts; the tool-call trajectory is what your agent actually *did*
+>    — that's what we assert over.
 >
 > There's also a TUI inspector and OTLP export (GenAI semconv spans).
 >
 > We did the market research first (full report in the repo): enterprise
-> "agent governance" platforms cover policy+audit, and observability tools
-> cover traces, but nobody shipped *replay*. We think that's the missing
-> primitive — it's the one feature every debugging session wants.
+> "agent governance" platforms cover policy+audit, and observability
+> tools cover traces. We think deterministic replay is the missing
+> primitive — it's the one feature every debugging session wants. See
+> the workflow and judge for yourself; the five-minute quickstart is in
+> the repo.
 >
 > Honest non-claims (docs/THREAT_MODEL.md): we don't sandbox tool
 > execution by default (opt-in Landlock on Linux), we don't filter prompt

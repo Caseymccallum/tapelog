@@ -4,6 +4,20 @@ Thanks for your interest! Tapelog is pre-1.0 and moving fast (current
 main: `v0.4.0-dev` — see the README status block) — issues labeled
 `help-wanted` and `good-first-issue` are fair game anytime.
 
+## The five-minute test (acceptance criterion)
+
+A stranger must be able to understand tapelog, install it, put it in
+front of one MCP server, record a real interaction, and replay it —
+within five minutes ([docs/QUICKSTART.md](docs/QUICKSTART.md)). The
+follow-on five minutes (record → denied call → inspect → verify →
+replay → what-if) must stay demonstrable end to end
+([examples/trajectory-demo](../examples/trajectory-demo)).
+
+Every change is judged against that. If a change makes the product
+slower to understand, install, or prove — or breaks the demo path — it
+has to earn that cost explicitly in review. This is the product filter:
+adoption friction is a bug.
+
 ## Development setup
 
 Requirements: **Go ≥ 1.27**, `git`. (Windows/macOS/Linux all supported.)

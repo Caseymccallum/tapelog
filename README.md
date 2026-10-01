@@ -87,7 +87,7 @@ under a client, `confirm` verdicts go to the approval queue (web UI on
 
 ## What you get
 
-Agents can read files, run commands, and call the network on our behalf — and today, when something goes wrong, we debug by printf-ing JSON blobs. Enterprise "agent governance" platforms exist (see [RESEARCH.md](RESEARCH.md) for the full landscape), but nobody ships the developer-grade basics:
+Agents can read files, run commands, and call the network on our behalf — and today, when something goes wrong, we debug by printf-ing JSON blobs. Tapelog combines tamper-evident recording, policy enforcement, deterministic replay, and trajectory regression testing into one local developer workflow for MCP traffic:
 
 1. **Record everything** — a tamper-evident, hash-chained session log of every tool call, result, and policy verdict.
 2. **Enforce a hard boundary** — declarative allow/deny/confirm policy with *explainable* deny reasons, an **inbound schema firewall** (arguments must satisfy the server's own `inputSchema`), **session budgets / rate limits / payload caps**, **prompt-injection scanning of results**, cross-tool taint rules, and tool-poisoning drift detection (a fully prompt-injected agent must not exceed its delegated authority).
@@ -201,6 +201,7 @@ tapelog web --dir ./sessions
 - **Local-first.** No hosted service, no phone-home. Your traces stay on your machine.
 - **Record everything, enforce what you can prove, replay the rest.** No security theater.
 - **Untrusted-model assumption.** The model may be fully prompt-injected; the boundary must still hold.
+- **The five-minute test.** A stranger gets from zero to a recorded, replayed session in five minutes ([docs/QUICKSTART.md](docs/QUICKSTART.md)). Every change is judged against that — if it costs time-to-value, it has to earn it.
 - **Interoperable by default.** MCP spec `2026-07-28`, OpenTelemetry GenAI semantic conventions, language-neutral log schema.
 - **Reuse over reinvention.** See the [bill of materials](STACK.md).
 

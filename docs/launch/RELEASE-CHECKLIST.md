@@ -1,14 +1,37 @@
 # Release Checklist
 
-## v0.3.0 (current — launch prep)
+## v0.4.0 (current — launch candidate `4f777cf`+)
+
+- [x] Feature cut: MCP compat lab (hermetic matrix + real-world tier),
+      signed checkpoints (SSHSIG/cosign + Rekor witness), DENIED provenance
+      in `inspect`, trajectory assertion hardening (count ceilings, flow
+      assertions, `max_depth`), schema causation/correlation + blob refs
+      (spec §6.1/§6.2), external-audit fixes (P0 boundary rejections,
+      replay verify-first, conservative value-taint), raw-protocol
+      fail-closed invariant, `docs/QUICKSTART.md`
+- [ ] **Release-day version transition** — every `0.4.0-dev` reference in
+      the public onboarding path must become the release version:
+      `internal/buildinfo/buildinfo.go` (source of truth; goreleaser
+      stamps binaries from it at tag time), README status block,
+      docs/QUICKSTART.md (`tapelog version` output line),
+      docs/launch/TESTING-GUIDE.md (doctor output line), CONTRIBUTING.md,
+      CHANGELOG.md status note. **Verify with
+      `git grep -n "0\.4\.0-dev"` — expect zero hits outside historical CHANGELOG entries and this checklist after the bump.**
+- [ ] CHANGELOG `v0.4` section cut + version set to `0.4.0`
+- [ ] Demo GIF + human launch TODOs (domain, contacts, Show HN) — see
+      `docs/ROADMAP.md` and `docs/launch/SHOW-HN.md` (post body now leads
+      with the trajectory demo story)
+- [ ] Walk the **five-minute test** on a clean machine
+      (docs/QUICKSTART.md) and the second five minutes
+      (examples/trajectory-demo) — it is the acceptance criterion
+      (CONTRIBUTING.md)
+
+## v0.3.x (folded into v0.4.0)
 
 - [x] Feature cut: value-level taint (ADR 0005), fuzz operators v2,
       `tapelog test` CI integrations (`--junit`/`--annotate` + dogfood job),
       spec community docs, live-tamper-safe recording, live chain verdicts
       in both dashboards, `docs/CLIENT-SETUP.md`
-- [ ] CHANGELOG `v0.3` section cut + version set to `0.3.0`
-- [ ] Demo GIF + human launch TODOs (domain, contacts, Show HN) — see
-      `docs/ROADMAP.md` v0.3 section and `docs/launch/SHOW-HN.md`
 
 ## v0.2.0 (released)
 
