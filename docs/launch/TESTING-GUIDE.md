@@ -243,6 +243,8 @@ banner, and the timeline shows the deny from Test 4 with its reason.
 | Test | Command | What to look for |
 |---|---|---|
 | Replay determinism | `.\bin\tapelog.exe replay my-session.jsonl` (then point an MCP client at it) | recorded answers served verbatim; unknown calls answered with error `-32011` (fail-loud) |
+| Signed checkpoint | `.\bin\tapelog.exe checkpoint my-session.jsonl --signer ssh --key <key> --witness none` then `verify my-session.jsonl --checkpoint my-session.jsonl.checkpoint.json` | WHO attested the chain head (signature); `--witness rekor` (default) additionally proves WHEN via a transparency log — see docs/CHECKPOINTS.md |
+| Large payloads | `record --blob-threshold 65536 --log big.jsonl …` then `verify big.jsonl` | oversized `args`/`result` live in `big.jsonl.blobs/` with digests in the chain; verify reports `N blob reference(s), all digests verified` |
 | Diff two sessions | `.\bin\tapelog.exe diff my-session.jsonl my-session.jsonl` | `identical` / exit 0 |
 | What-if a policy | `.\bin\tapelog.exe policy whatif --policy packs\filesystem.yaml my-session.jsonl` | which recorded calls *would* change verdict under the new policy |
 | Export | `.\bin\tapelog.exe export --help` | other formats (JSON/OTel) |

@@ -35,11 +35,14 @@ Keep **Cedar** as primary (explainable deny is our differentiator) â€” now 
 | Policy decisions | `cedar-policy/cedar-go` | Apache-2.0 | official Cedar org, v1.8.x; Cedar = **CNCF sandbox** | `is_authorized` + diagnostics â†’ explainable deny for free. `cedar-policy/cedar-wasm` as future plugin path. |
 | Traces / OTel export | `opentelemetry/opentelemetry-go` + `otel-go-contrib` | Apache-2.0 | mature (Go = OTel reference impl) | GenAI semconv attributes mapped on our spans. |
 | CLI | `spf13/cobra` | Apache-2.0 | industry standard | `gh`, `trivy`, `cosign` all built on it. |
-| TUI (viewer/scrubber) | `charmbracelet/bubbletea` + `lipgloss` + `bubbles` | MIT | 30kâ˜…+ ecosystem | Also `charmbracelet/huh` for confirm prompts (require-confirm flow). |
-| Config (policy file) | `gopkg.in/yaml.v3` + `spf13/viper` (or koanf) | MIT | mature | Human-friendly YAML front-end compiling to Cedar. |
-| Embedded index for cassettes | `modernc.org/sqlite` (pure-Go, no cgo) | BSD-3 | active | JSONL remains source of truth; sqlite = queryable index only. Alternative: `etcd-io/bbolt`. |
-| JSON Schema validation (session schema) | `santhosh-tekuri/jsonschema` | Apache-2.0 | mature | Validate every log entry at write + replay time. |
-| Secret scanning in logs | `gitleaks/gitleaks` `detect` package (as library) | MIT | 3.8kâ˜…, battle-tested | Regex/pattern redaction engine reuse; plus our own MCP-context patterns. |
+| TUI (viewer/scrubber) | `charmbracelet/bubbletea` + `lipgloss` | MIT | 30kâ˜…+ ecosystem | **decision revised:** `bubbles`/`huh` never adopted — the inspector is one custom view and confirm prompts are plain terminal I/O. |
+| Config (policy file) | `gopkg.in/yaml.v3` | MIT | mature | Human-friendly YAML front-end compiling to Cedar. **decision revised:** `viper`/`koanf` never adopted — flags + one file is enough config. |
+| Embedded index for cassettes | ~~`modernc.org/sqlite`~~ **deferred: not adopted in v0.x** | BSD-3 | active | JSONL remains the source of truth and is scanned directly at current scale; revisit if session catalogs get large. |
+| JSON Schema validation (session schema) | `santhosh-tekuri/jsonschema` (v6) | Apache-2.0 | mature | Used by the inbound schema firewall (`internal/schemafire`) against tool `inputSchema`s. |
+| Secret scanning in logs | ~~`gitleaks/gitleaks` `detect` package (as library)~~ **decision revised: hand-rolled redactor** (`internal/session`: sensitive field names + credential-shape regexes, deterministic, applied before hashing) | MIT | 3.8kâ˜…, battle-tested | Regex/pattern redaction engine reuse; plus our own MCP-context patterns. **decision revised:** gitleaks not adopted (dependency weight; its config model doesn't fit per-call redaction) — org-specific rules plug in via the plugin `redact_hook`. |
+| WASM plugins | `tetratelabs/wazero` | Apache-2.0 | active | Pure-Go runtime keeps the single static binary (docs/PLUGINS.md). |
+| OS sandbox (spawned servers) | `landlock-lsm/go-landlock` | MIT | kernel-backed (Linux) | Opt-in defense-in-depth (`--sandbox-ro`/`--sandbox-rw`), strict by default. |
+| Checkpoint signatures | `golang.org/x/crypto/ssh` (SSHSIG) | BSD-3 | OpenSSH-interoperable | `ssh-keygen -Y verify` compatible; cosign keyless for identity-anchored signing (docs/CHECKPOINTS.md). |
 
 ### Build small (justified)
 | Need | Why build | Size |
@@ -62,7 +65,7 @@ Keep **Cedar** as primary (explainable deny is our differentiator) â€” now 
 ### Explicitly rejected / deferred
 - **OPA/Rego as user-facing policy language** â€” poor DX for this audience; keep as later escape hatch behind `Evaluator` interface.
 - **AGPL** â€” Daytona dead-end lesson; **ELv2** â€” Phoenix's non-OSI trap. Use **Apache-2.0**.
-- Building an eBPF/kernel layer (Meta mcpguard-dynamic territory) â€” v3+; v1 is userland proxy, defense-in-depth later via Landlock/seccomp hooks.
+- Building an eBPF/kernel layer (Meta mcpguard-dynamic territory) â€” v3+; v1 is userland proxy, with Landlock filesystem sandboxing shipped as opt-in defense-in-depth (`internal/sandbox`); cgroup/seccomp limits remain deferred.
 - Any hosted/telemetry-phone-home component â€” local-first is the brand.
 
 ## 3. What this means for week 1

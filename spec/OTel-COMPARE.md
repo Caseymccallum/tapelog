@@ -46,7 +46,7 @@ right tool, and you should keep it.
 ## Bridging (both directions)
 
 - **tapelog → OTel**: tapelog exports decision spans (`internal/otelx`;
-  `record --otel`) — each tool call as a span with verdict, rule, and
+  `tapelog export otel`) — each tool call as a span with verdict, rule, and
   session context, so you keep your dashboards. The session log remains
   the source of truth; spans are a projection.
 - **OTel → session log**: a Reader conformance class implementation can

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest! Tapelog is pre-1.0 and moving fast (v0.3 in
+Thanks for your interest! Tapelog is pre-1.0 and moving fast (v0.3–v0.4 in
 progress) — issues labeled `help-wanted` and `good-first-issue` are fair
 game anytime.
 

@@ -146,13 +146,14 @@ tapelog web --dir ./sessions
 | [docs/CLIENT-SETUP.md](docs/CLIENT-SETUP.md) | **Put it in front of your agent** — Roo Code, VS Code, Claude, any stdio client |
 | [docs/TESTING.md](docs/TESTING.md) | **Agent regression testing** — scenario DSL over cassettes (`tapelog test`) |
 | [docs/CHECKPOINTS.md](docs/CHECKPOINTS.md) | **Signed checkpoints** — who attested the chain head, and when (transparency-witnessed) |
+| [docs/PLUGINS.md](docs/PLUGINS.md) | **WASM plugins** — sandboxed verdict/redact hooks (`--plugin`, wazero) |
 | [spec/](spec/) | **The Agent Session Log Format spec** — normative rules, JSON Schema, conformance test vectors |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
-| [docs/launch/SHOW-HN.md](docs/launch/SHOW-HN.md) | Launch kit: post draft, checklist, talking points |
+| [docs/launch/](docs/launch/) | Launch kit: post draft, checklist, and the hands-on [testing guide](docs/launch/TESTING-GUIDE.md) |
 | [adapters/](adapters/) | TypeScript & Python config adapters (thin, dependency-free) |
 | [examples/rogue-agent/](examples/rogue-agent/) | The 60-second attack-story demo |
 | [examples/trajectory-demo/](examples/trajectory-demo/) | The canonical demo: record → deny → verify → assertions → replay → tamper |
-| [RESEARCH.md](RESEARCH.md) / [STACK.md](STACK.md) | Market research & stack decisions |
+| [RESEARCH.md](RESEARCH.md) / [STACK.md](STACK.md) / [docs/RESEARCH-EVOLUTION.md](docs/RESEARCH-EVOLUTION.md) | Market research, stack decisions & eval-method notes |
 | [docs/adr/](docs/adr/) | Architecture decision records |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [GOVERNANCE.md](GOVERNANCE.md) / [SECURITY.md](SECURITY.md) | Project governance & vulnerability reporting |
