@@ -3,7 +3,7 @@
 **The flight recorder and deterministic replay for AI agents.**
 `rr` for tool-calling agents — record every MCP tool call, enforce policy at the boundary, and replay any session.
 
-> **Status: v0.2.0 released · v0.3 in progress** (see
+> **Status: v0.2.0 released · v0.3–v0.4 in progress** (see
 > [CHANGELOG](CHANGELOG.md)). Local-first, single binary, Apache-2.0.
 > Follow the [roadmap](docs/ROADMAP.md) or read the
 > [threat model](docs/THREAT_MODEL.md).
@@ -93,8 +93,14 @@ tapelog replay session.jsonl --strict
 # Compare two sessions (e.g. replay vs. live, or before/after a change):
 tapelog diff session-a.jsonl session-b.jsonl
 
-# Inspect a session (interactive TUI, or --plain for CI):
+# Inspect a session (interactive TUI, or --plain for CI — deny blocks get
+# event #/provenance ("value from read_secrets — produced at call #1")):
 tapelog inspect session.jsonl
+
+# Sign the session state and witness it in a transparency log (proves
+# WHO attested the head and WHEN — see docs/CHECKPOINTS.md):
+tapelog checkpoint session.jsonl --signer ssh --key ~/.ssh/id_ed25519
+tapelog verify session.jsonl --checkpoint session.jsonl.checkpoint.json
 
 # Export the session as an OpenTelemetry trace (OTLP or stdout):
 tapelog export otel session.jsonl --endpoint http://localhost:4318/v1/traces
@@ -139,11 +145,13 @@ tapelog web --dir ./sessions
 | [docs/POLICY.md](docs/POLICY.md) | Policy language reference (rules, scoped grants, Cedar `where`) |
 | [docs/CLIENT-SETUP.md](docs/CLIENT-SETUP.md) | **Put it in front of your agent** — Roo Code, VS Code, Claude, any stdio client |
 | [docs/TESTING.md](docs/TESTING.md) | **Agent regression testing** — scenario DSL over cassettes (`tapelog test`) |
+| [docs/CHECKPOINTS.md](docs/CHECKPOINTS.md) | **Signed checkpoints** — who attested the chain head, and when (transparency-witnessed) |
 | [spec/](spec/) | **The Agent Session Log Format spec** — normative rules, JSON Schema, conformance test vectors |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
 | [docs/launch/SHOW-HN.md](docs/launch/SHOW-HN.md) | Launch kit: post draft, checklist, talking points |
 | [adapters/](adapters/) | TypeScript & Python config adapters (thin, dependency-free) |
 | [examples/rogue-agent/](examples/rogue-agent/) | The 60-second attack-story demo |
+| [examples/trajectory-demo/](examples/trajectory-demo/) | The canonical demo: record → deny → verify → assertions → replay → tamper |
 | [RESEARCH.md](RESEARCH.md) / [STACK.md](STACK.md) | Market research & stack decisions |
 | [docs/adr/](docs/adr/) | Architecture decision records |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |

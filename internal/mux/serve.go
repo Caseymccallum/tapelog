@@ -125,7 +125,7 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				continue
 			}
 
-			outcome := mx.med.Decide(msg.ID, call.Name, call.Arguments)
+			outcome := mx.med.DecideMeta(msg.ID, call.Name, call.Arguments, call.Meta)
 			if !outcome.Allowed {
 				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool call denied by policy", map[string]any{
 					"code": "tool_denied", "rule_id": outcome.RuleID,
@@ -179,7 +179,7 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		default:
 			// Every other method (resources/read, prompts/get, ...) is a
 			// surface call: mediate it like a tool call, then forward.
-			outcome := mx.med.Decide(msg.ID, msg.Method, msg.Params)
+			outcome := mx.med.DecideMeta(msg.ID, msg.Method, msg.Params, jsonrpc.MetaOf(msg.Params))
 			if !outcome.Allowed {
 				if err := fail(msg.ID, jsonrpc.CodeToolDenied, "tool call denied by policy", map[string]any{
 					"code": "tool_denied", "rule_id": outcome.RuleID,

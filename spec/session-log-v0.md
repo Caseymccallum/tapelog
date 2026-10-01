@@ -130,6 +130,55 @@ Writers MUST emit `policy/decision` for every `tools/call`. `tools/result`
 is omitted when a call never executed (e.g. denied). Unknown future
 `type` values MUST be ignored by readers (forward compatibility).
 
+### 6.1 Causation & correlation (optional, additive)
+
+All `tools/call`, `policy/decision`, and `tools/result` payloads MAY
+carry two optional linkage fields (readers MUST ignore them when
+absent; they are additive and were introduced while `v: 0`):
+
+- `parent_seq` (integer): the `seq` of the event that *caused* this
+  event. A `policy/decision` or `tools/result` SHOULD point at its
+  `tools/call` event; an async continuation (task progress, notification
+  follow-up) points at the event that spawned it. Absent = no known
+  parent (e.g. the initiating call).
+- `traceparent` (string): the W3C `traceparent` value copied verbatim
+  from the request's `_meta.traceparent` when the transport carried one
+  (MCP `_meta` passthrough). Correlation only — NOT integrity-protected
+  beyond the hash chain (it is inside the hashed payload).
+
+Neither field changes the canonical form rules (§4): they are ordinary
+payload keys hashed with the rest. A future `v: 0` async event type can
+attach to an existing call via `parent_seq` without a schema break.
+
+### 6.2 Large payloads: blob references (optional conformance class: **BlobStore**)
+
+Any `args` or `result` value MAY instead be a **blob reference**
+placeholder:
+
+```json
+{"$blob": {"sha256": "<64 hex>", "size": <bytes>}}
+```
+
+The referenced bytes live out-of-band (tapelog: a content-addressed
+`<log>.blobs/` directory, `<digest>.blob` files). Rules:
+
+1. The placeholder is what enters the canonical form and the hash chain:
+   the chain therefore binds the *digest*, so replacing the out-of-band
+   blob is detectable (recompute SHA-256 of the bytes and compare).
+2. A reader that resolves blobs MUST verify the digest and MUST fail
+   loudly on a missing or mismatched blob — it MUST NOT replay, assert
+   over, or display the placeholder as if it were content.
+3. A reader that does NOT resolve blobs (e.g. a pure chain verifier) can
+   still verify the chain; it SHOULD report unresolvable references when
+   the consumer asked for content.
+4. Writers SHOULD only offload `args`/`result` (payload fields whose
+   values are content), never structural fields (`id`, `tool`, …).
+
+tapelog implements this via `record --blob-threshold N` (off by
+default); `tapelog verify` checks blob digests whenever the store is
+present. Replay, `tapelog test`, and `whatif` resolve placeholders from
+the store and fail loud when it is missing.
+
 ## 7. Redaction (normative requirement, informative patterns)
 
 Writers MUST NOT store secret material in the log:

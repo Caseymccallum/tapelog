@@ -23,13 +23,17 @@
 
 | Package | Responsibility |
 |---|---|
-| `cmd/tapelog` | CLI (cobra): `record`, `mux`, `verify`, `replay`, `diff`, `inspect`, `export`, `policy`, `test`, `fuzz`, `doctor`, `web`, `queue`, `completion`, `version` |
+| `cmd/tapelog` | CLI (cobra): `record`, `mux`, `verify`, `checkpoint`, `replay`, `diff`, `inspect`, `export`, `policy`, `test`, `fuzz`, `doctor`, `web`, `queue`, `completion`, `version` |
 | `internal/jsonrpc` | JSON-RPC 2.0 envelope parsing/serialization for the MCP wire format |
 | `internal/proxy` | Transparent bidirectional MCP relay; interception hooks; deny short-circuit |
 | `internal/mediator` | Per-session decision pipeline: drift pinning, schema firewall, limits, flows/taint, injection scan, confirm routing, recording |
 | `internal/policy` | `Evaluator` interface, YAML policy loader, glob matching, explainable decisions |
 | `internal/session` | Event types, hash-chained JSONL writer/verifier, redaction |
+| `internal/checkpoint` | Signed session checkpoints: SSHSIG/cosign signers + Rekor transparency witness (offline verification) |
 | `internal/replay` | Deterministic re-execution of a recorded session as a hermetic MCP server |
+| `internal/scenario` | `tapelog test`: trajectory assertions over recorded cassettes |
+| `internal/compat` | MCP compatibility laboratory: hermetic era matrix + real-world tier (`compat/fakecmd` server binary) |
+| `internal/tui` | Session viewer (`inspect`): timeline, deny provenance, causal story |
 | `internal/approval` | Parked-approval queue (remote human-in-the-loop) |
 | `internal/web` | Embedded review dashboard (approvals + live session log + chain verdicts) |
 | `spec/` | The session log format: normative spec + JSON Schema + conformance vectors |

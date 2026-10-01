@@ -43,6 +43,7 @@ func newRecordCmd() *cobra.Command {
 		sandboxLax   bool
 		auditMode    string
 		strictSchemas bool
+		blobThreshold int
 		approvalListen  string
 		approvalToken   string
 		approvalTimeout time.Duration
@@ -115,6 +116,10 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 			}
 			schemas := schemafire.New()
 			schemas.SetStrict(strictSchemas)
+			var blobStore *session.BlobStore
+			if blobThreshold > 0 {
+				blobStore = session.NewBlobStore(session.DefaultBlobDir(logPath))
+			}
 			med := mediator.New(mediator.Options{
 				SessionID:      sessionID,
 				Task:           task,
@@ -130,6 +135,8 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				DenyOnDrift:    denyOnDrift,
 				AuditMode:      auditMode,
 				Writer:         writer,
+				Blobs:          blobStore,
+				BlobThreshold:  blobThreshold,
 			})
 			tracker := newDescriptorTracker(med)
 
@@ -155,7 +162,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				OnRawMessage: tracker.observe,
 				OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (proxy.Decision, *proxy.DenyData) {
 					tracker.awaitPendingListings(2 * time.Second) // evaluate against fresh pins
-					out := med.Decide(id, call.Name, call.Arguments)
+					out := med.DecideMeta(id, call.Name, call.Arguments, call.Meta)
 					if !out.Allowed {
 						return proxy.DecisionDeny, &proxy.DenyData{
 							Code: "tool_denied", RuleID: out.RuleID,
@@ -199,6 +206,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 	cmd.Flags().BoolVar(&sandboxLax, "sandbox-lenient", false, "degrade to unsandboxed with a warning instead of failing")
 	cmd.Flags().StringVar(&auditMode, "audit-mode", "strict", `what to do when the session log cannot be written: "strict" denies unrecordable calls and fails closed; "best-effort" keeps enforcing with a warning`)
 	cmd.Flags().BoolVar(&strictSchemas, "strict-schemas", false, "deny calls to tools whose advertised inputSchema fails to compile (default: skip validation for them)")
+	cmd.Flags().IntVar(&blobThreshold, "blob-threshold", 0, "offload args/result payloads larger than N bytes to the content-addressed <log>.blobs/ store (0 = keep everything inline; see spec/session-log-v0.md §6.2)")
 	cmd.Flags().StringVar(&approvalListen, "approval-listen", "", "park confirm verdicts on a local approval queue at this address (e.g. 127.0.0.1:8923)")
 	cmd.Flags().StringVar(&approvalToken, "approval-token", "", "require Authorization: Bearer <token> on the approval queue API")
 	cmd.Flags().DurationVar(&approvalTimeout, "approval-timeout", 5*time.Minute, "how long a parked approval waits before failing closed (deny)")

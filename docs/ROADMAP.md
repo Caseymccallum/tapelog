@@ -83,17 +83,29 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
       `--witness none` is an explicit opt-out that `verify` flags loudly. Periodic checkpoints
       via `--seq N` for long sessions; `verify --expect` stays the zero-dependency anchor.
       Live-validated against rekor.sigstore.dev (docs/CHECKPOINTS.md).
-- [ ] **Trajectory assertions in `tapelog test`** — **core shipped**: `attempted:` (answered + denied),
+- [x] **Trajectory assertions in `tapelog test`** — **shipped**: `attempted:` (answered + denied),
       `denied:`/`allowed:` over the full boundary (previously blind to denied calls), `sequence:`,
-      `times:`, `taint_never:`, `result_contains:`, `invariant: no_deny_bypassed`; remaining:
-      count ceilings (max N), flow assertions as scenario checks, max depth
+      `times:`, `taint_never:`, `result_contains:`, `invariant: no_deny_bypassed`; **count ceilings
+      shipped**: `min_times`/`max_times` on `called`/`attempted` (exact `times` unchanged);
+      **flow assertions as scenario checks shipped**: `flow_denied: {from, to, times?}` (toxic flow
+      attempted AND blocked — matched via the decision's `[taint sources: …]`/`[contaminated by: …]`
+      provenance) and `flow_attempted` (any flow-rule decision for the pair); **max depth shipped**:
+      `max_depth: N` — ceiling on the trajectory's longest data-dependency chain (a call whose args
+      carry recorded values from an earlier call's result = one hop; same value-contamination
+      matching as `flows: mode: value`; failures render the chain).
 - [x] Richer inspection/explanation — **shipped**: DENIED blocks with event #, session id,
       contamination provenance ("value from read_secrets — produced at call #1 (result #2)") and a
       one-line causal story per denied call (a result recorded despite a deny is flagged
       `no_deny_bypassed`); `inspect --plain` renders the causal story of a trajectory.
-- [ ] Session schema v0: add optional causation/correlation fields (parent seq / `_meta.traceparent` passthrough)
-      so v0.6 async events attach without a schema break (prep work, not a break).
-- [ ] Blob refs for large payloads — store `args`/`result` out-of-band with a digest reference (spec/FAQ.md gap; replay needs the blob store)
+- [x] Session schema v0: optional causation/correlation fields — **shipped** (spec §6.1, additive):
+      `parent_seq` (the `seq` of the causing event — decision/result point at their `tools/call`
+      event; v0.6 async continuations attach here without a schema break) and `traceparent`
+      (`_meta.traceparent` passthrough recorded on call/decision/result). Absent = old behavior.
+- [x] Blob refs for large payloads — **shipped** (spec §6.2, additive): `record`/`mux
+      --blob-threshold N` offloads oversized `args`/`result` to a content-addressed `<log>.blobs/`
+      store; the event carries `{"$blob": {sha256, size}}` and the chain binds the digest. `verify`
+      re-hashes blobs (digest mismatch fails; absent store warns); replay/`test`/`whatif`/`inspect`
+      resolve placeholders and fail loud when the store is missing.
 
 ## v0.5 — Agent trajectory control
 - [ ] Cross-event constraints as *live* policy (depth, ordering windows, phase budgets beyond today's flows/limits)

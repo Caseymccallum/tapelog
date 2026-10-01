@@ -16,6 +16,7 @@ import (
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
 	"github.com/Caseymccallum/tapelog/internal/inject"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 	"github.com/Caseymccallum/tapelog/internal/limits"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
 	"github.com/Caseymccallum/tapelog/internal/policy"
@@ -52,6 +53,12 @@ type Options struct {
 	AuditMode string
 	Writer    EventWriter
 	Redactor  *session.Redactor
+	// Blobs + BlobThreshold enable large-payload offloading
+	// (spec/session-log-v0.md §6.2): args/result over BlobThreshold bytes
+	// are stored in Blobs and the event carries the digest reference.
+	// Nil Blobs or threshold <= 0 keeps payloads inline (default).
+	Blobs         *session.BlobStore
+	BlobThreshold int
 }
 
 // Audit modes for Options.AuditMode.
@@ -89,14 +96,23 @@ type Mediator struct {
 	taint policy.TaintState
 
 	mu           sync.Mutex
-	pins         map[string]pin        // tool -> descriptor pin
-	pendingTools map[string]string     // JSON-RPC id -> tool (value taint)
-	auditErr     error                 // sticky: first session-log append failure
+	pins         map[string]pin      // tool -> descriptor pin
+	pendingTools map[string]string   // JSON-RPC id -> tool (value taint)
+	links        map[string]callLink // JSON-RPC id -> causation link
+	auditErr     error               // sticky: first session-log append failure
 }
 
 type pin struct {
 	hash  string
 	drift bool
+}
+
+// callLink is the causation/correlation state for one in-flight request
+// (spec/session-log-v0.md §6.1): which tools/call event spawned it and
+// what trace context the transport carried.
+type callLink struct {
+	seq         uint64
+	traceparent string
 }
 
 // New creates a Mediator.
@@ -109,7 +125,7 @@ func New(opts Options) *Mediator {
 			return opts.Plugins.RedactText(context.Background(), s)
 		})
 	}
-	return &Mediator{opts: opts, pins: map[string]pin{}, pendingTools: map[string]string{}}
+	return &Mediator{opts: opts, pins: map[string]pin{}, pendingTools: map[string]string{}, links: map[string]callLink{}}
 }
 
 // HashDescriptor redacts + canonicalizes a tool descriptor and returns its
@@ -160,10 +176,10 @@ func (m *Mediator) PinSchema(tool string, descriptor json.RawMessage) error {
 // appendEvent records one session event and reports append failure.
 // Failures latch: the first one switches the mediator to audit-degraded
 // and (in strict mode) every later call is denied — see Options.AuditMode.
-func (m *Mediator) appendEvent(t session.EventType, payload any) error {
-	_, err := m.opts.Writer.Append(t, payload)
+func (m *Mediator) appendEvent(t session.EventType, payload any) (*session.Event, error) {
+	ev, err := m.opts.Writer.Append(t, payload)
 	if err == nil {
-		return nil
+		return ev, nil
 	}
 	m.mu.Lock()
 	first := m.auditErr == nil
@@ -175,7 +191,7 @@ func (m *Mediator) appendEvent(t session.EventType, payload any) error {
 		fmt.Fprintf(os.Stderr, "tapelog: WARNING — session log append failed: %v (audit mode: %s)%s\n",
 			err, m.auditMode(), " — recording is degraded for the rest of this session")
 	}
-	return err
+	return nil, err
 }
 
 // auditMode returns the effective audit mode ("" = strict).
@@ -200,7 +216,7 @@ func (m *Mediator) RecordToolsList(tools []json.RawMessage) {
 	for _, t := range tools {
 		cleaned = append(cleaned, m.opts.Redactor.RedactJSON(t))
 	}
-	_ = m.appendEvent(session.EventToolsList, session.ToolsListPayload{Tools: cleaned})
+	_, _ = m.appendEvent(session.EventToolsList, session.ToolsListPayload{Tools: cleaned})
 }
 
 // awaitResults blocks until every previously forwarded call has reported
@@ -224,6 +240,14 @@ func (m *Mediator) awaitResults(timeout time.Duration) {
 // Decide runs the full pipeline for one `tools/call` and records the
 // events. id is the JSON-RPC request id (recorded verbatim).
 func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage) Outcome {
+	return m.DecideMeta(id, tool, args, nil)
+}
+
+// DecideMeta is Decide with the request's `_meta` object (MCP metadata
+// passthrough): `_meta.traceparent` is recorded on the call, decision,
+// and result events (spec/session-log-v0.md §6.1). meta may be nil.
+func (m *Mediator) DecideMeta(id json.RawMessage, tool string, args, meta json.RawMessage) Outcome {
+	traceparent := jsonrpc.TraceparentOf(meta)
 	// Audit integrity first: once the log is degraded, strict mode stops
 	// forwarding — a tool call we cannot record must not execute.
 	if degraded, cause := m.auditDegraded(); degraded && m.auditMode() == AuditStrict {
@@ -231,14 +255,29 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		return Outcome{Allowed: false, Verdict: "deny", RuleID: "audit-degraded", Reason: reason}
 	}
 	descHash, drift := m.Descriptor(tool)
-	if err := m.appendEvent(session.EventToolCall, session.ToolCallPayload{
+	redArgs := m.opts.Redactor.RedactJSON(args)
+	if b, err := m.offload(redArgs); err != nil {
+		fmt.Fprintf(os.Stderr, "tapelog: WARNING — blob offload failed: %v (payload recorded inline)\n", err)
+	} else {
+		redArgs = b
+	}
+	callEv, err := m.appendEvent(session.EventToolCall, session.ToolCallPayload{
 		ID: id, Tool: tool,
-		Args:               m.opts.Redactor.RedactJSON(args),
+		Args:               redArgs,
 		ToolDescriptorHash: descHash, DescriptorDrift: drift,
-	}); err != nil && m.auditMode() == AuditStrict {
+		Traceparent:        traceparent,
+	})
+	if err != nil && m.auditMode() == AuditStrict {
 		reason := fmt.Sprintf("could not record the tool call (%v); failing closed (set audit mode best-effort to override)", err)
 		return Outcome{Allowed: false, Verdict: "deny", RuleID: "audit-degraded", Reason: reason}
 	}
+	// Causation: every follow-on event for this request points back at
+	// the tools/call event (spec/session-log-v0.md §6.1).
+	var callSeq uint64
+	if callEv != nil {
+		callSeq = callEv.Seq
+	}
+	m.noteLink(id, callSeq, traceparent)
 
 	// 1. Descriptor drift: possible tool poisoning (THREAT_MODEL #2).
 	// Value-level taint needs prior results recorded before we judge
@@ -369,13 +408,48 @@ func (m *Mediator) noteCall(id json.RawMessage, tool string) {
 	m.pendingTools[string(id)] = tool
 }
 
+// noteLink remembers the causation link (parent tools/call seq + trace
+// context) for a request id, so its decision and result events can point
+// back at it (spec/session-log-v0.md §6.1).
+func (m *Mediator) noteLink(id json.RawMessage, seq uint64, traceparent string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.links) > 4096 {
+		m.links = map[string]callLink{} // pathological volume: drop oldest wholesale
+	}
+	m.links[string(id)] = callLink{seq: seq, traceparent: traceparent}
+}
+
+// linkFor returns the causation link recorded for a request id.
+func (m *Mediator) linkFor(id json.RawMessage) callLink {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.links[string(id)]
+}
+
+// dropLink forgets a finished request's causation link.
+func (m *Mediator) dropLink(id json.RawMessage) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.links, string(id))
+}
+
 // Result records a tool result for the call with the given id. A non-nil
 // ResultBlock means the harness must not receive the payload as-is
 // (over limits.max_response_bytes, or blocked by injection mode: deny):
 // the (redacted) original is still recorded as evidence either way.
 func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessage) *ResultBlock {
-	recErr := m.appendEvent(session.EventToolResult, session.ToolResultPayload{
-		ID: id, IsError: isError, Result: m.opts.Redactor.RedactJSON(result),
+	link := m.linkFor(id)
+	defer m.dropLink(id) // the request is finished: its link has been used
+	redResult := m.opts.Redactor.RedactJSON(result)
+	if b, err := m.offload(redResult); err != nil {
+		fmt.Fprintf(os.Stderr, "tapelog: WARNING — blob offload failed: %v (payload recorded inline)\n", err)
+	} else {
+		redResult = b
+	}
+	_, recErr := m.appendEvent(session.EventToolResult, session.ToolResultPayload{
+		ID: id, IsError: isError, Result: redResult,
+		ParentSeq: parentOf(link), Traceparent: link.traceparent,
 	})
 	if recErr != nil && m.auditMode() == AuditStrict {
 		// The result cannot reach the harness unrecorded: replace it with
@@ -448,9 +522,33 @@ func (m *Mediator) ask(tool string, args json.RawMessage) (approval.Choice, stri
 }
 
 func (m *Mediator) recordDecision(id json.RawMessage, verdict, ruleID, reason string) error {
-	return m.appendEvent(session.EventPolicyDecision, session.PolicyDecisionPayload{
+	link := m.linkFor(id)
+	_, err := m.appendEvent(session.EventPolicyDecision, session.PolicyDecisionPayload{
 		ID: id, Verdict: verdict, RuleID: ruleID, Reason: reason,
+		ParentSeq: parentOf(link), Traceparent: link.traceparent,
 	})
+	return err
+}
+
+// parentOf renders a causation link's parent seq as the optional payload
+// field (nil when the parent event is unknown).
+func parentOf(link callLink) *uint64 {
+	if link.seq == 0 {
+		return nil
+	}
+	seq := link.seq
+	return &seq
+}
+
+// offload stores an oversized payload in the blob store and returns its
+// digest-reference placeholder (spec/session-log-v0.md §6.2). Payloads
+// under the threshold — and everything when blob offload is disabled —
+// pass through unchanged.
+func (m *Mediator) offload(payload json.RawMessage) (json.RawMessage, error) {
+	if m.opts.Blobs == nil || m.opts.BlobThreshold <= 0 {
+		return payload, nil
+	}
+	return m.opts.Blobs.Offload(payload, m.opts.BlobThreshold)
 }
 
 // NamespacedName builds a mux tool name: <server>__<tool>.

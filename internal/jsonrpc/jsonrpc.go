@@ -54,6 +54,9 @@ func (m *Message) IsResponse() bool { return m.Method == "" && len(m.ID) > 0 }
 type ToolCallParams struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
+	// Meta is the request's `_meta` object when present (MCP metadata
+	// passthrough — e.g. `_meta.traceparent`, spec/session-log-v0.md §6.1).
+	Meta json.RawMessage `json:"_meta"`
 }
 
 // ToolCall extracts MCP tools/call parameters from a request message.
@@ -66,6 +69,32 @@ func (m *Message) ToolCall() (*ToolCallParams, error) {
 		return nil, fmt.Errorf("decode tools/call params: %w", err)
 	}
 	return &p, nil
+}
+
+// MetaOf extracts a request's `_meta` object from raw JSON-RPC params
+// (for request shapes tapelog doesn't model, e.g. surface calls).
+func MetaOf(params json.RawMessage) json.RawMessage {
+	var p struct {
+		Meta json.RawMessage `json:"_meta"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil
+	}
+	return p.Meta
+}
+
+// TraceparentOf extracts `_meta.traceparent` from a `_meta` object.
+func TraceparentOf(meta json.RawMessage) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	var m struct {
+		Traceparent string `json:"traceparent"`
+	}
+	if err := json.Unmarshal(meta, &m); err != nil {
+		return ""
+	}
+	return m.Traceparent
 }
 
 // DenyResponse synthesizes a structured JSON-RPC error response for a

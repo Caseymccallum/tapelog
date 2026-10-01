@@ -31,6 +31,7 @@ that serves as:
 | **Verifier** | audit / compliance tooling | §5 |
 | **Reader** | viewers, exporters, analytics | §2, §3, §6 |
 | **Replayer** | CI / test harnesses | §8 |
+| **BlobStore** | large-payload offloading (optional) | §6.2 |
 
 ## Using the test vectors
 

@@ -86,6 +86,13 @@ type ToolCallPayload struct {
 	Args               json.RawMessage `json:"args"`
 	ToolDescriptorHash string          `json:"tool_descriptor_hash,omitempty"`
 	DescriptorDrift    bool            `json:"descriptor_drift,omitempty"`
+	// ParentSeq is the seq of the event this call was caused by
+	// (optional causation link — populated by async continuations in
+	// v0.6; additive, readers MUST ignore when absent).
+	ParentSeq *uint64 `json:"parent_seq,omitempty"`
+	// Traceparent is the W3C trace context copied from the request's
+	// `_meta.traceparent` (optional correlation passthrough).
+	Traceparent string `json:"traceparent,omitempty"`
 }
 
 // PolicyDecisionPayload is the payload of policy/decision.
@@ -94,6 +101,9 @@ type PolicyDecisionPayload struct {
 	Verdict string          `json:"verdict"`
 	RuleID  string          `json:"rule_id"`
 	Reason  string          `json:"reason"`
+	// ParentSeq links the decision to the tools/call event it decided.
+	ParentSeq  *uint64 `json:"parent_seq,omitempty"`
+	Traceparent string `json:"traceparent,omitempty"`
 }
 
 // ToolResultPayload is the payload of tools/result.
@@ -101,6 +111,9 @@ type ToolResultPayload struct {
 	ID       json.RawMessage `json:"id"`
 	IsError  bool            `json:"is_error"`
 	Result   json.RawMessage `json:"result"`
+	// ParentSeq links the result to the tools/call event it answers.
+	ParentSeq  *uint64 `json:"parent_seq,omitempty"`
+	Traceparent string `json:"traceparent,omitempty"`
 }
 
 // SessionEndPayload is the payload of session/end.

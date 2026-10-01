@@ -15,6 +15,9 @@ dist/
 *.checkpoint.json
 ckpt*.json
 
+# blob stores (record/mux --blob-threshold out-of-band payloads)
+*.blobs/
+
 # editor / OS noise
 .vscode/
 .idea/

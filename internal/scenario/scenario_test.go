@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Caseymccallum/tapelog/internal/policy"
@@ -111,6 +112,137 @@ func TestParseValidation(t *testing.T) {
 }
 
 func intPtr(n int) *int { return &n }
+
+func itFlow(order int, tool, args, result, verdict, reason string) replay.Interaction {
+	r := it(order, tool, args, result, verdict)
+	r.Reason = reason
+	return r
+}
+
+// TestCountBounds pins the count-ceiling contract: `times` is exact,
+// `min_times`/`max_times` bound the count, defaults stay "at least one".
+func TestCountBounds(t *testing.T) {
+	tape := &replay.Tape{Interactions: []replay.Interaction{
+		it(1, "retry_call", `{}`, `{}`, "allow"),
+		it(2, "retry_call", `{}`, `{}`, "allow"),
+		it(3, "retry_call", `{}`, `{}`, "allow"),
+	}}
+	pass := &Scenario{Version: 1, Assert: []Check{
+		{Called: &CalledSpec{Tool: "retry_call", Max: intPtr(3)}},  // at most 3: exactly 3
+		{Called: &CalledSpec{Tool: "retry_call", Min: intPtr(2)}},  // at least 2
+		{Called: &CalledSpec{Tool: "retry_call", Min: intPtr(1), Max: intPtr(5)}},
+		{Called: &CalledSpec{Tool: "retry_call", Max: intPtr(3)}},
+		{Called: &CalledSpec{Tool: "nope", Max: intPtr(3), Min: intPtr(0)}}, // 0 in [0,3]
+	}}
+	if fails := Run(pass, tape, nil); len(fails) != 0 {
+		t.Fatalf("bounded counts must pass: %+v", fails)
+	}
+	fail := &Scenario{Version: 1, Assert: []Check{
+		{Called: &CalledSpec{Tool: "retry_call", Max: intPtr(2)}}, // 3 > 2
+		{Called: &CalledSpec{Tool: "retry_call", Min: intPtr(4)}}, // 3 < 4
+		{Called: &CalledSpec{Tool: "nope", Max: intPtr(3)}},       // default floor 1 not met
+	}}
+	fails := Run(fail, tape, nil)
+	if len(fails) != 3 {
+		t.Fatalf("expected 3 failures, got %d: %+v", len(fails), fails)
+	}
+	for _, f := range fails {
+		if !strings.Contains(f.Check, "retry_call") && !strings.Contains(f.Check, "nope") {
+			t.Fatalf("failure must name the check: %+v", f)
+		}
+	}
+}
+
+// TestFlowAssertions pins the flow-assertion contract: flow_denied fires
+// only when the toxic pair was attempted AND blocked by a flow rule;
+// flow_attempted fires on any flow-rule decision for the pair.
+func TestFlowAssertions(t *testing.T) {
+	tape := &replay.Tape{
+		Interactions: []replay.Interaction{
+			itFlow(1, "read_secrets", `{}`, `{"text":"sk-abc12345"}`, "allow", "ok"),
+			itFlow(2, "send_http", `{"body":"sk-abc12345"}`, `{"text":"sent"}`, "allow", "fine"),
+		},
+		Unanswered: []replay.Interaction{
+			itFlow(3, "send_http", `{"body":"sk-abc12345"}`, "", "deny",
+				"secret data must not leave [contaminated by: read_secrets]"),
+		},
+	}
+	pass := &Scenario{Version: 1, Assert: []Check{
+		{FlowDenied: &FlowSpec{From: "read_secrets", To: "send_*", Times: intPtr(1)}},
+		{FlowAttempted: &FlowSpec{From: "read_secrets", To: "send_*", Times: intPtr(1)}},
+	}}
+	if fails := Run(pass, tape, nil); len(fails) != 0 {
+		t.Fatalf("flow assertions must pass: %+v", fails)
+	}
+
+	// flow_denied must NOT count the allowed send_http (no flow provenance).
+	fail := &Scenario{Version: 1, Assert: []Check{
+		{FlowDenied: &FlowSpec{From: "read_secrets", To: "send_*", Times: intPtr(2)}},
+	}}
+	if fails := Run(fail, tape, nil); len(fails) != 1 {
+		t.Fatalf("flow_denied must count only blocked flows: %+v", fails)
+	}
+
+	// flow_attempted counts both flow-decision calls... but only the one
+	// carrying provenance matches; the allow had none.
+	fail2 := &Scenario{Version: 1, Assert: []Check{
+		{FlowAttempted: &FlowSpec{From: "read_secrets", To: "send_*", Times: intPtr(2)}},
+	}}
+	if fails := Run(fail2, tape, nil); len(fails) != 1 {
+		t.Fatalf("flow_attempted must count only provenance-carrying decisions: %+v", fails)
+	}
+
+	// Session-mode provenance format works too, and mux namespacing does
+	// not defeat the glob.
+	tape2 := &replay.Tape{Unanswered: []replay.Interaction{
+		itFlow(1, "a__send_http", `{}`, "", "deny",
+			"no exfil [taint sources: a__read_secrets]"),
+	}}
+	ns := &Scenario{Version: 1, Assert: []Check{
+		{FlowDenied: &FlowSpec{From: "read_secrets", To: "*__send_http", Times: intPtr(1)}},
+	}}
+	if fails := Run(ns, tape2, nil); len(fails) != 0 {
+		t.Fatalf("namespaced flow provenance must match: %+v", fails)
+	}
+}
+
+// TestMaxDepth pins the depth-ceiling contract: depth = longest chain of
+// calls where each call's args carry recorded values from an earlier
+// call's result (one hop per dependency, same matching as value flows).
+func TestMaxDepth(t *testing.T) {
+	// read -> transform -> send: depth 3 (each result feeds the next args).
+	tape := &replay.Tape{Interactions: []replay.Interaction{
+		it(1, "read_file", `{}`, `{"text":"alpha-VALUE-9"}`, "allow"),
+		it(2, "transform", `{"in":"alpha-VALUE-9"}`, `{"text":"beta-VALUE-8"}`, "allow"),
+		it(3, "send_http", `{"body":"beta-VALUE-8"}`, `{"text":"sent"}`, "allow"),
+	}}
+	pass := &Scenario{Version: 1, Assert: []Check{
+		{MaxDepth: intPtr(3)},
+	}}
+	if fails := Run(pass, tape, nil); len(fails) != 0 {
+		t.Fatalf("depth 3 must pass the ceiling of 3: %+v", fails)
+	}
+	fail := &Scenario{Version: 1, Assert: []Check{
+		{MaxDepth: intPtr(2)},
+	}}
+	fails := Run(fail, tape, nil)
+	if len(fails) != 1 {
+		t.Fatalf("depth 3 must fail a ceiling of 2: %+v", fails)
+	}
+	if !strings.Contains(fails[0].Detail, "read_file -> transform -> send_http") {
+		t.Fatalf("failure must render the chain, got %q", fails[0].Detail)
+	}
+
+	// Independent calls stay at depth 1.
+	tape2 := &replay.Tape{Interactions: []replay.Interaction{
+		it(1, "read_file", `{}`, `{"text":"one-VALUE-1"}`, "allow"),
+		it(2, "read_file", `{}`, `{"text":"two-VALUE-2"}`, "allow"),
+	}}
+	shallow := &Scenario{Version: 1, Assert: []Check{{MaxDepth: intPtr(1)}}}
+	if fails := Run(shallow, tape2, nil); len(fails) != 0 {
+		t.Fatalf("independent calls must be depth 1: %+v", fails)
+	}
+}
 
 // TestDeniedAndAttemptedSeeUnanswered pins the trajectory-assertion
 // contract: verdict assertions must see DENIED calls (which live in

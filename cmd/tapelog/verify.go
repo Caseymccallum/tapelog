@@ -55,7 +55,26 @@ true rather than merely signed.`,
 				fmt.Printf("  verified %d events before the problem\n", res.FirstBadSeq-1)
 				return fmt.Errorf("session log failed verification")
 			}
+			// Out-of-band payloads (spec §6.2): the chain binds the digests,
+			// so verify re-hashes every referenced blob when a store exists.
+			refs, problems, warnings, err := session.VerifyBlobs(args[0], session.NewBlobStore(session.DefaultBlobDir(args[0])))
+			if err != nil {
+				return err
+			}
+			if len(problems) > 0 {
+				fmt.Printf("FAILED: %s\n  chain intact but %d of %d blob reference(s) fail:\n", args[0], len(problems), refs)
+				for _, p := range problems {
+					fmt.Printf("  - %s\n", p)
+				}
+				return fmt.Errorf("session log failed blob verification")
+			}
 			fmt.Printf("OK: %s\n  %d events, chain intact\n  chain head: %s\n", args[0], res.Events, res.LastHash)
+			for _, w := range warnings {
+				fmt.Printf("  warning: %s\n", w)
+			}
+			if refs > 0 {
+				fmt.Printf("  %d blob reference(s), all digests verified\n", refs)
+			}
 			if checkpointPath != "" {
 				ckpt, _ := checkpoint.Load(checkpointPath)
 				if ckpt != nil {

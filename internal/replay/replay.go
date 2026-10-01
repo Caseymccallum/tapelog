@@ -35,6 +35,7 @@ type Interaction struct {
 	Result   json.RawMessage // recorded result (or error object when IsError)
 	Verdict  string          // policy verdict at record time
 	RuleID   string          // policy rule at record time
+	Reason   string          // policy decision reason (incl. flow provenance)
 }
 
 // Tape is a loaded session log ready for replay.
@@ -46,13 +47,25 @@ type Tape struct {
 	Unanswered   []Interaction     // calls without results (e.g. denied)
 }
 
-// Load parses a session log produced by `tapelog record`.
+// Load parses a session log produced by `tapelog record`. Blob
+// references in args/result are resolved from the content-addressed
+// store next to the log (`<log>.blobs/` — spec/session-log-v0.md §6.2)
+// and fail loudly when missing or tampered: replay needs the blob store.
 func Load(path string) (*Tape, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open tapelog: %w", err)
 	}
 	defer f.Close()
+
+	blobs := session.NewBlobStore(session.DefaultBlobDir(path))
+	resolve := func(raw json.RawMessage, what string, lineNo int) (json.RawMessage, error) {
+		out, err := blobs.Resolve(raw)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %s: %w", lineNo, what, err)
+		}
+		return out, nil
+	}
 
 	c := &Tape{}
 	type pending struct {
@@ -92,11 +105,15 @@ func Load(path string) (*Tape, error) {
 			if err := json.Unmarshal(e.Payload, &p); err != nil {
 				return nil, fmt.Errorf("line %d: bad tools/call payload: %w", lineNo, err)
 			}
+			args, err := resolve(p.Args, "args", lineNo)
+			if err != nil {
+				return nil, err
+			}
 			it := Interaction{
 				Order:    len(calls) + 1,
 				Tool:     p.Tool,
-				Args:     p.Args,
-				ArgsHash: hashArgs(p.Args),
+				Args:     args,
+				ArgsHash: hashArgs(args),
 			}
 			byID[string(p.ID)] = &pending{idx: len(calls)}
 			calls = append(calls, &it)
@@ -106,6 +123,7 @@ func Load(path string) (*Tape, error) {
 				if pend := byID[string(p.ID)]; pend != nil {
 					calls[pend.idx].Verdict = p.Verdict
 					calls[pend.idx].RuleID = p.RuleID
+					calls[pend.idx].Reason = p.Reason
 				}
 			}
 		case session.EventToolResult:
@@ -114,7 +132,11 @@ func Load(path string) (*Tape, error) {
 				if pend := byID[string(p.ID)]; pend != nil {
 					it := calls[pend.idx]
 					it.IsError = p.IsError
-					it.Result = p.Result
+					result, err := resolve(p.Result, "result", lineNo)
+					if err != nil {
+						return nil, err
+					}
+					it.Result = result
 					pend.answered = true
 				}
 			}

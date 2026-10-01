@@ -11,19 +11,51 @@ fixture: ../fixtures/release-session.jsonl  # a recorded session (cassette)
 policy: ../policies/prod.yaml               # optional: re-evaluate verdicts
 assert:
   - called: { tool: publish_artifact, args: { channel: stable }, times: 1 }
-  - never_called: "shell_*"
+  - called: { tool: retry_step, max_times: 3 }   # count ceiling
+  - attempted: { tool: delete_db, times: 1 }  # answered + denied — the
+  - never_called: "shell_*"                  #   boundary saw it
   - sequence: [build_artifact, test_artifact, publish_artifact]
   - taint_never: { from: read_secrets, to: "send_*" }
+  - flow_denied: { from: read_secrets, to: "send_*", times: 1 }
   - result_contains: { tool: deploy, text: "success" }
   - allowed: deploy        # verdict assertions (recorded, or re-evaluated
   - denied: delete_db      # when `policy:` is set — what-if semantics)
   - invariant: no_deny_bypassed
+  - max_depth: 3           # data-dependency chain ceiling
 ```
 
-- **Checks**: `called` (glob + args subset + exact `times`), `never_called`,
-  `sequence` (ordered subsequence), `taint_never` (no `to` after `from`),
-  `result_contains`, `allowed`/`denied` (allow/confirm vs deny verdicts),
-  `invariant` (`no_deny_bypassed`: a deny verdict must never produce a result).
+- **Checks**: `called` (glob + args subset + count), `attempted`
+  (like `called` but over answered **and** denied calls — "the agent
+  tried"), `never_called`, `sequence` (ordered subsequence),
+  `taint_never` (no `to` after `from`), `flow_denied`/`flow_attempted`
+  (toxic-flow assertions, below), `result_contains`, `allowed`/`denied`
+  (allow/confirm vs deny verdicts over the full boundary), `invariant`
+  (`no_deny_bypassed`: a deny verdict must never produce a result),
+  `max_depth` (chain-depth ceiling, below).
+- **Counts** (on `called`/`attempted`/flow specs): `times: N` is exact;
+  `min_times`/`max_times` give floors and ceilings (`max_times: 3` = at
+  most 3; `min_times: 0` explicitly allows zero). Defaults without any
+  count field stay "at least one". `times` cannot combine with the
+  bounds — that is a parse error.
+- **Flow assertions** (as scenario checks — the scenario-level view of
+  policy `flows:` rules): a *flow hit* is a call to a `to`-matching tool
+  whose recorded decision names a source matching `from` in its flow
+  provenance (the `[taint sources: …]` / `[contaminated by: …]` bracket
+  the policy engine stamps on flow verdicts; mux namespaces like
+  `a__read_secrets` match either form).
+  - `flow_denied: {from, to, times?}` — the toxic flow was attempted
+    **and blocked** (verdict `deny`) at least/exactly `times` (default:
+    at least 1). Regression guard: "the boundary still catches this."
+  - `flow_attempted: {from, to, times?}` — the pair reached a flow-rule
+    decision at all (any verdict). Use with `flow_denied` to pin "the
+    flow keeps being attempted and keeps being stopped."
+- **`max_depth: N`** — ceiling on the trajectory's longest
+  *data-dependency chain*: a call whose args carry recorded values from
+  an earlier call's result extends that chain by one hop (same
+  value-contamination substring matching as `flows: mode: value` —
+  honest limits apply, see THREAT_MODEL.md). Failure names the chain
+  (`read_file -> transform -> send_http`). "The agent must never chain
+  more than N data-dependent tool calls."
 - **Cassette-native**: failures name the exact call and args — the fixture
   *is* the repro case. Commit cassettes for your critical flows and diff
   them across releases (`tapelog diff`).

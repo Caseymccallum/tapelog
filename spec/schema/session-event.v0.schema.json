@@ -24,15 +24,17 @@
         "tools": { "type": "array", "description": "tools/list: redacted, canonicalized tool descriptors" },
         "id": { "description": "JSON-RPC request id this event refers to (number or string)" },
         "tool": { "type": "string", "description": "tools/call: tool name" },
-        "args": { "type": "object", "description": "tools/call: redacted arguments" },
+        "args": { "description": "tools/call: redacted arguments (object, or a blob reference {\"$blob\": {...}} — see session-log-v0.md §6.2)" },
         "tool_descriptor_hash": { "type": "string", "description": "tools/call: hash-pinned tool descriptor" },
         "descriptor_drift": { "type": "boolean", "description": "tools/call: descriptor changed between listings" },
         "verdict": { "enum": ["allow", "confirm", "deny"], "description": "policy/decision: evaluated verdict" },
         "rule_id": { "type": "string", "description": "policy/decision: matching rule (or 'default'/'observe')" },
         "reason": { "type": "string", "description": "policy/decision: human-readable explanation" },
         "is_error": { "type": "boolean", "description": "tools/result: whether the tool returned an error" },
-        "result": { "description": "tools/result: redacted result (or error object)" },
-        "content": { "description": "tools/result payloads may carry MCP content arrays" }
+        "result": { "description": "tools/result: redacted result (or error object, or a blob reference {\"$blob\": {...}} — see session-log-v0.md §6.2)" },
+        "content": { "description": "tools/result payloads may carry MCP content arrays" },
+        "parent_seq": { "type": "integer", "minimum": 1, "description": "Optional causation link: seq of the event that caused this one (session-log-v0.md §6.1)" },
+        "traceparent": { "type": "string", "description": "Optional correlation: W3C traceparent copied from the request's _meta.traceparent (§6.1)" }
       }
     },
     "prev_hash": { "type": "string", "pattern": "^([0-9a-f]{64})?$", "description": "Previous event hash (empty for seq 1)" },

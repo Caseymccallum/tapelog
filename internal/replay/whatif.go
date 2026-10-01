@@ -60,6 +60,7 @@ func reevaluateOrders(tape *Tape, p policy.Evaluator, task string) map[int]Inter
 		}
 		c.base.Verdict = string(dec.Verdict)
 		c.base.RuleID = dec.RuleID
+		c.base.Reason = dec.Reason
 		out[c.order] = c.base
 	}
 	return out

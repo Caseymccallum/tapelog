@@ -57,6 +57,7 @@ func Load(path string) ([]Item, Summary, Story, error) {
 	var events []session.Event
 	var items []Item
 	var sum Summary
+	blobs := session.NewBlobStore(session.DefaultBlobDir(path))
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for sc.Scan() {
@@ -68,6 +69,9 @@ func Load(path string) ([]Item, Summary, Story, error) {
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			continue
 		}
+		// Show blob-backed payloads as content (verified), never as the
+		// digest placeholder (spec/session-log-v0.md §6.2 rule 2).
+		e.Payload = session.ResolvePayload(e.Payload, blobs)
 		events = append(events, e)
 		item := itemFromEvent(e)
 		items = append(items, item)

@@ -38,9 +38,12 @@ fact). The format can't help if you write secrets into it — treat
 session logs with the sensitivity of the sessions they record.
 
 **Q: My payloads are huge.**
-Permitted: store `args`/`result` out-of-band (object store) and record a
-digest reference — but note replay then needs the blob. Native support
-for this is tracked in docs/ROADMAP.md.
+Store `args`/`result` out-of-band and record a digest reference — the
+format defines a placeholder for exactly this (session-log-v0.md §6.2,
+`{"$blob": {"sha256": …, "size": …}}`; tapelog: `record --blob-threshold
+N`, content-addressed `<log>.blobs/` store). The hash chain binds the
+digest, so swapped blobs are detectable; note replay then needs the
+blob store (fail-loud on missing/mismatched blobs).
 
 ## Process
 
@@ -58,6 +61,6 @@ See [OTel-COMPARE.md](OTel-COMPARE.md) — they compose; the session log
 is evidence + regression, OTel is observability.
 
 **Q: Will you add <X>?**
-Check docs/ROADMAP.md first (spans as first-class events, blob
-references, OTLP ingest are all listed there). File an issue with the
-use case — formats grow from use cases, not feature matrices.
+Check docs/ROADMAP.md first (spans as first-class events, OTLP ingest
+are listed there; blob references shipped — §6.2). File an issue with
+the use case — formats grow from use cases, not feature matrices.
