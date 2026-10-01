@@ -73,13 +73,18 @@ func (r *Redactor) RedactJSON(raw json.RawMessage) json.RawMessage {
 	dec.UseNumber()
 	var v any
 	if err := dec.Decode(&v); err != nil {
-		// Not valid JSON: fall back to string-level redaction of the raw bytes.
-		return json.RawMessage(`"` + r.RedactString(string(raw)) + `"`)
+		// Not valid JSON: fall back to string-level redaction of the raw
+		// bytes and store as a properly-escaped JSON string (raw text may
+		// contain quotes — hand-quoting would produce invalid JSON and
+		// break the very event meant to record the evidence).
+		b, _ := json.Marshal(r.RedactString(string(raw)))
+		return json.RawMessage(b)
 	}
 	cleaned := r.walk(v)
 	b, err := marshalCanonical(cleaned)
 	if err != nil {
-		return json.RawMessage(`"` + Redacted + `"`)
+		out, _ := json.Marshal(Redacted)
+		return json.RawMessage(out)
 	}
 	return b
 }

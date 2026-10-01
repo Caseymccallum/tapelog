@@ -58,8 +58,28 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			continue
 		}
 		msg, err := jsonrpc.Parse([]byte(line))
-		if err != nil || msg.IsNotification() || !msg.IsRequest() {
-			continue // never break the protocol on stray bytes
+		if err != nil {
+			// FAIL CLOSED (same contract as the proxy): a line the
+			// boundary cannot parse is rejected and recorded, never
+			// dispatched to any upstream — an upstream with a more
+			// lenient parser must not get a second interpretation of
+			// an actionable request.
+			rid := jsonrpc.ProbeID([]byte(line))
+			mx.med.MalformedCall(rid, []byte(line), err)
+			code, message := jsonrpc.CodeInvalidRequest, "invalid request"
+			if !json.Valid([]byte(line)) {
+				code, message = jsonrpc.CodeParseError, "parse error"
+			}
+			if err := fail(rid, code, message, map[string]any{
+				"code": "invalid_request", "rule_id": "malformed-request",
+				"reason": err.Error(), "verdict": "deny",
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+		if msg.IsNotification() || !msg.IsRequest() {
+			continue // mux synthesizes all upstream traffic; nothing to forward
 		}
 
 		switch msg.Method {

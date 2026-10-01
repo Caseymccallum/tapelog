@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
@@ -78,14 +79,18 @@ type Hooks struct {
 //	ping          — liveness (removed in 2026-07-28; legacy clients still send it)
 //	tools/list    — catalog plumbing; recorded + descriptor-pinned separately
 //	server/discover — 2026-07-28 capability/version discovery (servers MUST answer)
+//	notifications/* — protocol notifications (initialized, cancelled, progress, ...)
 //
-// Notifications (method, no id) are never mediated at all — there is no
-// response to deny with, and they carry no result payload.
+// Everything else is mediated — INCLUDING when it arrives without a
+// request id (as a notification): an actionable method must not dodge
+// mediation by dropping its id (the caller refuses those).
 func mediatedCall(msg *jsonrpc.Message) (*jsonrpc.ToolCallParams, error) {
-	switch msg.Method {
-	case "initialize", "ping", "tools/list", "server/discover":
+	switch {
+	case msg.Method == "initialize", msg.Method == "ping",
+		msg.Method == "tools/list", msg.Method == "server/discover",
+		strings.HasPrefix(msg.Method, "notifications/"):
 		return nil, nil
-	case "tools/call":
+	case msg.Method == "tools/call":
 		call, err := msg.ToolCall()
 		if err != nil {
 			return nil, err // malformed: reject at the boundary, never forward
@@ -133,11 +138,34 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 			}
 			msg, err := jsonrpc.Parse(line)
 			if err != nil {
-				// Not parseable JSON-RPC: forward untouched (protocol safety).
-				if _, err := serverOut.Write(append(line, '\n')); err != nil {
-					return fmt.Errorf("write to server: %w", err)
+				// FAIL CLOSED: a client→server line the boundary cannot
+				// parse is a line it cannot mediate — so it is rejected and
+				// recorded, NEVER relayed. An upstream with a different or
+				// more lenient parser (batch arrays, NaN literals, version
+				// drift) must not get a second interpretation of an
+				// actionable request. The reject follows the spec: parse
+				// errors answer -32700, valid-JSON-but-not-JSON-RPC answers
+				// -32600, id echoed when detectable (else null).
+				rid := jsonrpc.ProbeID(line)
+				if hooks.OnMalformedCall != nil {
+					hooks.OnMalformedCall(rid, line, err)
 				}
-				continue
+				code, message := jsonrpc.CodeInvalidRequest, "invalid request"
+				if !json.Valid(line) {
+					code, message = jsonrpc.CodeParseError, "parse error"
+				}
+				resp := jsonrpc.ErrorResponse(rid, code, message, map[string]any{
+					"code": "invalid_request", "rule_id": "malformed-request",
+					"reason": err.Error(), "verdict": "deny",
+				})
+				out, _ := jsonrpc.Marshal(resp)
+				outMu.Lock()
+				_, werr := clientOut.Write(append(out, '\n'))
+				outMu.Unlock()
+				if werr != nil {
+					return fmt.Errorf("write rejection response: %w", werr)
+				}
+				continue // never forwarded
 			}
 			if msg.IsRequest() {
 				call, merr := mediatedCall(msg)
@@ -187,6 +215,22 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 							continue // never forwarded
 						}
 					}
+				}
+			}
+			if msg.Method != "" && !msg.IsRequest() && !msg.IsResponse() {
+				// A notification gets no response, so it can never be
+				// mediated in-band — and an ACTIONABLE method disguised as
+				// a notification would still cause side effects upstream.
+				// Protocol notifications (notifications/*) pass as before;
+				// anything that would be mediated as a call is refused and
+				// recorded (silently — the spec forbids answering
+				// notifications).
+				if call, merr := mediatedCall(msg); call != nil || merr != nil {
+					cause := fmt.Errorf("actionable method %q sent as a notification (no request id): refused at the boundary — tool calls must be requests", msg.Method)
+					if hooks.OnMalformedCall != nil {
+						hooks.OnMalformedCall(nil, line, cause)
+					}
+					continue // never forwarded
 				}
 			}
 			if _, err := serverOut.Write(append(line, '\n')); err != nil {

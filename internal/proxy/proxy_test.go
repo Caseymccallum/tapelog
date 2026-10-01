@@ -220,6 +220,69 @@ func TestMalformedToolCallRejectedNotForwarded(t *testing.T) {
 	}
 }
 
+// TestUnparseableLinesNeverReachUpstream pins the boundary invariant
+// for raw protocol lines (regression/security contract):
+//
+//	malformed JSON-RPC that the boundary cannot understand must never
+//	become a second interpretation of an actionable request by the
+//	upstream server.
+//
+// Every case below carries an actionable `tools/call delete_all` that a
+// DIFFERENT (more lenient) parser could still execute: truncated JSON,
+// version drift, batch arrays, NaN literals. None may reach the upstream
+// or OnToolCall; each is answered with the spec's error code (id echoed
+// when detectable) and recorded. Protocol notifications keep passing —
+// fail-closed must not become over-blocking.
+func TestUnparseableLinesNeverReachUpstream(t *testing.T) {
+	var clientOut, serverOut syncBuffer
+	var mediated, malformed int
+	done := make(chan error, 1)
+	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"delete_all"}` + "\n" +
+		`{"jsonrpc":"1.0","id":2,"method":"tools/call","params":{"name":"delete_all","arguments":{}}}` + "\n" +
+		`[{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"delete_all","arguments":{}}}]` + "\n" +
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"delete_all","arguments":{}},"x":NaN}` + "\n" +
+		`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"delete_all","arguments":{}}}` + "\n" +
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n"
+	go func() {
+		done <- Run(context.Background(),
+			strings.NewReader(input), &clientOut,
+			strings.NewReader(""), &serverOut,
+			Hooks{
+				OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
+					mediated++
+					return DecisionAllow, nil
+				},
+				OnMalformedCall: func(id json.RawMessage, params json.RawMessage, cause error) {
+					malformed++
+				},
+			})
+	}()
+	waitRun(t, done)
+
+	if mediated != 0 {
+		t.Fatalf("an unparseable/unmediatable line must never reach OnToolCall, got %d", mediated)
+	}
+	if malformed != 5 {
+		t.Fatalf("all 5 rejected shapes must be recorded, got %d", malformed)
+	}
+	got := clientOut.String()
+	for _, want := range []string{
+		`"code":-32700`, // truncated JSON + NaN line: parse error
+		`"code":-32600`, // version drift + batch array: invalid request
+		`"id":2`,        // detectable id echoed (client must not hang)
+		"malformed-request",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("rejection responses must contain %s, got:\n%s", want, got)
+		}
+	}
+	// Only the protocol notification is relayed — fail-closed, not
+	// over-blocking.
+	if s := serverOut.String(); strings.TrimSpace(s) != `{"jsonrpc":"2.0","method":"notifications/initialized"}` {
+		t.Fatalf("only the protocol notification may reach the server, got:\n%s", s)
+	}
+}
+
 func TestCoreMethodPassesUnmediated(t *testing.T) {
 	var clientOut, serverOut syncBuffer
 	line := `{"jsonrpc":"2.0","id":7,"method":"ping","params":{}}`

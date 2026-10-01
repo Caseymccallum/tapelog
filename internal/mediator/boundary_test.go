@@ -36,10 +36,15 @@ func TestMalformedCallRecorded(t *testing.T) {
 
 	m.MalformedCall([]byte(`9`), json.RawMessage(`"not-an-object"`),
 		errors.New("decode tools/call params: cannot unmarshal string into Go value of type jsonrpc.ToolCallParams"))
+	// Real garbage: raw text with quotes and a secret. The evidence event
+	// must still marshal (valid JSON — hand-quoting would break it) and
+	// the secret must still be redacted.
+	m.MalformedCall([]byte(`10`), []byte(`{"jsonrpc":"2.0","method":"tools/call","token":"ghp_abcdefghijklmnopqrstuvwxyz0123456789AB"`),
+		errors.New("parse JSON-RPC message: unexpected end of JSON input"))
 
 	events := readEvents(t, logPath)
-	if len(events) != 2 {
-		t.Fatalf("want tools/call + policy/decision, got %d events", len(events))
+	if len(events) != 4 {
+		t.Fatalf("want 2x (tools/call + policy/decision), got %d events", len(events))
 	}
 	var callP session.ToolCallPayload
 	if err := json.Unmarshal(events[0].Payload, &callP); err != nil {
@@ -60,6 +65,27 @@ func TestMalformedCallRecorded(t *testing.T) {
 	}
 	if !strings.Contains(decP.Reason, "never forwarded") {
 		t.Fatalf("reason must state the boundary action, got %q", decP.Reason)
+	}
+	// Causation: the decision points back at its tools/call event like
+	// any ordinary mediated call (spec §6.1).
+	if decP.ParentSeq == nil || *decP.ParentSeq != events[0].Seq {
+		t.Fatalf("decision parent_seq must be the call event seq %d, got %v", events[0].Seq, decP.ParentSeq)
+	}
+
+	// The quote-laden garbage evidence: valid JSON, redacted, causally
+	// linked to ITS call event.
+	if !json.Valid(events[2].Payload) {
+		t.Fatalf("garbage evidence must still be valid JSON, got %s", events[2].Payload)
+	}
+	if strings.Contains(string(events[2].Payload), "ghp_") {
+		t.Fatalf("secret in garbage must be redacted, got %s", events[2].Payload)
+	}
+	var dec2 session.PolicyDecisionPayload
+	if err := json.Unmarshal(events[3].Payload, &dec2); err != nil {
+		t.Fatal(err)
+	}
+	if dec2.ParentSeq == nil || *dec2.ParentSeq != events[2].Seq {
+		t.Fatalf("second decision parent_seq must be %d, got %v", events[2].Seq, dec2.ParentSeq)
 	}
 }
 

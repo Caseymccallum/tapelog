@@ -24,6 +24,10 @@ powershell -File examples/trajectory-demo/demo.ps1
 The money line: *behavioral tests pass on a tampered log; the hash chain
 doesn't.*
 
+New here? The [five-minute quickstart](docs/QUICKSTART.md) gets you from
+zero to a recorded, replayed session — and then to the denial that
+proves the boundary.
+
 ## How it works
 
 ```
@@ -106,6 +110,7 @@ boundaries matter, so the limits are part of the docs, not a footnote.
 
 | Document | What |
 |---|---|
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | **Five minutes to proof** — zero to a recorded, replayed session (and the denial that proves the boundary) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, trust boundaries |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What we defend against — and what we honestly don't |
 | [docs/POLICY.md](docs/POLICY.md) | Policy language reference (rules, scoped grants, Cedar `where`) |

@@ -53,7 +53,7 @@
 ## Data flow
 
 1. Harness sends a JSON-RPC message to `tapelog` (acting as an MCP server).
-2. If `method == tools/call`, tapelog extracts `params.name` + `params.arguments` and the **mediator** runs the decision pipeline *before any side effect* (descriptor pins → schema firewall → limits → flows/taint → policy evaluator → confirm routing):
+2. If `method == tools/call`, tapelog extracts `params.name` + `params.arguments` and the **mediator** runs the decision pipeline *before any side effect* (descriptor pins → schema firewall → limits → flows/taint → policy evaluator → confirm routing). Lines the boundary cannot parse — or actionable methods sent without a request id — are rejected (JSON-RPC -32700/-32600/-32602) and recorded, never relayed:
    - `allow` → forward to the real MCP server (acting as MCP client).
    - `deny` → synthesize a JSON-RPC error response (`code: -32010`, structured data with policy id + reason); nothing is forwarded.
    - `confirm` → pause for a human: terminal prompt, or the remote approval queue (`--approval-listen`); `--auto-confirm` records the call as allowed; with none available, fail closed (deny).

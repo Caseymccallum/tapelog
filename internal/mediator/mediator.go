@@ -556,20 +556,31 @@ func (m *Mediator) ask(tool string, args json.RawMessage) (approval.Choice, stri
 }
 
 // MalformedCall records a boundary rejection of an unparseable
-// tools/call. Nothing crosses the boundary unmediated: a call whose
-// params cannot be parsed is denied at the boundary, recorded as
-// evidence (tool name empty — none was extractable), and never
-// forwarded. The harness receives JSON-RPC -32602 (the proxy/mux layer
-// synthesizes it). Recording failures latch audit-degraded like any
-// other event.
+// tools/call (or an unparseable/undispatchable line). Nothing crosses
+// the boundary unmediated: a request the boundary cannot parse is
+// denied at the boundary, recorded as evidence (tool name empty — none
+// was extractable, redacted raw bytes as args), and never forwarded.
+// The harness receives JSON-RPC -32602/-32700 (the proxy/mux layer
+// synthesizes it; notifications are refused silently). Recording
+// failures latch audit-degraded like any other event.
 func (m *Mediator) MalformedCall(id, params json.RawMessage, cause error) {
 	reason := fmt.Sprintf("malformed tools/call: %v (rejected at the boundary, never forwarded)", cause)
-	_, _ = m.appendEvent(session.EventToolCall, session.ToolCallPayload{
-		ID:   id,
-		Tool: "",
-		Args: m.opts.Redactor.RedactJSON(params),
+	tp := jsonrpc.TraceparentOf(jsonrpc.MetaOf(params)) // best-effort: nil for unparseable params
+	callEv, _ := m.appendEvent(session.EventToolCall, session.ToolCallPayload{
+		ID:          id,
+		Tool:        "",
+		Args:        m.opts.Redactor.RedactJSON(params),
+		Traceparent: tp,
 	})
+	// Causation: the rejection decision points back at its tools/call
+	// event exactly like an ordinary mediated call (spec §6.1).
+	var callSeq uint64
+	if callEv != nil {
+		callSeq = callEv.Seq
+	}
+	m.noteLink(id, callSeq, tp)
 	_ = m.recordDecision(id, "deny", "malformed-request", reason)
+	m.dropLink(id) // no result will follow a rejection
 }
 
 func (m *Mediator) recordDecision(id json.RawMessage, verdict, ruleID, reason string) error {

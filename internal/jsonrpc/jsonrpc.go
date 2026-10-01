@@ -18,6 +18,17 @@ const CodeToolDenied = -32010
 // never reaches an MCP server.
 const CodeInvalidParams = -32602
 
+// CodeParseError / CodeInvalidRequest are the standard JSON-RPC errors
+// the boundary answers with when a client→server line cannot be parsed
+// at all (or is valid JSON but not a valid JSON-RPC message). Such lines
+// are REJECTED, never relayed: an upstream with a different or more
+// lenient parser must not get the chance to form a second
+// interpretation of an actionable request.
+const (
+	CodeParseError    = -32700
+	CodeInvalidRequest = -32600
+)
+
 // ErrorObj is a JSON-RPC error object.
 type ErrorObj struct {
 	Code    int             `json:"code"`
@@ -45,6 +56,23 @@ func Parse(line []byte) (*Message, error) {
 		return nil, fmt.Errorf("not a JSON-RPC 2.0 message (jsonrpc=%q)", m.JSONRPC)
 	}
 	return &m, nil
+}
+
+// ProbeID extracts a request id from a line that may not be a valid
+// JSON-RPC message, so boundary rejections can answer with the right id
+// instead of leaving a client waiting. Returns nil (rendered as JSON-RPC
+// null, the spec's choice when the id cannot be detected) otherwise.
+func ProbeID(line []byte) json.RawMessage {
+	var p struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if err := json.Unmarshal(line, &p); err != nil {
+		return nil
+	}
+	if len(p.ID) == 0 {
+		return nil
+	}
+	return p.ID
 }
 
 // IsRequest reports whether the message is a request (method + id).
