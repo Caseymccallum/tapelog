@@ -62,6 +62,8 @@ Per [STACK.md](../STACK.md) — 4-week plan to Show HN. Checkboxes updated as we
 - [x] Value-level taint tracking (CaMeL-style) research spike — **shipped as experimental `flows: mode: value` (ADR 0005): contamination-matched value taint with results gate; session semantics preserved for must-never flows**
 
 ## v0.4 candidates (feedback-driven)
+- [ ] Signed session checkpoints — sign the chain head at session end (cosign/keyless or SSH key) so the `verify --expect` anchor becomes self-certifying instead of manually recorded
+- [ ] `subscriptions/listen` support — the 2026-07-28 long-lived server→client notification stream; mux currently serves list changes via per-request refresh only (MRTR `input_required`/`inputResponses` flows through today)
 - [ ] Blob refs for large payloads — store `args`/`result` out-of-band with a digest reference (spec/FAQ.md gap; replay needs the blob store)
 
 ## v0.3 candidates / launch prep (2026-09-30)

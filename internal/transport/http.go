@@ -36,13 +36,15 @@ func NewHTTP(url string, headers map[string]string) *HTTP {
 	return h
 }
 
-// Send POSTs the message and queues every response message.
-func (h *HTTP) Send(msg *jsonrpc.Message) error {
+// Send POSTs the message and queues every response message. The ctx
+// bounds the whole round-trip (no more detached context.Background):
+// cancelling the caller's operation cancels the HTTP request too.
+func (h *HTTP) Send(ctx context.Context, msg *jsonrpc.Message) error {
 	b, err := jsonrpc.Marshal(msg)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), httpRequestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, httpRequestTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, bytes.NewReader(b))
@@ -51,6 +53,18 @@ func (h *HTTP) Send(msg *jsonrpc.Message) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	// Request metadata headers (spec 2026-07-28 §Streamable HTTP): method
+	// and tool name travel in headers so gateways can route/authorize
+	// without parsing bodies. Servers validate them against the body
+	// (HeaderMismatchError on mismatch), so they must stay consistent
+	// with the message we send.
+	req.Header.Set("MCP-Protocol-Version", MCPVersion)
+	if msg.Method != "" {
+		req.Header.Set("Mcp-Method", msg.Method)
+		if name := paramName(msg); name != "" {
+			req.Header.Set("Mcp-Name", name)
+		}
+	}
 	for k, v := range h.headers {
 		req.Header.Set(k, v)
 	}
@@ -96,6 +110,25 @@ func (h *HTTP) Close() error { return nil }
 
 // httpRequestTimeout bounds one POST round-trip.
 const httpRequestTimeout = 30 * time.Second
+
+// paramName extracts the routing name (tool/resource/prompt name) from a
+// request's params for the Mcp-Name header. Empty when absent.
+func paramName(msg *jsonrpc.Message) string {
+	if len(msg.Params) == 0 {
+		return ""
+	}
+	var p struct {
+		Name string `json:"name"`
+		URI  string `json:"uri"`
+	}
+	if err := json.Unmarshal(msg.Params, &p); err != nil {
+		return ""
+	}
+	if p.Name != "" {
+		return p.Name
+	}
+	return p.URI
+}
 
 // parseJSONBody handles a single-JSON-document response (202 Accepted with
 // empty body is valid for notifications).

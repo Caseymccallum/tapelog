@@ -29,6 +29,8 @@ func newMuxCmd() *cobra.Command {
 		sandboxRO    []string
 		sandboxRW    []string
 		sandboxLax   bool
+		auditMode    string
+		strictSchemas bool
 		approvalListen  string
 		approvalToken   string
 		approvalTimeout time.Duration
@@ -97,6 +99,11 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 			}
 			defer plugins.Close()
 
+			if auditMode != mediator.AuditStrict && auditMode != mediator.AuditBestEffort {
+				return fmt.Errorf("--audit-mode must be %q or %q", mediator.AuditStrict, mediator.AuditBestEffort)
+			}
+			schemas := schemafire.New()
+			schemas.SetStrict(strictSchemas)
 			med := mediator.New(mediator.Options{
 				SessionID:      sessionID,
 				Task:           task,
@@ -104,12 +111,13 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 				Confirmer:      confirmer,
 				Plugins:        plugins,
 				Limits:         limTracker,
-				Schemas:        schemafire.New(),
+				Schemas:        schemas,
 				Injection:      injScanner,
 				InjectionMode:  injMode,
 				Values:         valueStore,
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
+				AuditMode:      auditMode,
 				Writer:         writer,
 			})
 
@@ -122,7 +130,9 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 			fmt.Fprintf(os.Stderr, "tapelog: mux session %s -> %s (%d servers, policy: %s)\n",
 				sessionID, logPath, len(cfg.Servers), policyID)
 			runErr := m.Serve(cmd.Context(), os.Stdin, os.Stdout)
-			_, _ = writer.Append(session.EventSessionEnd, session.SessionEndPayload{Reason: "client disconnect"})
+			if _, err := writer.Append(session.EventSessionEnd, session.SessionEndPayload{Reason: "client disconnect"}); err != nil {
+				fmt.Fprintf(os.Stderr, "tapelog: WARNING — could not record session/end: %v (chain head is the last written event)\n", err)
+			}
 			return runErr
 		},
 	}
@@ -138,6 +148,8 @@ on stdio. Tools are namespaced <server>__<tool>; every call is mediated
 	cmd.Flags().StringArrayVar(&sandboxRO, "sandbox-ro", nil, "sandbox stdio upstreams: allow read-only access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().StringArrayVar(&sandboxRW, "sandbox-rw", nil, "sandbox stdio upstreams: allow read-write access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().BoolVar(&sandboxLax, "sandbox-lenient", false, "degrade to unsandboxed with a warning instead of failing")
+	cmd.Flags().StringVar(&auditMode, "audit-mode", "strict", `what to do when the session log cannot be written: "strict" denies unrecordable calls and fails closed; "best-effort" keeps enforcing with a warning`)
+	cmd.Flags().BoolVar(&strictSchemas, "strict-schemas", false, "deny calls to tools whose advertised inputSchema fails to compile (default: skip validation for them)")
 	cmd.Flags().StringVar(&approvalListen, "approval-listen", "", "park confirm verdicts on a local approval queue at this address (e.g. 127.0.0.1:8923)")
 	cmd.Flags().StringVar(&approvalToken, "approval-token", "", "require Authorization: Bearer <token> on the approval queue API")
 	cmd.Flags().DurationVar(&approvalTimeout, "approval-timeout", 5*time.Minute, "how long a parked approval waits before failing closed (deny)")

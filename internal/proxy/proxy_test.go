@@ -263,3 +263,33 @@ func TestSurfaceCallsAreMediated(t *testing.T) {
 		t.Fatalf("surface result was not paired/recorded: %q", paired)
 	}
 }
+
+func TestPlumbingMethodsBypassMediation(t *testing.T) {
+	// server/discover (2026-07-28) is protocol plumbing: it must reach the
+	// server unmediated even under a deny-everything hook, and a JSON-RPC
+	// notification must never get a (bogus) deny response.
+	var clientOut, serverOut syncBuffer
+	discoverLine := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{}}}`
+	notifyLine := `{"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"x"}}`
+
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(context.Background(),
+			strings.NewReader(discoverLine+"\n"+notifyLine+"\n"), &clientOut,
+			strings.NewReader(""), &serverOut,
+			Hooks{OnToolCall: func(id json.RawMessage, call *jsonrpc.ToolCallParams) (Decision, *DenyData) {
+				t.Errorf("plumbing/notification must not be mediated, got %q", call.Name)
+				return DecisionDeny, &DenyData{Code: "tool_denied"}
+			}})
+	}()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	got := serverOut.String()
+	if !strings.Contains(got, "server/discover") || !strings.Contains(got, "notifications/progress") {
+		t.Fatalf("plumbing must be forwarded untouched:\n%s", got)
+	}
+	if strings.Contains(clientOut.String(), "tool_denied") {
+		t.Fatalf("no deny response may be synthesized for notifications/plumbing:\n%s", clientOut.String())
+	}
+}

@@ -3,8 +3,9 @@
 // Decisions are explainable — every verdict carries a rule id and reason,
 // which are recorded in the session log (docs/THREAT_MODEL.md claim #1).
 //
-// Engine note (ADR 0002): v0 evaluates YAML rules natively; Cedar becomes
-// the internal engine later without changing this interface.
+// Engine note (ADR 0002): rule bodies are YAML; `where` conditions are
+// compiled and evaluated by the Cedar engine (internal/policy/cedar.go)
+// without changing this interface.
 package policy
 
 import (

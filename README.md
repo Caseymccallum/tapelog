@@ -82,8 +82,10 @@ tapelog record --policy policy.yaml --log session.jsonl -- npx -y @modelcontextp
 # One boundary across MANY servers (stdio + HTTP), one session log:
 tapelog mux --config mux.yaml --policy policy.yaml --log session.jsonl
 
-# Verify the log is untampered:
+# Verify the log is untampered (record the printed chain head outside the
+# log — CI output, a ticket — and it doubles as a rewrite/truncation anchor):
 tapelog verify session.jsonl
+tapelog verify session.jsonl --expect <chain-head-from-the-run>
 
 # Replay the session as a hermetic MCP server (agent regression tests, CI):
 tapelog replay session.jsonl --strict

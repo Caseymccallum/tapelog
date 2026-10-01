@@ -33,7 +33,14 @@ type Writer struct {
 
 // NewWriter creates (truncating) a session log at path and returns a Writer
 // bound to the given session ID. Nothing keeps the file open afterwards.
+//
+// A flight recorder must not silently destroy evidence: if the target
+// already exists with content, warn loudly before truncating — shared by
+// every command that writes a log (`record` and `mux` behave identically).
 func NewWriter(path, sessionID string) (*Writer, error) {
+	if st, err := os.Stat(path); err == nil && st.Size() > 0 {
+		fmt.Fprintf(os.Stderr, "tapelog: WARNING — %s exists (%d bytes) and will be OVERWRITTEN; copy it first if you want to keep it\n", path, st.Size())
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("create session log: %w", err)
@@ -122,6 +129,7 @@ type VerifyResult struct {
 	Events      int    `json:"events"`
 	FirstBadSeq uint64 `json:"first_bad_seq,omitempty"` // 0 = intact
 	Problem     string `json:"problem,omitempty"`
+	LastHash    string `json:"last_hash,omitempty"` // chain head (last event hash)
 }
 
 // OK reports whether the verified log is fully intact.
@@ -192,5 +200,6 @@ func Verify(r io.Reader) (*VerifyResult, error) {
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("read session log: %w", err)
 	}
+	res.LastHash = prevHash // chain head: anchor point for `verify --expect`
 	return res, nil
 }

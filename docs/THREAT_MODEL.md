@@ -18,10 +18,10 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
 | 2 | MCP tool poisoning / rug pulls — server silently changes tool behavior between calls | Tool-descriptor hash pinning; drift recorded + flagged; `--deny-on-drift` denies (race-free: calls wait for in-flight listings) |
 | 3 | Cross-tool exfiltration ("toxic flows") — `read_x` + `send_y` compose into theft though each is allowed | **Session-scoped taint flow rules** (`flows:` in policy): source→sink restrictions with named taint sources; `action: deny` or `confirm` |
 | 4 | Residual authority replay — a stale grant is reused later | Per-task scoped grants with expiry (policy `expires` + `tasks`) |
-| 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`tapelog verify` detects modification/deletion/reordering, incl. recomputed-hash forgery) |
+| 5 | "What happened?" blindness — no forensic trail | Hash-chained, append-only log (`tapelog verify` detects modification/deletion/reordering, including recomputed-hash edits of individual events; whole-log rewrites need an external anchor — use the printed chain head with `verify --expect`) |
 | 6 | Log credential leakage — traces leak secrets | Deterministic `[REDACTED]` masking of known secret patterns + field names (before hashing) |
 | 7 | Tool server over-reach — a mediated server touches files outside its lane | **OS sandbox (defense-in-depth):** spawned servers run under Landlock filesystem restrictions (`--sandbox-ro`/`--sandbox-rw`, Linux; re-exec + syscall.Exec, strict by default) |
-| 8 | Exfiltration via non-tool surfaces — `resources/read` / `prompts/get` bypass tool policy | **No unmediated surface:** every client request except `initialize`/`ping`/`tools/list` is mediated as a surface call (same pipeline: policy, flows, limits, confirm, recording) |
+| 8 | Exfiltration via non-tool surfaces — `resources/read` / `prompts/get` bypass tool policy | **No unmediated surface:** every client request except the protocol plumbing (`initialize`/`ping`/`tools/list`/`server/discover` — no agent-facing payloads) is mediated as a surface call (same pipeline: policy, flows, limits, confirm, recording) |
 | 9 | Tool results carry injected instructions ("ignore previous instructions") | **Injection scanning** of results (heuristic markers; `injection: mode: log` default, `confirm`/`deny` opt-in — blocked delivery with the original still recorded as evidence) |
 
 ## Out of scope — honest non-claims

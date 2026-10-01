@@ -10,6 +10,7 @@ import (
 
 	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 	"github.com/Caseymccallum/tapelog/internal/mediator"
+	"github.com/Caseymccallum/tapelog/internal/transport"
 )
 
 // Serve runs the harness-facing stdio MCP server. Messages are processed
@@ -57,9 +58,25 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		}
 
 		switch msg.Method {
-		case "initialize":
+		case "server/discover":
+			// Modern-era discovery (spec 2026-07-28): no handshake needed.
 			if err := result(msg.ID, map[string]any{
-				"protocolVersion": mcpclientProtocol(),
+				"resultType":        "complete",
+				"supportedVersions": append([]string{mcpclientProtocol()}, transport.LegacyVersions...),
+				"capabilities": map[string]any{
+					"tools": map[string]any{}, "resources": map[string]any{}, "prompts": map[string]any{},
+				},
+				"_meta": map[string]any{
+					"io.modelcontextprotocol/serverInfo": map[string]any{"name": "tapelog-mux", "version": mx.version},
+				},
+			}); err != nil {
+				return err
+			}
+		case "initialize":
+			// Legacy-era handshake: serve the revision the client asked
+			// for when we can (dual-era server semantics).
+			if err := result(msg.ID, map[string]any{
+				"protocolVersion": transport.NegotiateLegacy(paramStr(msg.Params, "protocolVersion")),
 				"capabilities":    map[string]any{"tools": map[string]any{}},
 				"serverInfo":      map[string]any{"name": "tapelog-mux", "version": mx.version},
 			}); err != nil {
@@ -114,7 +131,14 @@ func (mx *Mux) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				continue
 			}
 
-			raw, isError, err := u.client.CallTool(ctx, tool, call.Arguments)
+			// Forward the client's params VERBATIM except the namespaced name:
+		// rebuilding {name, arguments} would silently drop `_meta`,
+		// MRTR `inputResponses`, and any future params field.
+		fwd := withParam(msg.Params, "name", tool)
+		if fwd == nil {
+			fwd, _ = json.Marshal(map[string]any{"name": tool, "arguments": call.Arguments})
+		}
+		raw, isError, err := u.client.CallToolParams(ctx, json.RawMessage(fwd))
 			if err != nil {
 				eobj := &jsonrpc.ErrorObj{Code: -32603, Message: fmt.Sprintf("upstream %q: %v", server, err)}
 				rawErr, _ := json.Marshal(eobj)

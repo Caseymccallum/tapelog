@@ -17,7 +17,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X github.com/Caseymccallum/tapelog/internal/buildinfo.Version={{.Version}}
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
 

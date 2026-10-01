@@ -8,10 +8,12 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Caseymccallum/tapelog/internal/buildinfo"
 )
 
-// version is stamped by goreleaser at release time.
-var version = "0.3.0-dev"
+// version is stamped by goreleaser at release time (via buildinfo).
+var version = buildinfo.Version
 
 func main() {
 	root := &cobra.Command{

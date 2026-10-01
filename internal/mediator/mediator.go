@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -37,8 +38,33 @@ type Options struct {
 	Values         *taint.Store          // optional value-level taint (CaMeL-style)
 	NonInteractive bool          // wording for confirm denials
 	DenyOnDrift    bool
-	Writer         *session.Writer
-	Redactor       *session.Redactor
+	// AuditMode selects what happens when the session log cannot be
+	// written (disk full, permissions, replaced by a directory, ...):
+	//
+	//	strict      (default) — nothing executes unrecorded: the affected
+	//	            call is denied and every later call fails closed with
+	//	            rule_id "audit-degraded". Availability is sacrificed
+	//	            for audit integrity — the product's premise is
+	//	            record + enforce + replay, so an unrecorded action is
+	//	            an unauditable side effect.
+	//	best-effort — explicit opt-out: warn on stderr and keep enforcing.
+	//	            The session log may be missing events.
+	AuditMode string
+	Writer    EventWriter
+	Redactor  *session.Redactor
+}
+
+// Audit modes for Options.AuditMode.
+const (
+	AuditStrict     = "strict"
+	AuditBestEffort = "best-effort"
+)
+
+// EventWriter appends events to the session log. *session.Writer is the
+// production implementation; tests inject failures to exercise the audit
+// fail-closed state machine.
+type EventWriter interface {
+	Append(t session.EventType, payload any) (*session.Event, error)
 }
 
 // Outcome is the verdict for one tool call.
@@ -65,6 +91,7 @@ type Mediator struct {
 	mu           sync.Mutex
 	pins         map[string]pin        // tool -> descriptor pin
 	pendingTools map[string]string     // JSON-RPC id -> tool (value taint)
+	auditErr     error                 // sticky: first session-log append failure
 }
 
 type pin struct {
@@ -130,13 +157,50 @@ func (m *Mediator) PinSchema(tool string, descriptor json.RawMessage) error {
 	return m.opts.Schemas.Set(tool, d.InputSchema)
 }
 
+// appendEvent records one session event and reports append failure.
+// Failures latch: the first one switches the mediator to audit-degraded
+// and (in strict mode) every later call is denied — see Options.AuditMode.
+func (m *Mediator) appendEvent(t session.EventType, payload any) error {
+	_, err := m.opts.Writer.Append(t, payload)
+	if err == nil {
+		return nil
+	}
+	m.mu.Lock()
+	first := m.auditErr == nil
+	if first {
+		m.auditErr = err
+	}
+	m.mu.Unlock()
+	if first {
+		fmt.Fprintf(os.Stderr, "tapelog: WARNING — session log append failed: %v (audit mode: %s)%s\n",
+			err, m.auditMode(), " — recording is degraded for the rest of this session")
+	}
+	return err
+}
+
+// auditMode returns the effective audit mode ("" = strict).
+func (m *Mediator) auditMode() string {
+	if m.opts.AuditMode == AuditBestEffort {
+		return AuditBestEffort
+	}
+	return AuditStrict
+}
+
+// auditDegraded reports whether a session-log append has failed and, if
+// so, the first failure.
+func (m *Mediator) auditDegraded() (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.auditErr != nil, m.auditErr
+}
+
 // RecordToolsList appends a tools/list event to the session log.
 func (m *Mediator) RecordToolsList(tools []json.RawMessage) {
 	cleaned := make([]json.RawMessage, 0, len(tools))
 	for _, t := range tools {
 		cleaned = append(cleaned, m.opts.Redactor.RedactJSON(t))
 	}
-	_, _ = m.opts.Writer.Append(session.EventToolsList, session.ToolsListPayload{Tools: cleaned})
+	_ = m.appendEvent(session.EventToolsList, session.ToolsListPayload{Tools: cleaned})
 }
 
 // awaitResults blocks until every previously forwarded call has reported
@@ -160,12 +224,21 @@ func (m *Mediator) awaitResults(timeout time.Duration) {
 // Decide runs the full pipeline for one `tools/call` and records the
 // events. id is the JSON-RPC request id (recorded verbatim).
 func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage) Outcome {
+	// Audit integrity first: once the log is degraded, strict mode stops
+	// forwarding — a tool call we cannot record must not execute.
+	if degraded, cause := m.auditDegraded(); degraded && m.auditMode() == AuditStrict {
+		reason := fmt.Sprintf("audit log is unwritable (%v); failing closed so nothing executes unrecorded (set audit mode best-effort to override)", cause)
+		return Outcome{Allowed: false, Verdict: "deny", RuleID: "audit-degraded", Reason: reason}
+	}
 	descHash, drift := m.Descriptor(tool)
-	_, _ = m.opts.Writer.Append(session.EventToolCall, session.ToolCallPayload{
+	if err := m.appendEvent(session.EventToolCall, session.ToolCallPayload{
 		ID: id, Tool: tool,
 		Args:               m.opts.Redactor.RedactJSON(args),
 		ToolDescriptorHash: descHash, DescriptorDrift: drift,
-	})
+	}); err != nil && m.auditMode() == AuditStrict {
+		reason := fmt.Sprintf("could not record the tool call (%v); failing closed (set audit mode best-effort to override)", err)
+		return Outcome{Allowed: false, Verdict: "deny", RuleID: "audit-degraded", Reason: reason}
+	}
 
 	// 1. Descriptor drift: possible tool poisoning (THREAT_MODEL #2).
 	// Value-level taint needs prior results recorded before we judge
@@ -215,8 +288,13 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		}
 	}
 	if !decided {
+		// Policy sees the same (redacted) args the log records: what-if
+		// re-evaluation runs on recorded args, so evaluating redacted here
+		// keeps live verdicts reproducible from the log (the redaction is
+		// deterministic). Value-taint matching (above) still sees raw args.
 		dec = m.opts.Evaluator.Evaluate(policy.Request{
-			SessionID: m.opts.SessionID, Task: m.opts.Task, Tool: tool, Args: args,
+			SessionID: m.opts.SessionID, Task: m.opts.Task, Tool: tool,
+			Args: m.opts.Redactor.RedactJSON(args),
 		})
 	}
 
@@ -262,10 +340,15 @@ func (m *Mediator) Decide(id json.RawMessage, tool string, args json.RawMessage)
 		}
 	}
 
-	m.recordDecision(id, string(dec.Verdict), dec.RuleID, reason)
-
 	if finalVerdict != policy.VerdictAllow {
+		_ = m.recordDecision(id, string(dec.Verdict), dec.RuleID, reason)
 		return Outcome{Allowed: false, Verdict: string(dec.Verdict), RuleID: dec.RuleID, Reason: reason}
+	}
+	// The verdict is recorded BEFORE the call is allowed to proceed: an
+	// allow we cannot record must not execute (strict mode).
+	if err := m.recordDecision(id, string(dec.Verdict), dec.RuleID, reason); err != nil && m.auditMode() == AuditStrict {
+		dreason := fmt.Sprintf("could not record the policy decision (%v); failing closed (set audit mode best-effort to override)", err)
+		return Outcome{Allowed: false, Verdict: "deny", RuleID: "audit-degraded", Reason: dreason}
 	}
 	m.taint.Record(tool) // permitted: its data enters the agent's context
 	m.noteCall(id, tool) // remember id -> tool for value taint at result time
@@ -291,9 +374,18 @@ func (m *Mediator) noteCall(id json.RawMessage, tool string) {
 // (over limits.max_response_bytes, or blocked by injection mode: deny):
 // the (redacted) original is still recorded as evidence either way.
 func (m *Mediator) Result(id json.RawMessage, isError bool, result json.RawMessage) *ResultBlock {
-	_, _ = m.opts.Writer.Append(session.EventToolResult, session.ToolResultPayload{
+	recErr := m.appendEvent(session.EventToolResult, session.ToolResultPayload{
 		ID: id, IsError: isError, Result: m.opts.Redactor.RedactJSON(result),
 	})
+	if recErr != nil && m.auditMode() == AuditStrict {
+		// The result cannot reach the harness unrecorded: replace it with
+		// a structured error (the audit trail is the product).
+		return &ResultBlock{
+			Code:   "audit_degraded",
+			RuleID: "audit-degraded",
+			Reason: fmt.Sprintf("could not record the tool result (%v); delivery blocked (set audit mode best-effort to override)", recErr),
+		}
+	}
 	// Label the result's values with their source tool (value-level taint).
 	if m.opts.Values != nil {
 		m.mu.Lock()
@@ -355,8 +447,8 @@ func (m *Mediator) ask(tool string, args json.RawMessage) (approval.Choice, stri
 	return m.opts.Confirmer.Confirm(tool, args), ""
 }
 
-func (m *Mediator) recordDecision(id json.RawMessage, verdict, ruleID, reason string) {
-	_, _ = m.opts.Writer.Append(session.EventPolicyDecision, session.PolicyDecisionPayload{
+func (m *Mediator) recordDecision(id json.RawMessage, verdict, ruleID, reason string) error {
+	return m.appendEvent(session.EventPolicyDecision, session.PolicyDecisionPayload{
 		ID: id, Verdict: verdict, RuleID: ruleID, Reason: reason,
 	})
 }

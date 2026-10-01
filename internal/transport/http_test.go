@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +19,7 @@ func TestHTTPSingleJSONResponse(t *testing.T) {
 	defer srv.Close()
 
 	h := NewHTTP(srv.URL, nil)
-	if err := h.Send(&jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "ping"}); err != nil {
+	if err := h.Send(context.Background(), &jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "ping"}); err != nil {
 		t.Fatal(err)
 	}
 	msg, err := h.Receive()
@@ -39,7 +40,7 @@ func TestHTTPSSEresponse(t *testing.T) {
 	defer srv.Close()
 
 	h := NewHTTP(srv.URL, nil)
-	if err := h.Send(&jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`2`), Method: "tools/call"}); err != nil {
+	if err := h.Send(context.Background(), &jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`2`), Method: "tools/call"}); err != nil {
 		t.Fatal(err)
 	}
 	msg, err := h.Receive()
@@ -61,7 +62,7 @@ func TestHTTPSendsHeaders(t *testing.T) {
 	defer srv.Close()
 
 	h := NewHTTP(srv.URL, map[string]string{"Authorization": "Bearer tok123"})
-	if err := h.Send(&jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`3`), Method: "ping"}); err != nil {
+	if err := h.Send(context.Background(), &jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`3`), Method: "ping"}); err != nil {
 		t.Fatal(err)
 	}
 	_, _ = h.Receive()
@@ -77,8 +78,36 @@ func TestHTTPErrorStatus(t *testing.T) {
 	defer srv.Close()
 
 	h := NewHTTP(srv.URL, nil)
-	err := h.Send(&jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`4`), Method: "ping"})
+	err := h.Send(context.Background(), &jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`4`), Method: "ping"})
 	if err == nil || !strings.Contains(err.Error(), "500") {
 		t.Fatalf("want HTTP 500 error, got %v", err)
+	}
+}
+
+func TestHTTPRequestMetadataHeaders(t *testing.T) {
+	var gotProto, gotMethod, gotName string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotProto = r.Header.Get("MCP-Protocol-Version")
+		gotMethod = r.Header.Get("Mcp-Method")
+		gotName = r.Header.Get("Mcp-Name")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":9,"result":{}}`))
+	}))
+	defer srv.Close()
+
+	h := NewHTTP(srv.URL, nil)
+	msg := &jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage(`9`), Method: "tools/call",
+		Params: json.RawMessage(`{"name":"read_file","arguments":{}}`)}
+	if err := h.Send(context.Background(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if gotProto != MCPVersion {
+		t.Fatalf("MCP-Protocol-Version = %q, want %q", gotProto, MCPVersion)
+	}
+	if gotMethod != "tools/call" {
+		t.Fatalf("Mcp-Method = %q, want tools/call", gotMethod)
+	}
+	if gotName != "read_file" {
+		t.Fatalf("Mcp-Name = %q, want read_file", gotName)
 	}
 }

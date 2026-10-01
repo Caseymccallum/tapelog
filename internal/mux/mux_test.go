@@ -36,7 +36,7 @@ func newFakeTransport(tools ...string) *fakeTransport {
 	return f
 }
 
-func (f *fakeTransport) Send(msg *jsonrpc.Message) error {
+func (f *fakeTransport) Send(ctx context.Context, msg *jsonrpc.Message) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var resp *jsonrpc.Message

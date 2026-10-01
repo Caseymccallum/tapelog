@@ -186,11 +186,13 @@ in the payload."
 - Invalid arguments (wrong types, missing required fields, properties the
   schema forbids) are **denied before forwarding** with
   `rule_id: schema-firewall`.
-- **Fail-open where there is nothing to validate against**: tools with no
-  `inputSchema`, or a schema that will not compile, pass through (the
-  error is reported at pin time). Servers cannot brick themselves with
-  broken schemas â€” but they also cannot smuggle bad arguments past a
-  schema they declared.
+- **Fail-open where there is nothing to validate against** by default:
+  tools with no `inputSchema`, or a schema that will not compile, pass
+  through (the error is reported at pin time). Servers cannot brick
+  themselves with broken schemas â€” but they also cannot smuggle bad
+  arguments past a schema they declared. With `--strict-schemas`, a tool
+  whose advertised schema fails to compile is **denied** instead
+  (`rule_id: schema-firewall`) â€” broken schemas become hostile.
 - Validation happens after drift checks and before policy rules, so a
   schema violation never consumes a policy rule's semantics (or a confirm
   prompt's attention).
@@ -331,3 +333,26 @@ export (the YAML engine is authoritative):
 since first listing (possible tool poisoning / rug pull). Descriptor pins are
 hashes of the *redacted canonical* descriptor; tool calls wait for in-flight
 `tools/list` responses so enforcement cannot be raced.
+
+## Audit mode: what happens when the log is unwritable
+
+The session log is the product, so a failed append is never silent
+(`--audit-mode`, on `record` and `mux`):
+
+- **`strict` (default)** — nothing executes unrecorded. The first failed
+  append latches an `audit-degraded` state: the affected call is denied,
+  every later call fails closed (`rule_id: audit-degraded`), and a
+  `tools/result` that cannot be recorded is not delivered to the harness.
+  Availability is sacrificed for audit integrity.
+- **`best-effort`** — explicit opt-out: a loud stderr WARNING and
+  enforcement continues. The log may be missing events from the failure
+  onward; `tapelog verify` still proves whatever chain exists.
+
+## Policy sees what the log sees
+
+`where:` conditions evaluate the **redacted** argument object — the same
+deterministic form recorded in the log. That means `tapelog policy whatif`
+re-evaluation reproduces live verdicts exactly (no raw/redacted drift).
+If a rule must match secret-looking *values*, use value-level taint
+(`flows: mode: value`) instead — it inspects raw arguments precisely
+because it is hunting secrets.

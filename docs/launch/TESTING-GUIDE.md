@@ -92,6 +92,7 @@ healthy:
 ```
 OK: my-session.jsonl
   9 events, chain intact
+  chain head: <64 hex chars>
 ```
 
 Now tamper with one event — **use this exact command** (it writes

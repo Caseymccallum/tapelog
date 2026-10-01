@@ -20,6 +20,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Caseymccallum/tapelog/internal/buildinfo"
 	"github.com/Caseymccallum/tapelog/internal/mcpclient"
 	"github.com/Caseymccallum/tapelog/internal/mediator"
 	"github.com/Caseymccallum/tapelog/internal/transport"
@@ -96,7 +97,7 @@ type Mux struct {
 
 // New connects and handshakes every upstream (fail-fast).
 func New(ctx context.Context, cfg *Config, med *mediator.Mediator) (*Mux, error) {
-	mx := &Mux{med: med, byName: map[string]*Upstream{}, version: "0.1.0",
+	mx := &Mux{med: med, byName: map[string]*Upstream{}, version: buildinfo.Version,
 		resOwner: map[string]string{}, tmplOwner: map[string]string{}}
 	for _, sc := range cfg.Servers {
 		var t transport.Transport
@@ -110,7 +111,7 @@ func New(ctx context.Context, cfg *Config, med *mediator.Mediator) (*Mux, error)
 			return nil, fmt.Errorf("server %q: %w", sc.Name, err)
 		}
 		client := mcpclient.New(t)
-		if _, err := client.Initialize(ctx, "tapelog-mux"); err != nil {
+		if _, err := client.Connect(ctx, "tapelog-mux"); err != nil {
 			_ = client.Close()
 			return nil, fmt.Errorf("server %q: %w", sc.Name, err)
 		}

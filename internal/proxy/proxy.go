@@ -52,14 +52,25 @@ type Hooks struct {
 }
 
 // mediatedCall extracts the mediated call from a client→server request.
-// tools/call yields the tool call; every other REQUEST except the core
-// protocol trio (initialize/ping/tools/list — plumbing, no data enters the
-// agent's context through them) is treated as a surface call named after
-// its method (resources/read, prompts/get, ...), so nothing that can feed
-// the agent's context crosses the boundary unmediated.
+// tools/call yields the tool call; every other REQUEST except the protocol
+// plumbing set is treated as a surface call named after its method
+// (resources/read, prompts/get, ...), so nothing that can feed the agent's
+// context crosses the boundary unmediated.
+//
+// The plumbing set is protocol machinery that carries no agent-facing
+// payload and MUST NOT be policy-gated (a deny would break compliant
+// clients before they reach the tool layer):
+//
+//	initialize    — legacy handshake (pre-2026-07-28 clients)
+//	ping          — liveness (removed in 2026-07-28; legacy clients still send it)
+//	tools/list    — catalog plumbing; recorded + descriptor-pinned separately
+//	server/discover — 2026-07-28 capability/version discovery (servers MUST answer)
+//
+// Notifications (method, no id) are never mediated at all — there is no
+// response to deny with, and they carry no result payload.
 func mediatedCall(msg *jsonrpc.Message) *jsonrpc.ToolCallParams {
 	switch msg.Method {
-	case "initialize", "ping", "tools/list":
+	case "initialize", "ping", "tools/list", "server/discover":
 		return nil
 	case "tools/call":
 		call, err := msg.ToolCall()

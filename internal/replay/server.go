@@ -8,7 +8,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/Caseymccallum/tapelog/internal/buildinfo"
 	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
+	"github.com/Caseymccallum/tapelog/internal/transport"
 )
 
 // DefaultProtocolVersion is the MCP protocol version the replay server
@@ -35,7 +37,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 	version := s.Version
 	if version == "" {
-		version = "0.1.0-dev"
+		version = buildinfo.Version
 	}
 
 	write := func(m *jsonrpc.Message) error {
@@ -81,6 +83,17 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		}
 
 		switch msg.Method {
+		case "server/discover":
+			if err := result(msg.ID, map[string]any{
+				"resultType":        "complete",
+				"supportedVersions": append([]string{protocol}, transport.LegacyVersions...),
+				"capabilities":      map[string]any{"tools": map[string]any{}},
+				"_meta": map[string]any{
+					"io.modelcontextprotocol/serverInfo": map[string]any{"name": "tapelog-replay", "version": version},
+				},
+			}); err != nil {
+				return err
+			}
 		case "initialize":
 			if err := result(msg.ID, map[string]any{
 				"protocolVersion": protocol,

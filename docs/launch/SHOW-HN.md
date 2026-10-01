@@ -22,7 +22,11 @@ resonates more than security framing, and "rr" is a known-good analogy.
 > 1. **Record everything.** Every tool call, result and policy verdict goes
 >    into a hash-chained session log. Secrets are redacted before hashing;
 >    `tapelog verify` detects any modification, deletion or reordering —
->    even if the attacker recomputes hashes.
+>    including edited events whose hashes were recomputed (the next link
+>    exposes them). An attacker who rewrites the *entire* log can produce a
+>    self-consistent chain, so each run prints a chain head — record it
+>    somewhere outside the log (CI output, a ticket) and `verify --expect`
+>    catches whole-log rewrites and truncation too.
 > 2. **A hard boundary.** YAML policies (`allow`/`confirm`/`deny`) with
 >    explainable decisions, scoped grants with expiry, and argument
 >    conditions written in Cedar (we didn't invent an expression language).

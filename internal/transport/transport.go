@@ -5,6 +5,7 @@ package transport
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -13,10 +14,32 @@ import (
 	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 )
 
+// MCPVersion is the MCP protocol revision tapelog speaks (spec 2026-07-28).
+// Single source of truth for the wire: the HTTP request-metadata header,
+// the client `_meta`, and every serverInfo/DiscoverResult tapelog emits.
+const MCPVersion = "2026-07-28"
+
+// LegacyVersions are the handshake-based revisions a dual-era tapelog
+// server negotiates on an `initialize` request (spec 2026-07-28 §Versioning:
+// "An `initialize` request selects legacy semantics").
+var LegacyVersions = []string{"2025-11-25", "2025-03-26", "2024-11-05"}
+
+// NegotiateLegacy echoes a legacy client's requested version if we can
+// serve it, else the modern revision. Used by dual-era servers (mux,
+// replay) when answering `initialize`.
+func NegotiateLegacy(requested string) string {
+	for _, v := range LegacyVersions {
+		if requested == v {
+			return requested
+		}
+	}
+	return MCPVersion
+}
+
 // Transport sends and receives JSON-RPC messages. Implementations must be
 // safe for concurrent Send; Receive is serialized by the client.
 type Transport interface {
-	Send(msg *jsonrpc.Message) error
+	Send(ctx context.Context, msg *jsonrpc.Message) error
 	Receive() (*jsonrpc.Message, error)
 	Close() error
 }
@@ -52,8 +75,11 @@ func NewStdio(command []string) (*Stdio, error) {
 	return &Stdio{cmd: cmd, stdin: stdin, stdout: sc}, nil
 }
 
-// Send writes one message line.
-func (s *Stdio) Send(msg *jsonrpc.Message) error {
+// Send writes one message line. Honors ctx between queuing and write.
+func (s *Stdio) Send(ctx context.Context, msg *jsonrpc.Message) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b, err := jsonrpc.Marshal(msg)
 	if err != nil {
 		return err
