@@ -1,5 +1,7 @@
 # Put tapelog in front of your MCP client
 
+On the development branch, [the setup helper](FIRST-SESSION.md) generates a separate candidate from an existing named stdio entry. It preserves other settings and omits credentials from preview. Client selectors describe JSON formats; actual launcher compatibility must still be tested.
+
 tapelog is transparent to your agent: it speaks MCP on both sides. Your
 client launches `tapelog record` *instead of* the real server, and
 tapelog launches the real server behind itself:
@@ -68,22 +70,22 @@ port 8923:
 
 Notes that matter on Windows:
 
-- ⚠ **No spaces in ANY path.** Roo (and Cline) wrap your command in
+- **Historical Roo/Cline launcher finding (not a universal path restriction).** Roo (and Cline) wrap your command in
   `cmd.exe /c <command> <args…>`, and cmd's quote rule chops the command
   at the first space — `"C:\...\Web Apps\..."` dies instantly with
   `'C:\...\Web' is not recognized` and the client reports
   **"MCP error -32000: Connection closed"**. If your path has spaces
-  (e.g. `C:\Users\you\My Project\`), use the 8.3 short name in the
+  (e.g. `C:\Users\you\My Project\`), the historical workaround used the 8.3 short name in the
   config:
   `cmd /c for %I in ("C:\Users\you\My Project") do @echo %~sI`
-  (→ `C:\Users\you\MYPROJ~1\...`), or install tapelog to a space-free
-  directory.
+  (→ `C:\Users\you\MYPROJ~1\...`), or a space-free install. 8.3 names may be disabled.
+  Direct executable spawning with separate argv works with spaces in the DX
+  acceptance test; no live Roo/Cline launcher fix is claimed. See [FIRST-SESSION.md](FIRST-SESSION.md).
 - Use the **absolute path** to `tapelog.exe` (spawn doesn't run PATH
   lookup the way your shell does).
 - `npx` needs the `cmd /c` wrapper on Windows (Roo's own docs do the
   same); everything after `--` is the original server command **verbatim**.
-- Drop `--policy` for a first no-policy run (everything is recorded; no
-  policy rules — but the boundary's other protections stay active) — see step 3.
+- For a new observation-only configuration, omit `--policy` only if you intend default allow. Preserve any existing enforcement policy; setup accepts `--policy` without editing it.
 - Optional `"alwaysAllow": ["tool_a"]` in the entry is *Roo's* auto-
   approve list; it does not affect tapelog policy.
 
@@ -95,9 +97,7 @@ from the agent's view nothing changed.
 
 ### 3. Prove the pipe, then enforce
 
-First run **without a policy** (no `--policy` — no policy rules;
-boundary protections stay active): ask Roo to read a file,
-then check the evidence:
+For a new observation-only demo, no `--policy` means default allow with boundary protections. Preserve your existing policy for a real integration. Ask Roo to call a named MCP read tool, then check the evidence:
 
 ```powershell
 .\bin\tapelog.exe verify sessions\roo.jsonl
@@ -131,7 +131,6 @@ approval queue (`http://127.0.0.1:8923`):
       "args": [
         "record",
         "--log", "C:\\you\\project\\sessions\\vscode.jsonl",
-        "--auto-confirm",
         "--",
         "cmd", "/c", "npx", "-y", "@modelcontextprotocol/server-filesystem", "C:\\you\\project"
       ]
@@ -154,7 +153,7 @@ Claude Code — project scope `.mcp.json` (or `claude mcp add`):
     "filesystem-logged": {
       "type": "stdio",
       "command": "C:\\Users\\you\\tapelog\\bin\\tapelog.exe",
-      "args": ["record", "--log", "sessions/claude.jsonl", "--auto-confirm",
+      "args": ["record", "--log", "sessions/claude.jsonl",
                "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
     }
   }
@@ -226,11 +225,11 @@ The recipe is always the same:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| **`MCP error -32000: Connection closed` in the client** | **(most common on Windows)** spaces in a path + Roo/Cline's `cmd.exe /c` wrapper: cmd chops the command at the first space (`'C:\...\Web' is not recognized`) | use 8.3 short paths (`cmd /c for %I in ("C:\your path") do @echo %~sI`) everywhere in the entry — see the note above. Also: absolute path in `command`, no stray manual `tapelog record` running, then **Restart** the server |
+| **`MCP error -32000: Connection closed` in the client** | Ambiguous: inspect upstream stderr; one historical Roo/Cline failure was CMD quoting around spaced paths | check the absolute executable with `doctor --server`; verify upstream startup and client quoting; see FIRST-SESSION.md. Do not assume 8.3 names exist |
 | Server won't start in client | relative path to tapelog | use absolute path in `command` |
 | Server starts, zero tools | inner command broken (`npx` w/o `cmd /c` on Windows) | run the inner command alone in a terminal first |
-| Agent hangs on a call | `confirm` policy + no approval path | add `--approval-listen` or `--auto-confirm` |
-| Calls denied immediately | policy pack too strict for your tools | first run without `--policy`; then `tapelog policy whatif` |
+| Agent hangs on a call | `confirm` policy + no approval path | configure the loopback `--approval-listen` queue; do not bypass confirmation to fix onboarding |
+| Calls denied immediately | policy pack too strict for your tools | inspect the denial reason and run `tapelog policy whatif` with a candidate policy; do not remove enforcement just to make calls pass |
 | Log grows but verify fails | something rewrote the log | check the ⚠ banner (live in both dashboards) or `tapelog verify`; that's tampering or a tool editing files. Recording survives mid-session edits and flags them — see CHANGELOG |
 
 

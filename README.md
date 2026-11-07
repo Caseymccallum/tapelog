@@ -1,6 +1,6 @@
 # Tapelog
 
-**Record every tool call. Replay any session. Test agent behaviour deterministically.**
+**Record MCP tool calls. Replay recorded responses. Test agent behaviour deterministically.**
 `rr` for tool-calling agents — a tamper-evident flight recorder and a hard policy boundary for MCP tool traffic.
 
 > **Status:** **v0.4.0 released** (2026-10-01)
@@ -8,6 +8,15 @@
 > **Stable:** `record` · `mux` · `policy` · `replay` · `verify` · `test` · `fuzz` · `inspect` · `export`.
 > **Experimental:** value-level taint · signed checkpoints · the MCP compat lab.
 > [CHANGELOG](CHANGELOG.md) · [roadmap](docs/ROADMAP.md) · [threat model](docs/THREAT_MODEL.md)
+
+## Start here (development branch)
+
+[Your first session](docs/FIRST-SESSION.md): try the offline source demo,
+then use `tapelog setup` to preview recording for one existing stdio server.
+The helper saves a separate candidate config; it never edits active settings.
+These DX commands require building this branch; they are not in v0.4.0.
+Only traffic crossing Tapelog's MCP boundary is recorded. Built-in agent
+tools remain unobserved. Five-minute onboarding has not been measured.
 
 ## The 30-second version
 

@@ -1,4 +1,6 @@
-# Five minutes to proof
+# Quickstart
+
+For the current development branch, start with [Your first session](FIRST-SESSION.md): an offline demo, setup preview, inspection and replay. The schedule below is a historical target, not a measured onboarding result. Its manual setup remains available for existing binaries.
 
 The success criteria, in order:
 

@@ -254,12 +254,12 @@ banner, and the timeline shows the deny from Test 4 with its reason.
 
 ## If something breaks
 
-Capture three things (that's all we need):
+Review and redact credentials, personal data and tool output before sharing any artifact. Capture three things:
 
 1. **The exact command** you ran (copy from your shell history)
 2. **Expected vs actual** (the "You should see" box vs what you saw)
 3. **Any produced files** (`*.jsonl`, `junit.xml`) — these are
-   gitignored; attaching them to an issue is safe and immensely useful
+   gitignored, but may still contain sensitive data; share only a reviewed, sanitized reproduction
 
 Security-sensitive behavior (a policy bypass, XSS in the dashboard,
 tampering that `verify` misses) → follow `SECURITY.md`, not a public
