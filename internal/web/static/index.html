@@ -18,6 +18,8 @@
     <div id="pending-list"></div>
   </section>
   <section id="log">
+    <p class="detail">Recording scope: only traffic crossing Tapelog's MCP boundary. Built-in agent tools are unobserved. An empty log does not mean the agent was inactive.</p>
+    <p class="detail">For counts and empty-session guidance: tapelog inspect &lt;log&gt; --summary. Verify evidence with tapelog verify &lt;log&gt;; replay serves recorded responses as an MCP server.</p>
     <h2>Session log <span id="log-count" class="pill">0</span>
       <label class="tail"><input type="checkbox" id="tail" checked> auto-tail</label>
     </h2>

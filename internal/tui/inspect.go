@@ -80,7 +80,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // listHeight is the number of list rows that fit on screen.
 func (m model) listHeight() int {
-	h := m.height - 4 // title + summary + help + padding
+	h := m.height - 5 // title + summary + help + padding
 	if h < 3 {
 		h = 3
 	}

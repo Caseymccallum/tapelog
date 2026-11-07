@@ -43,6 +43,10 @@ type Summary struct {
 	Confirmed int
 	Denied    int
 	Drift     int
+	Failed    int
+	Discovery int
+	Started   bool
+	Ended     bool
 }
 
 // Load parses a session log into renderable items, summary, and the
@@ -60,14 +64,19 @@ func Load(path string) ([]Item, Summary, Story, error) {
 	blobs := session.NewBlobStore(session.DefaultBlobDir(path))
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	lineNumber := 0
 	for sc.Scan() {
+		lineNumber++
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
 		var e session.Event
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			continue
+			return nil, Summary{}, Story{}, fmt.Errorf("invalid session JSON at line %d; run tapelog verify on this file", lineNumber)
+		}
+		if e.Seq == 0 || e.Type == "" {
+			return nil, Summary{}, Story{}, fmt.Errorf("invalid session event at line %d; expected a sequence and event type", lineNumber)
 		}
 		// Show blob-backed payloads as content (verified), never as the
 		// digest placeholder (spec/session-log-v0.md §6.2 rule 2).
@@ -76,7 +85,17 @@ func Load(path string) ([]Item, Summary, Story, error) {
 		item := itemFromEvent(e)
 		items = append(items, item)
 		sum.Events++
+		switch e.Type {
+		case session.EventSessionStart:
+			sum.Started = true
+		case session.EventSessionEnd:
+			sum.Ended = true
+		case session.EventToolsList:
+			sum.Discovery++
+		}
 		switch item.Kind {
+		case KindError:
+			sum.Failed++
 		case KindCall:
 			sum.Calls++
 		case KindAllow:
@@ -201,6 +220,7 @@ func compact(raw json.RawMessage) string {
 // followed by the DENIED section (causal blocks with provenance).
 func Plain(items []Item, sum Summary, story Story) string {
 	var b strings.Builder
+	b.WriteString(Overview(sum))
 	for _, it := range items {
 		marker := " "
 		switch it.Kind {
@@ -215,8 +235,28 @@ func Plain(items []Item, sum Summary, story Story) string {
 		}
 		fmt.Fprintf(&b, "%s %3d  %-15s %s\n", marker, it.Seq, it.Type, it.Label)
 	}
-	fmt.Fprintf(&b, "\n%d events · %d calls · %d allowed · %d confirmed · %d denied · %d drift\n",
-		sum.Events, sum.Calls, sum.Allowed, sum.Confirmed, sum.Denied, sum.Drift)
+
 	b.WriteString(renderDenied(story))
+	return b.String()
+}
+
+// Overview labels observations without treating decisions as successful calls.
+func Overview(sum Summary) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Session overview: %d events · %d mediated calls · %d failed results · %d discovery events\n", sum.Events, sum.Calls, sum.Failed, sum.Discovery)
+	fmt.Fprintf(&b, "Policy decisions: %d allow · %d confirm · %d deny (not completed-call counts) · %d drift\n", sum.Allowed, sum.Confirmed, sum.Denied, sum.Drift)
+	b.WriteString("Scope: only traffic crossing Tapelog's MCP boundary; built-in agent tools are unobserved.\n")
+	b.WriteString("Integrity: not checked by inspect. Run tapelog verify <log>; an intact chain alone does not prove completeness or who wrote it.\n")
+	if sum.Events == 0 {
+		b.WriteString("No session events found. Check the selected log and whether recording started.\n")
+	} else if sum.Calls == 0 && sum.Discovery > 0 {
+		b.WriteString("Only tool discovery observed; no mediated tool calls captured. Ask the client to call a named MCP tool. Agent activity outside MCP remains unobserved.\n")
+	} else if sum.Calls == 0 {
+		b.WriteString("No mediated tool calls captured. This does not mean the agent was inactive; check the client connection and selected MCP tool.\n")
+	}
+	if sum.Events > 0 && !sum.Ended {
+		b.WriteString("No session/end recorded: recording may still be running or may have been interrupted; completeness is unknown.\n")
+	}
+	b.WriteString("Next: tapelog verify <log>; tapelog replay <log> --strict serves recorded results only and waits for client input. Denied/unanswered calls are replay misses. Browse: tapelog web --dir <log-directory>.\n\n")
 	return b.String()
 }

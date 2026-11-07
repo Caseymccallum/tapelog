@@ -30,8 +30,8 @@ func (m model) View() string {
 		m.width, m.height = 100, 30
 	}
 	title := styleTitle.Render(fmt.Sprintf(" tapelog inspect — %s ", m.path))
-	summary := styleDim.Render(fmt.Sprintf("%d events · %d calls · %d allowed · %d confirmed · %d denied · %d drift",
-		m.sum.Events, m.sum.Calls, m.sum.Allowed, m.sum.Confirmed, m.sum.Denied, m.sum.Drift))
+	summary := styleDim.Render(fmt.Sprintf("%d events · %d calls · %d allowed · %d confirmed · %d denied · %d failed results · %d drift",
+		m.sum.Events, m.sum.Calls, m.sum.Allowed, m.sum.Confirmed, m.sum.Denied, m.sum.Failed, m.sum.Drift))
 	header := title + "  " + summary
 
 	listWidth := m.width * 55 / 100
@@ -48,7 +48,8 @@ func (m model) View() string {
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, " "+styleDim.Render("│"), right)
 
 	help := styleHelp.Render(" ↑/↓ move · tab pane · pgup/pgdn page · g/G ends · q quit")
-	return header + "\n" + body + "\n" + help
+	scope := styleDim.Render(" MCP traffic only; built-in tools unobserved. Integrity not checked: tapelog verify <log>.")
+	return header + "\n" + body + "\n" + scope + "\n" + help
 }
 
 // renderList draws the scrollable event list.
