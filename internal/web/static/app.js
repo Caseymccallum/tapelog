@@ -225,7 +225,7 @@ function showSession(info) {
   $("session-title").textContent=info.name;
   $("session-eyebrow").textContent=info.harness?info.harness.toUpperCase()+" / RECORDED SESSION":"RECORDED SESSION";
   $("session-subtitle").textContent=when(info.first_ts,true)+" · "+info.file;
-  stats($("session-stats"),[[info.calls,"Observed calls"],[info.answered,"Recorded results"],[info.denies,"Deny decisions"],[info.failures,"Tool errors"]]);
+  stats($("session-stats"),[[info.calls,"Observed calls"],[Math.max(0,info.answered-info.failures),"Non-error results"],[info.denies,"Deny decisions"],[info.failures,"Tool errors"]]);
   const diag=$("session-diagnostics");
   diag.replaceChildren();
   if(!info.chain_ok)notice(diag,info.problem||"This recording has no verified event chain. Comparison and test creation are unavailable.","error");
@@ -254,6 +254,10 @@ async function loadActivity() {
     ));
     if(request!==activityRequest||file!==currentFile)return;
     showSession(data.session);
+    const findings=$("investigation-findings");
+    findings.replaceChildren();
+    if(!data.findings?.length)findings.append(el("p","muted","No linked failure or last-decision denial found in this recording."));
+    for(const f of data.findings||[]) findings.append(button(f.label+" · "+f.tool+" →",async()=>{ $("activity-search").value=""; $("activity-status").value=""; $("activity-server").value=""; callOffset=Math.floor(f.index/50)*50; setTab("activity"); await loadActivity(); await selectCall(f.seq); $("inspector").scrollIntoView({block:"nearest"}); }));
     const list=$("activity-list");
     list.replaceChildren();
     $("activity-count").textContent=data.total+" calls";
@@ -314,6 +318,7 @@ async function selectCall(seq) {
     parent.append(el("div","eyebrow","CALL INVESTIGATION / #"+a.seq),el("h2","mono",a.tool),badge(a.status));
     const explanation=a.status==="failed"?"The recorded tool result is marked as an error. Open the result below for the server’s recorded response.":a.reason|| (a.status==="success"?"A result was recorded for this request. A successful response does not independently prove a downstream side effect.":"No matching result was recorded. Do not infer that the server did or did not execute the request.");
     parent.append(el("p","explanation",explanation));
+    if(a.status==="failed") parent.append(el("p","muted","Next: inspect the recorded result and policy decisions below, review preceding context, then compare another verified recording or create a boundary assertion. These are investigation steps, not a diagnosis."));
     if(a.status==="failed"&&a.reason)parent.append(el("p","","Recorded policy explanation: "+a.reason));
     dl(parent,[["Policy",a.verdict||"Not recorded"],["Rule",a.rule||"Not recorded"],["Server",a.server],["Source",a.server_source||"Server identity absent"],["Duration",fmtDuration(a.duration_ms)],["Linked by",a.link]]);
     if(a.verdict==="deny")notice(parent,a.result_seq?"A result is also recorded for this denied call. Investigate the decision/result sequence; denial alone is not evidence of non-execution.":"A deny decision is recorded, with no matched result. This evidence alone does not prove whether a request reached the server.",a.result_seq?"error":"warning");
@@ -347,7 +352,7 @@ async function loadEvents() {
   const file=currentFile,request=++eventRequest;
   try {
     const data=await api("/api/events?"+params( {
-      file,offset:eventOffset,limit:50
+      file,offset:eventOffset,limit:50,summary:1
     }
     ));
     if(file!==currentFile||request!==eventRequest)return;
@@ -357,7 +362,8 @@ async function loadEvents() {
     for(const e of data.events) {
       const details=el("details","recorded-event"),row=el("summary","event-row");
       row.append(el("span","seq","#"+e.seq),el("span","mono",when(e.ts)),el("span","",e.type));
-      details.append(row,el("pre","",e.raw));
+      details.append(row);
+      details.ontoggle=async()=>{ if(!details.open || details.dataset.loaded)return; try { const full=await api("/api/event?"+params({file,seq:e.seq})); if(file!==currentFile || full.session.revision!==data.session.revision) { error(new Error("Recording changed; refresh events before inspecting.")); return; } const found=full.events.find(x=>x.seq===e.seq); if(found) { details.append(el("pre","",found.raw)); details.dataset.loaded="yes"; } } catch(err) { error(err); } };
       list.append(details);
     }
     if(!data.events.length)empty(list,"No readable events","This recording is empty or could not be parsed. Review its integrity message.");
@@ -432,7 +438,13 @@ async function compare() {
     }
     ));
     if(file!==currentFile||request!==compareRequest)return;
-    notice(out,data.diff.same?"No differences in answered calls and recorded results.":"The recorded workflows differ.",data.diff.same?"":"warning");
+    const inv=data.investigation;
+    notice(out,inv.change_count||inv.sequence_differs?"Recorded boundary activity differs.":"No difference found in the compared boundary fields.",inv.change_count||inv.sequence_differs?"warning":"");
+    out.append(el("p","","Attempts: "+inv.attempts_a+" / "+inv.attempts_b+" · "+inv.change_count+" outcome or count differences"));
+    if(inv.ambiguous_duplicates)notice(out,"Repeated identical call keys are paired by occurrence; the pairing is uncertain.","warning");
+    const differences=el("ul","mono"); for(const change of inv.changes)differences.append(el("li","",change)); out.append(differences);
+    if(inv.change_count>100)out.append(el("p","muted","Showing first 100 differences."));
+    out.append(el("p","muted",inv.sequence_differs?"Attempt sequence differs (including added or missing attempts).":"Attempt sequence matches."));
     out.append(el("p","muted",data.scope));
     const cols=el("div","comparison-columns");
     for(const [side,title]of [[data.a,"This recording"],[data.b,"Compared recording"]]) {
@@ -483,7 +495,7 @@ async function generateTest(run) {
         "Content-Type":"application/json"
       }
       ,body:JSON.stringify( {
-        file,revision:detailRevision,seq,kind:$("assertion-kind").value,fixture:$("fixture-path").value,run
+        file,revision:detailRevision,seq,kind:$("assertion-kind").value,fixture:$("fixture-path").value,seqs:$("sequence-events").value.trim()?$("sequence-events").value.split(",").map(x=>Number(x.trim())):[],run
       }
       )
     }
@@ -661,6 +673,7 @@ $("run-test").onclick=()=>generateTest(true);
 $("save-test").onclick=saveTest;
 $("assertion-kind").onchange=clearTest;
 $("fixture-path").oninput=clearTest;
+$("sequence-events").oninput=clearTest;
 let light=false;
 try {
   light=localStorage.getItem("tapelog-appearance")==="light";

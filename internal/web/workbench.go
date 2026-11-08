@@ -115,7 +115,25 @@ func (s *server) activitiesAPI(w http.ResponseWriter, r *http.Request) {
 		items = append(items, a)
 	}
 	start, end := pageBounds(r, len(items))
-	writeJSON(w, map[string]any{"session": rec.Info, "activities": items[start:end], "total": len(items), "offset": start})
+	findings := []map[string]any{}
+	var first *activity
+	for i, a := range rec.Activities {
+		if a.Status == "failed" && (first == nil || a.ResultSeq < first.ResultSeq) {
+			first = a
+		}
+		if a.Verdict == "deny" && len(findings) < 5 {
+			findings = append(findings, map[string]any{"seq": a.Seq, "index": i, "tool": a.Tool, "label": "Recorded deny decision"})
+		}
+	}
+	if first != nil {
+		for i, a := range rec.Activities {
+			if a == first {
+				findings = append([]map[string]any{{"seq": a.Seq, "index": i, "tool": a.Tool, "label": fmt.Sprintf("First recorded error result #%d", a.ResultSeq)}}, findings...)
+				break
+			}
+		}
+	}
+	writeJSON(w, map[string]any{"session": rec.Info, "activities": items[start:end], "total": len(items), "offset": start, "findings": findings})
 }
 
 type eventView struct {
@@ -148,7 +166,11 @@ func (s *server) eventsAPI(w http.ResponseWriter, r *http.Request) {
 	start, end := pageBounds(r, len(rec.Events))
 	views := []eventView{}
 	for _, e := range rec.Events[start:end] {
-		views = append(views, viewEvent(e))
+		if r.URL.Query().Get("summary") == "1" {
+			views = append(views, eventView{Seq: e.Seq, TS: e.TS, Type: e.Type})
+		} else {
+			views = append(views, viewEvent(e))
+		}
 	}
 	writeJSON(w, map[string]any{"events": views, "total": len(rec.Events), "session": rec.Info})
 }
@@ -178,17 +200,21 @@ func (s *server) eventAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	related := []eventView{}
-	preceding := []eventView{}
+	precedingEvents := []session.Event{}
 	for _, e := range rec.Events {
 		if wanted[e.Seq] && len(related) < 20 {
 			related = append(related, viewEvent(e))
 		}
 		if e.Seq < seq {
-			preceding = append(preceding, viewEvent(e))
-			if len(preceding) > 3 {
-				preceding = preceding[1:]
+			precedingEvents = append(precedingEvents, e)
+			if len(precedingEvents) > 3 {
+				precedingEvents = precedingEvents[1:]
 			}
 		}
+	}
+	preceding := []eventView{}
+	for _, e := range precedingEvents {
+		preceding = append(preceding, viewEvent(e))
 	}
 	if len(related) == 0 {
 		apiError(w, 404, fmt.Errorf("event not found in this snapshot"))
@@ -271,28 +297,10 @@ func (s *server) compareAPI(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 422, err)
 		return
 	}
-	if len(at.Interactions) == 0 || len(bt.Interactions) == 0 {
-		apiError(w, 422, fmt.Errorf("this comparison needs answered tool calls on both sides; unanswered and denied calls are not compared by the existing diff engine"))
-		return
-	}
-	tools := map[string]bool{}
-	for _, it := range at.Interactions {
-		tools[it.Tool] = true
-	}
-	shared := false
-	for _, it := range bt.Interactions {
-		if tools[it.Tool] {
-			shared = true
-		}
-	}
-	if !shared {
-		apiError(w, 422, fmt.Errorf("no shared answered tool names; choose recordings from a comparable workflow"))
-		return
-	}
-	writeJSON(w, map[string]any{"a": a.Info, "b": b.Info, "diff": replay.Diff(at, bt), "scope": "Answered tool calls and their recorded results, using the existing diff engine. Timestamps and request IDs are ignored. Denied/unanswered calls and policy verdicts are not aligned by this comparison. Counts below summarize each whole recording."})
+	writeJSON(w, map[string]any{"a": a.Info, "b": b.Info, "diff": replay.Diff(at, bt), "investigation": compareAttempts(at, bt), "scope": "Boundary attempts matched by tool and canonical argument hash, then occurrence order. Repeated identical calls are ambiguous. Policy comparison uses the last recorded decision per call. Differences do not automatically indicate regressions."})
 }
 
-func buildScenario(rec *recording, seq uint64, kind, fixture string) (*scenario.Scenario, error) {
+func buildScenario(rec *recording, seq uint64, kind, fixture string, seqs ...uint64) (*scenario.Scenario, error) {
 	if len(fixture) == 0 || len(fixture) > 1024 || strings.ContainsAny(fixture, "\x00\r\n") {
 		return nil, fmt.Errorf("enter the fixture path relative to where you will save the test")
 	}
@@ -316,6 +324,33 @@ func buildScenario(rec *recording, seq uint64, kind, fixture string) (*scenario.
 			return nil, fmt.Errorf("this call has no recorded deny verdict")
 		}
 		check.Denied = selected.Tool
+	case "no_attempts":
+		zero := 0
+		check.Attempted = &scenario.AttemptSpec{Tool: selected.Tool, Times: &zero}
+	case "invariant":
+		check.Invariant = "no_deny_bypassed"
+	case "sequence":
+		if len(seqs) < 2 || len(seqs) > 10 {
+			return nil, fmt.Errorf("select 2 to 10 answered event numbers in file order")
+		}
+		previous := -1
+		for _, n := range seqs {
+			found := false
+			for i, a := range rec.Activities {
+				if a.Seq == n {
+					if i <= previous || a.ResultSeq == 0 || strings.ContainsAny(a.Tool, "*?") {
+						return nil, fmt.Errorf("sequence requires distinct answered calls in file order with literal tool names")
+					}
+					check.Sequence = append(check.Sequence, a.Tool)
+					previous = i
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("sequence event not found")
+			}
+		}
 	case "attempted":
 		check.Attempted = &scenario.AttemptSpec{Tool: selected.Tool}
 	case "answered":
@@ -342,12 +377,13 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		File     string `json:"file"`
-		Revision string `json:"revision"`
-		Seq      uint64 `json:"seq"`
-		Kind     string `json:"kind"`
-		Fixture  string `json:"fixture"`
-		Run      bool   `json:"run"`
+		File     string   `json:"file"`
+		Revision string   `json:"revision"`
+		Seq      uint64   `json:"seq"`
+		Kind     string   `json:"kind"`
+		Fixture  string   `json:"fixture"`
+		Run      bool     `json:"run"`
+		Seqs     []uint64 `json:"seqs"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
@@ -373,7 +409,7 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 422, err)
 		return
 	}
-	sc, err := buildScenario(rec, req.Seq, req.Kind, req.Fixture)
+	sc, err := buildScenario(rec, req.Seq, req.Kind, req.Fixture, req.Seqs...)
 	if err != nil {
 		apiError(w, 422, err)
 		return
@@ -383,7 +419,7 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 500, err)
 		return
 	}
-	resp := map[string]any{"yaml": string(data), "scope": "Tool-level assertion over this cassette, not a selected request ID. never_called means no recorded result, not proof of non-execution. No arguments, results or fixture contents are copied. No tool is executed and no server file is written."}
+	resp := map[string]any{"yaml": string(data), "scope": "Assertions apply to tool names across the cassette, not a request ID. Zero attempts checks only this recorded boundary; never_called checks answered calls only. Sequence is an ordered subsequence of answered tools. The invariant checks recorded denials and results. The engine cannot assert that a specific error does not recur. No arguments or results are copied, no live tool runs, and no file is written by the server."}
 	if req.Run {
 		fails := scenario.Run(sc, tape, nil)
 		resp["passed"] = len(fails) == 0
