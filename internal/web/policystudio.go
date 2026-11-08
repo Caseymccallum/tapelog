@@ -140,7 +140,11 @@ func analyse(data []byte, name string) (*policy.Policy, *policy.Analysis, valida
 }
 
 func writeAPI(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	// The charset is explicit: a policy candidate contains the source text of
+	// the policy it extends, which may be any UTF-8 the operator wrote. Clients
+	// that default to Latin-1 without it (Windows PowerShell's
+	// Invoke-RestMethod, for one) would otherwise mangle that text.
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(true)
 	_ = enc.Encode(v)

@@ -1,7 +1,7 @@
-﻿# tapelog policy pack: starter baseline
+# tapelog policy pack: starter baseline
 #
 # The one to copy first: default-deny with the routine allowed and the
-# risky confirmed. Extend with rules for your own tools â and validate
+# risky confirmed. Extend with rules for your own tools — and validate
 # your edits with `tapelog test` and `tapelog fuzz`.
 version: 1
 default: deny
@@ -38,4 +38,3 @@ limits:
 
 injection:
   mode: log
-

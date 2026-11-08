@@ -91,6 +91,29 @@ Step 8 — saving
   (asserted by the node test "the candidate save refuses a non-empty file").
   No server endpoint writes; the candidate is never activated.
 
+Step 9 — the saved candidate works with the existing CLI
+  The candidate text was written to disk exactly as the browser would (UTF-8,
+  no BOM) and handed to the CLI that already existed:
+
+    .\bin\tapelog.exe policy whatif --policy sample-candidate-extend-starter.yaml `
+        m5-demo-sessions\01-workspace-audit.jsonl
+
+    ~ workspace__list_files  {"path":"fictional-project/notes.md"}
+        recorded: allow   (read-only-scope)
+        what-if:  deny    (default) — re-evaluation differs
+    ~ workspace__read_file   {"path":"fictional-project/notes.md"}
+        recorded: allow   (read-only-scope)
+        what-if:  deny    (default) — re-evaluation differs
+    ~ packages__lookup       {"path":"fictional-project/notes.md"}
+        recorded: allow   (read-only-scope)
+        what-if:  confirm (confirm-packages-lookup) — re-evaluation differs
+
+    4 calls re-evaluated: 1 same, 3 changed
+
+  The same 3-of-4 result the Studio reported for default: deny, so the browser
+  view and the CI path agree. Full output: saved-candidate-cli-whatif.txt.
+  (Note: the CLI exits non-zero when verdicts change, by design.)
+
 Post-conditions
   packs/starter.yaml and all seven recordings had identical SHA-256 hashes and
   identical modification times before and after steps 1-8

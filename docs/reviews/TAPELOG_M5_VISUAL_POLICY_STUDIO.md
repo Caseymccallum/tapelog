@@ -341,7 +341,7 @@ powershell -File docs\reviews\evidence\m5\verify-no-write.ps1
 
 Evidence files: `go-tests.txt`, `targeted-tests.txt`, `node-tests.txt`,
 `no-write-verification.txt`, `cedar-like-percent.txt`, `browser-walkthrough.txt`,
-`sample-candidate-extend-starter.yaml`.
+`sample-candidate-extend-starter.yaml`, `saved-candidate-cli-whatif.txt`.
 
 ### Milestone requirements → where they are proven
 
@@ -357,7 +357,29 @@ Evidence files: `go-tests.txt`, `targeted-tests.txt`, `node-tests.txt`,
 | Historical sessions still work | Existing `internal/web` tests (library, activity, events, compare, test builder) pass unchanged; the M2/M3/M4 fixtures still load and simulate |
 | Untrusted event content cannot inject code or corrupt generated policy output | `TestConditionValuesCannotInjectOrWiden`, `TestValidateRuleDraftRejectsWhatTheEngineCannotExpress`, `TestStudioFromEventRefusesUnsafeRecordedToolNames`, `policy cards render hostile rule text literally`, `malicious payloads and filenames stay literal text` — there is no HTML sink (`textContent` only) and CSP is `script-src 'self'` |
 | Existing security decisions unchanged unless a candidate is evaluated | `go test ./...` green, including `internal/mediator`, `internal/proxy`, `internal/approval`, `internal/policy`; no evaluation code was modified |
-| Studio endpoints respect the workbench posture | `TestStudioSimulateScoresAListedPolicy` (unknown source → 404), `TestStudioRejectsOversizedAndMalformedBodies`, `TestCSRFRefusesCrossOriginPost`, existing host-pinning and CSP tests |
+| Studio endpoints respect the workbench posture | `TestStudioSimulateScoresAListedPolicy` (unknown source → 404), `TestStudioRejectsOversizedAndMalformedBodies`, `TestStudioAPIAnswersWithAnExplicitUTF8Charset`, `TestCSRFRefusesCrossOriginPost`, existing host-pinning and CSP tests |
+
+### End-to-end cross-check against the existing CLI
+
+The candidate the Studio produced was written to disk exactly as the browser
+would (no BOM), then handed to the CLI that already existed:
+
+```powershell
+tapelog policy whatif --policy sample-candidate-extend-starter.yaml 01-workspace-audit.jsonl
+```
+
+```text
+~ workspace__list_files   recorded: allow  -> what-if: deny    (default)
+~ workspace__read_file    recorded: allow  -> what-if: deny    (default)
+~ packages__lookup        recorded: allow  -> what-if: confirm (confirm-packages-lookup)
+
+4 calls re-evaluated: 1 same, 3 changed
+```
+
+That is the same 3-of-4 result the Studio's simulation reported for
+`default: deny` (`walkthrough-1-…pdf`), so the browser view and CI agree.
+Full output: `docs/reviews/evidence/m5/saved-candidate-cli-whatif.txt`.
+
 
 ### Defects found and fixed during this milestone
 
@@ -371,6 +393,14 @@ Evidence files: `go-tests.txt`, `targeted-tests.txt`, `node-tests.txt`,
    test; fixed.
 3. **`GET /api/policy/preview` returned 400 instead of 405.** Fixed with an
    explicit `postOnly` guard.
+4. **Studio JSON omitted `charset=utf-8`.** A policy candidate carries the source
+   text it extends, which may contain any UTF-8 an operator wrote. Windows
+   PowerShell's `Invoke-RestMethod` defaults to Latin-1 without the charset and
+   turned an em dash into `C1 94`, a control character the YAML parser correctly
+   rejected — so a candidate saved by a script client could fail to compile.
+   `writeAPI`/`apiError` now send `application/json; charset=utf-8`, with a
+   regression test that also round-trips non-ASCII comments through a candidate.
+   (The browser was never affected; it always assumes UTF-8 for JSON.)
 
 ---
 

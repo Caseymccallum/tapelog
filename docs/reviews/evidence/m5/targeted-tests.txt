@@ -4,9 +4,13 @@
 === RUN   TestStudioInspectsTheActivePolicyWithoutTouchingIt
 --- PASS: TestStudioInspectsTheActivePolicyWithoutTouchingIt (0.01s)
 === RUN   TestStudioPreviewExtendsAPolicyWithoutRewritingIt
---- PASS: TestStudioPreviewExtendsAPolicyWithoutRewritingIt (0.01s)
+--- PASS: TestStudioPreviewExtendsAPolicyWithoutRewritingIt (0.00s)
 === RUN   TestStudioPreviewRefusesUnsafeOrUnsupportedShapes
 --- PASS: TestStudioPreviewRefusesUnsafeOrUnsupportedShapes (0.01s)
+=== RUN   TestStudioPreviewRefusesLimitsOnAnExtendedPolicy
+--- PASS: TestStudioPreviewRefusesLimitsOnAnExtendedPolicy (0.00s)
+=== RUN   TestStudioAPIAnswersWithAnExplicitUTF8Charset
+--- PASS: TestStudioAPIAnswersWithAnExplicitUTF8Charset (0.01s)
 === RUN   TestStudioRejectsOversizedAndMalformedBodies
 --- PASS: TestStudioRejectsOversizedAndMalformedBodies (0.00s)
 === RUN   TestStudioSimulationAgreesWithTheReplayEngine
@@ -17,7 +21,7 @@
 --- PASS: TestStudioFromEventProposesANarrowRuleAndLeavesTheRecordingAlone (0.01s)
 === RUN   TestStudioFromEventRefusesUnsafeRecordedToolNames
 --- PASS: TestStudioFromEventRefusesUnsafeRecordedToolNames (0.04s)
-ok  	github.com/Caseymccallum/tapelog/internal/web	1.203s
+ok  	github.com/Caseymccallum/tapelog/internal/web	1.218s
 === RUN   TestNewCandidateIsNarrowAndCompiles
 --- PASS: TestNewCandidateIsNarrowAndCompiles (0.00s)
 === RUN   TestGeneratedConditionsMeanWhatTheySay
@@ -39,6 +43,8 @@ ok  	github.com/Caseymccallum/tapelog/internal/web	1.203s
 --- PASS: TestInsertRuleAppendsWhenNoRulesKey (0.00s)
 === RUN   TestInsertRuleKeepsCustomIndentation
 --- PASS: TestInsertRuleKeepsCustomIndentation (0.00s)
+=== RUN   TestNewCandidateWithLimits
+--- PASS: TestNewCandidateWithLimits (0.00s)
 === RUN   TestAnalyzeDescribesSupportedSemantics
 --- PASS: TestAnalyzeDescribesSupportedSemantics (0.00s)
 === RUN   TestAnalyzeFlagsConditionsThatCannotMatch
@@ -53,16 +59,18 @@ ok  	github.com/Caseymccallum/tapelog/internal/web	1.203s
 --- PASS: TestDescribeConditionOnlySimplifiesSingleComparisons (0.00s)
 === RUN   TestWhereConditions
 --- PASS: TestWhereConditions (0.00s)
-ok  	github.com/Caseymccallum/tapelog/internal/policy	0.648s
+ok  	github.com/Caseymccallum/tapelog/internal/policy	0.627s
 === RUN   TestSimulateClassifiesChangesLikeTheCLI
 --- PASS: TestSimulateClassifiesChangesLikeTheCLI (0.00s)
 === RUN   TestSimulateReproducesValueTaint
 --- PASS: TestSimulateReproducesValueTaint (0.00s)
-ok  	github.com/Caseymccallum/tapelog/internal/replay	0.871s
+ok  	github.com/Caseymccallum/tapelog/internal/replay	0.878s
+=== RUN   TestEmbeddedPacksMatchTheirFiles
+--- PASS: TestEmbeddedPacksMatchTheirFiles (0.00s)
 === RUN   TestStudioNeverSimplifiesACompoundCondition
 --- PASS: TestStudioNeverSimplifiesACompoundCondition (0.00s)
 === RUN   TestStudioDeadConditionWarningAgreesWithTheEngine
 --- PASS: TestStudioDeadConditionWarningAgreesWithTheEngine (0.00s)
-ok  	github.com/Caseymccallum/tapelog/packs	0.560s
+ok  	github.com/Caseymccallum/tapelog/packs	0.585s
 
 

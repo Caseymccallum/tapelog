@@ -26,6 +26,6 @@ ok  	github.com/Caseymccallum/tapelog/internal/session	(cached)
 ok  	github.com/Caseymccallum/tapelog/internal/taint	(cached)
 ok  	github.com/Caseymccallum/tapelog/internal/transport	(cached)
 ok  	github.com/Caseymccallum/tapelog/internal/tui	(cached)
-ok  	github.com/Caseymccallum/tapelog/internal/web	3.885s
+ok  	github.com/Caseymccallum/tapelog/internal/web	3.645s
 ok  	github.com/Caseymccallum/tapelog/packs	(cached)
 ?   	github.com/Caseymccallum/tapelog/tools/gen-vectors	[no test files]

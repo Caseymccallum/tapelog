@@ -216,6 +216,40 @@ func TestStudioPreviewRefusesLimitsOnAnExtendedPolicy(t *testing.T) {
 	}
 }
 
+func TestStudioAPIAnswersWithAnExplicitUTF8Charset(t *testing.T) {
+	h := DirHandlerWithPolicy(t.TempDir(), writeStudioPolicy(t), "")
+	rw, _ := requestJSON(t, h, "GET", "/api/policy/inspect?source=active", nil)
+	if got := rw.Header().Get("Content-Type"); !strings.Contains(got, "charset=utf-8") {
+		t.Fatalf("inspect content type: %q", got)
+	}
+	rw, _ = requestJSON(t, h, "POST", "/api/policy/preview", map[string]any{"surprise": true})
+	if got := rw.Header().Get("Content-Type"); !strings.Contains(got, "charset=utf-8") {
+		t.Fatalf("error content type: %q", got)
+	}
+	// A candidate that inherits non-ASCII source must round-trip exactly, so a
+	// client that ignores the charset cannot corrupt it silently.
+	nonASCII := filepath.Join(t.TempDir(), "unicode.yaml")
+	if err := os.WriteFile(nonASCII, []byte("# em dash — and a curly ‘quote’\nversion: 1\ndefault: deny\nrules:\n  - id: a\n    tool: t\n    action: deny\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h = DirHandlerWithPolicy(t.TempDir(), nonASCII, "")
+	rw, data := requestJSON(t, h, "POST", "/api/policy/preview", map[string]any{
+		"base": "active",
+		"rule": map[string]any{"tools": []string{"y"}, "action": "deny"},
+	})
+	if rw.Code != 200 {
+		t.Fatalf("status %d: %s", rw.Code, rw.Body.String())
+	}
+	var candidate string
+	_ = json.Unmarshal(data["candidate"], &candidate)
+	if !strings.Contains(candidate, "em dash — and a curly ‘quote’") {
+		t.Fatalf("non-ASCII comments must survive: %q", candidate)
+	}
+	if _, err := policy.Parse([]byte(candidate), "candidate"); err != nil {
+		t.Fatalf("candidate with non-ASCII comments must compile: %v", err)
+	}
+}
+
 // Untrusted request bodies stay bounded, and two JSON objects in one request
 // are refused rather than silently parsed.
 func TestStudioRejectsOversizedAndMalformedBodies(t *testing.T) {
