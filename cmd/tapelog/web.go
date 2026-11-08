@@ -14,19 +14,24 @@ import (
 // logs: browse sessions, inspect decisions, without a live recording.
 func newWebCmd() *cobra.Command {
 	var (
-		dir     string
-		listen  string
-		token   string
+		dir    string
+		listen string
+		token  string
 	)
 	cmd := &cobra.Command{
 		Use:   "web",
-		Short: "Serve the review dashboard over a directory of session logs",
-		Long: `Serve the review dashboard over a directory of session logs.
+		Short: "Open the local session workbench over a directory of recordings",
+		Long: `Serve the local Agent Session Workbench over a directory of recordings.
 
-Browse recorded sessions in a browser: session list (event and denial
-counts), per-session event timeline, policy decisions highlighted. The
+Search and filter sessions, investigate calls and policy decisions,
+compare recorded responses, and preview/run reusable trajectory assertions.
+Saving a test is an explicit browser action; recordings are never edited.
+Replay guidance uses the existing hermetic CLI, never live tool execution.
+Large files stay bounded (16 MiB / 50,000 events; use the CLI above this).
+The workbench observes MCP-mediated traffic only. It cannot see built-in
+agent operations or establish current client connectivity from a past log. The
 same security posture as --approval-listen: loopback Host pinning, strict
-CSP, optional bearer token. Read-only — no live approvals.
+CSP, optional bearer token. No live approvals in directory mode.
 
   tapelog web --dir ./sessions
   tapelog web --dir /var/log/tapelog --listen 127.0.0.1:8923 --token sekret`,

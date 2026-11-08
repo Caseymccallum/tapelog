@@ -1,33 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tapelog — review</title>
-<link rel="stylesheet" href="/app.css">
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="color-scheme" content="dark light">
+ <title>Tapelog · Session workbench</title>
+ <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header>
-  <h1>tapelog</h1>
-  <span class="sub">approval queue &amp; session log</span>
-  <span id="status" class="pill">connecting…</span>
-</header>
-<main>
-  <section id="approvals">
-    <h2>Parked approvals <span id="pending-count" class="pill">0</span></h2>
-    <div id="pending-list"></div>
-  </section>
-  <section id="log">
-    <p class="detail">Recording scope: only traffic crossing Tapelog's MCP boundary. Built-in agent tools are unobserved. An empty log does not mean the agent was inactive.</p>
-    <p class="detail">For counts and empty-session guidance: tapelog inspect &lt;log&gt; --summary. Verify evidence with tapelog verify &lt;log&gt;; replay serves recorded responses as an MCP server.</p>
-    <h2>Session log <span id="log-count" class="pill">0</span>
-      <label class="tail"><input type="checkbox" id="tail" checked> auto-tail</label>
-    </h2>
-    <select id="sessions" class="session-picker" hidden></select>
-    <div id="chain-warning" hidden></div>
-    <div id="log-list"></div>
-  </section>
-</main>
-<script src="/app.js"></script>
-</body>
-</html>
+ <a class="skip" href="#main">Skip to workspace</a>
+ <aside class="sidebar">
+  <a class="brand" href="#"><span class="brandmark" aria-hidden="true">▤</span> tapelog<span class="version">M2</span></a>
+  <div class="rail-label">WORKSPACE</div>
+  <nav aria-label="Main navigation"><button id="library-nav" class="nav-item active">▦ <span>Sessions</span></button><button id="approvals-nav" class="nav-item" hidden>◇ <span>Live approvals</span><span id="pending-count" class="count">0</span></button><button id="help-nav" class="nav-item">↗ <span>Getting started</span></button></nav>
+  <div class="rail-note"><span class="local-dot" aria-hidden="true"></span> Local workspace<p>Your recordings stay here.<br>No uploads. No account.</p></div>
+  <div class="rail-bottom"><button id="theme" class="quiet">◐ Appearance</button><p>AGENT SESSION WORKBENCH</p></div>
+ </aside>
+ <div class="workspace">
+  <header class="topbar"><div id="breadcrumb">Workspace <span>/</span> Sessions</div><div class="top-actions"><span id="connection" role="status">Connecting…</span><button id="refresh" class="quiet">↻ Refresh</button></div></header>
+  <div id="error" class="banner error" role="alert" hidden></div>
+  <main id="main" tabindex="-1">
+   <section id="library-view">
+    <div class="page-heading"><div><div class="eyebrow">OBSERVE. UNDERSTAND. IMPROVE.</div><h1>Your agent sessions<span class="accent">.</span></h1><p class="lede">Find the moment that matters. Turn what you learn into a regression test.</p></div><span class="outline-label">LOCAL RECORDINGS</span></div>
+    <div id="library-stats" class="stat-strip"></div>
+    <div class="section-heading"><h2>Session library <span id="library-count" class="count">0</span></h2><span class="muted">Original recordings are never edited</span></div>
+    <form id="library-filters" class="filterbar" role="search"><label class="search"><span aria-hidden="true">⌕</span><input id="session-search" type="search" placeholder="Search sessions, servers or harnesses…" aria-label="Search sessions"></label><label class="sr-only" for="session-status">Session status</label><select id="session-status"><option value="">All sessions</option><option value="denied">With denials</option><option value="failed">With tool errors</option><option value="incomplete">No recorded end</option><option value="integrity">Integrity needs review</option></select><label class="sr-only" for="session-sort">Sort sessions</label><select id="session-sort"><option value="">Newest first</option><option value="oldest">Oldest first</option><option value="activity">Most activity</option><option value="status">Most issues</option></select></form>
+    <div id="session-list" class="session-list" aria-live="polite"></div><div id="library-pager" class="pager"></div>
+    <details class="storage"><summary>Recording location &amp; library limits</summary><p id="storage-path" class="mono"></p><p>Newest 200 files from up to 10,000 directory entries. A library refresh scans at most 32 MiB; open a session to check a deferred recording. Files up to 16 MiB / 50,000 events are supported here. Use the CLI for larger recordings.</p></details>
+   </section>
+   <section id="session-view" hidden>
+    <button id="back" class="back">← Session library</button>
+    <div class="page-heading detail-heading"><div><div id="session-eyebrow" class="eyebrow">RECORDED SESSION</div><h1 id="session-title"></h1><p id="session-subtitle" class="lede"></p></div><button id="replay-help" class="primary secondary">Replay &amp; CLI</button></div>
+    <div id="session-diagnostics"></div><div id="session-stats" class="stat-strip"></div>
+    <div class="tabs" role="tablist" aria-label="Session workspace"><button class="tab selected" id="tab-activity" role="tab" aria-selected="true" aria-controls="activity-panel" data-tab="activity">Activity</button><button class="tab" id="tab-events" role="tab" aria-selected="false" aria-controls="events-panel" data-tab="events">All events</button><button class="tab" id="tab-compare" role="tab" aria-selected="false" aria-controls="compare-panel" data-tab="compare">Compare sessions</button><button class="tab" id="tab-test" role="tab" aria-selected="false" aria-controls="test-panel" data-tab="test">Make a test <span class="new-label">NEW</span></button></div>
+    <div id="activity-panel" role="tabpanel" aria-labelledby="tab-activity">
+     <div class="filterbar"><label class="search"><span aria-hidden="true">⌕</span><input id="activity-search" type="search" placeholder="Find a tool, rule or explanation…" aria-label="Search activity"></label><label class="sr-only" for="activity-status">Activity status</label><select id="activity-status"><option value="">All outcomes</option><option value="denied">Denied</option><option value="failed">Tool error</option><option value="success">Recorded result</option><option value="unanswered">Unanswered</option><option value="confirmation">Confirmation</option></select><label class="sr-only" for="activity-server">MCP server</label><select id="activity-server"><option value="">All servers</option></select></div>
+     <div class="investigation-grid"><div><div class="list-caption"><span>TOOL ACTIVITY</span><span id="activity-count"></span></div><div id="activity-list" class="activity-list"></div><div id="activity-pager" class="pager"></div></div><aside id="inspector" class="inspector" aria-label="Selected call details"></aside></div>
+    </div>
+    <div id="events-panel" role="tabpanel" aria-labelledby="tab-events" hidden><p class="muted">File order is authoritative. Selecting an event reveals its recorded contents; order alone does not establish causation.</p><div id="events-list"></div><div id="events-pager" class="pager"></div><div id="event-detail"></div></div>
+    <div id="compare-panel" role="tabpanel" aria-labelledby="tab-compare" hidden><div class="workflow-card"><div class="eyebrow">BEFORE / AFTER</div><h2>What changed between runs?</h2><p>Compare answered calls and recorded results with Tapelog’s existing diff engine. Timestamps and request IDs are ignored.</p><label for="compare-session">Compare this session with</label><select id="compare-session"></select><button id="run-compare" class="primary">Compare recordings →</button><div id="compare-result" aria-live="polite"></div></div></div>
+    <div id="test-panel" role="tabpanel" aria-labelledby="tab-test" hidden><div class="workflow-card"><div class="eyebrow">FROM INVESTIGATION TO REGRESSION</div><h2>Keep this behaviour under test.</h2><p>Choose a recorded call and an assertion you want to keep. The test uses your original cassette; it copies no arguments or results.</p><p id="test-selection" class="selection-note">Select a call in Activity first.</p><label for="assertion-kind">What should the test assert?</label><select id="assertion-kind"><option value="denied">This tool has a recorded deny decision</option><option value="attempted">This tool was observed at the boundary</option><option value="answered">This tool has a recorded result</option><option value="never_answered">This tool has no recorded results</option></select><label for="fixture-path">Fixture path, relative to where you will save the test</label><input id="fixture-path" type="text" spellcheck="false"><p class="muted">Save beside the recording, or change this path. Assertions apply to the tool across the cassette, not a single request ID.</p><div class="actions"><button id="preview-test" class="primary">Preview test</button><button id="run-test" class="secondary">Run assertion locally</button><button id="save-test" class="secondary" disabled>Save test as…</button></div><div id="test-result" aria-live="polite"></div><pre id="test-yaml" hidden></pre></div></div>
+   </section>
+   <section id="approvals-view" hidden><div class="page-heading"><div><div class="eyebrow">HUMAN REVIEW</div><h1>Live approvals<span class="accent">.</span></h1><p class="lede">These decisions affect the currently parked MCP calls.</p></div></div><div id="pending-list"></div></section>
+  </main>
+  <footer><span class="scope-dot" aria-hidden="true"></span> MCP-mediated activity only. Built-in agent operations are outside Tapelog’s view.<span>Evidence, with context.</span></footer>
+ </div>
+ <dialog id="help-dialog"><button id="close-help" class="dialog-close" aria-label="Close help">×</button><div class="eyebrow">YOUR NEXT STEP</div><h2 id="help-title">Bring your sessions into view.</h2><div id="help-content"></div></dialog>
+ <script src="/app.js"></script>
+</body></html>

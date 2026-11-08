@@ -18,6 +18,12 @@ These DX commands require building this branch; they are not in v0.4.0.
 Only traffic crossing Tapelog's MCP boundary is recorded. Built-in agent
 tools remain unobserved. Five-minute onboarding has not been measured.
 
+**Agent Session Workbench (M2 development branch):** `tapelog web --dir <recordings>`
+opens a searchable session library, linked call investigation, recorded-response
+comparison and a trajectory-test builder. Dark/light UI, bounded event pages and
+integrity diagnostics work with historical logs. [Workbench guide](docs/WORKBENCH.md).
+This serves local recordings; it never automatically runs tools or edits client settings.
+
 ## The 30-second version
 
 An agent makes a dangerous call → **tapelog blocks it** → the whole

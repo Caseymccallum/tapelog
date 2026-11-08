@@ -1,226 +1,689 @@
-/* tapelog dashboard logic. SECURITY: every piece of untrusted data
-   (tool names, args, results, reasons) reaches the DOM via textContent
-   only — never innerHTML. Tool output is attacker-controlled. */
+/* Recording contents are untrusted. Build nodes with textContent only; no
+HTML injection, external assets, uploads, or automatic tool execution. */
 "use strict";
-
-const $ = (id) => document.getElementById(id);
-let lastSeq = 0;
-let currentFile = "";
-let chainBroken = false;
-
-/* ---- helpers ------------------------------------------------------ */
-
-// el builds a DOM element; any string values are assigned via
-// textContent, so markup in tool output can never execute.
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = String(text);
-  return node;
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) {
+  const n=document.createElement(tag);
+  if(cls)n.className=cls;
+  if(text!==undefined)n.textContent=String(text);
+  return n;
 }
-
-async function api(path, opts) {
-  const resp = await fetch(path, opts);
-  if (!resp.ok) throw new Error(path + ": " + resp.status);
-  return resp.json();
+function button(text,fn,cls="secondary") {
+  const n=el("button",cls,text);
+  n.type="button";
+  n.onclick=fn;
+  return n;
 }
-
-/* ---- approvals panel ---------------------------------------------- */
-
-async function refreshPending() {
+function notice(parent,text,kind="") {
+  const n=el("div","banner "+kind,text);
+  parent.append(n);
+  return n;
+}
+function empty(parent,title,text) {
+  parent.replaceChildren();
+  const n=el("div","empty");
+  n.append(el("div","empty-symbol","▤"),el("h2","",title),el("p","",text));
+  parent.append(n);
+}
+function badge(status) {
+  const names= {
+    success:"Result recorded",failed:"Tool error",denied:"Denied",unanswered:"Unanswered",confirmation:"Confirmation",deny:"Denied",allow:"Allowed",confirm:"Confirm"
+  };
+  return el("span","badge "+status,names[status]||status||"Not recorded");
+}
+function integrity(info) {
+  const n=el("span","integrity "+info.integrity);
+  const labels= {
+    verified:"Chain verified",invalid:"Integrity failure",empty:"Empty recording",limited:"Over viewer limit",not_checked:"Not checked",unavailable:"Unavailable"
+  };
+  n.textContent=(info.chain_ok?"✓ ":"◇ ")+(labels[info.integrity]||"Not checked");
+  return n;
+}
+function fmtDuration(ms) {
+  if(ms===null||ms===undefined)return "Timing unavailable";
+  return ms<1000?Math.round(ms)+" ms":ms<60000?(ms/1000).toFixed(2)+" s":(ms/60000).toFixed(1)+" min";
+}
+function when(ts,full=false) {
+  if(!ts)return "Time not recorded";
+  const d=new Date(ts);
+  return Number.isNaN(d.getTime())?"Invalid timestamp":d.toLocaleString(undefined,full? {
+    dateStyle:"medium",timeStyle:"medium"
+  }
+  : {
+    month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"
+  }
+  );
+}
+function stats(parent,items) {
+  parent.replaceChildren();
+  for(const [num,label]of items) {
+    const n=el("div","stat");
+    n.append(el("div","stat-number",num),el("div","stat-label",label));
+    parent.append(n);
+  }
+}
+function error(e) {
+  $("error").hidden=false;
+  $("error").textContent=e.message||String(e);
+}
+function clearError() {
+  $("error").hidden=true;
+}
+async function api(path,opts) {
+  const res=await fetch(path, {
+    cache:"no-store",...opts
+  }
+  );
   let data;
   try {
-    data = await api("/api/pending");
-    $("status").textContent = "live";
-  } catch (e) {
-    $("status").textContent = "offline — showing last known data";
-    return;
+    data=await res.json();
+  } catch {
+    throw new Error("The local workbench returned an unreadable response.");
   }
-  const list = $("pending-list");
-  list.replaceChildren();
-  $("pending-count").textContent = String(data.pending.length);
-  if (data.pending.length === 0) {
-    list.appendChild(el("p", "detail", "nothing parked — enjoy the quiet"));
-    return;
-  }
-  for (const item of data.pending) {
-    const card = el("div", "card");
-
-    const meta = el("div", "meta");
-    meta.appendChild(el("span", "", "#" + item.id));
-    meta.appendChild(el("span", "", item.tool));
-    meta.appendChild(el("span", "", item.age_seconds + "s"));
-    card.appendChild(meta);
-
-    const pre = el("pre", "", JSON.stringify(item.args));
-    card.appendChild(pre);
-
-    const row = el("div", "row");
-    const note = el("input");
-    note.type = "text";
-    note.placeholder = "note (recorded)";
-    const allow = el("button", "allow", "allow");
-    const allowS = el("button", "allow", "allow session");
-    const deny = el("button", "deny", "deny");
-    allow.onclick = () => decide(item.id, "allow", note.value);
-    allowS.onclick = () => decide(item.id, "allow_session", note.value);
-    deny.onclick = () => decide(item.id, "deny", note.value);
-    row.append(note, allow, allowS, deny);
-    card.appendChild(row);
-
-    list.appendChild(card);
-  }
+  if(!res.ok)throw new Error(data.error||("Request failed ("+res.status+")"));
+  $("connection").textContent="● Local connection";
+  $("connection").className="";
+  return data;
 }
-
-async function decide(id, verdict, note) {
+function params(obj) {
+  return new URLSearchParams(obj).toString();
+}
+function debounce(fn,delay=220) {
+  let id;
+  return()=> {
+    clearTimeout(id);
+    id=setTimeout(fn,delay);
+  };
+}
+function pager(id,total,offset,onChange) {
+  const n=$(id);
+  n.replaceChildren();
+  if(total<=50)return;
+  n.append(el("span","",(offset+1)+"–"+Math.min(offset+50,total)+" of "+total));
+  const prev=button("← Previous",()=>onChange(Math.max(0,offset-50)));
+  prev.disabled=offset===0;
+  const next=button("Next →",()=>onChange(offset+50));
+  next.disabled=offset+50>=total;
+  n.append(prev,next);
+}
+let library=[],directory="",single=false,queueEnabled=false,currentFile="",currentInfo=null,selectedCall=null,currentTab="activity";
+let libOffset=0,callOffset=0,eventOffset=0,libraryRequest=0,activityRequest=0,eventRequest=0,detailRequest=0,testRequest=0,compareRequest=0,yamlPreview="";
+let detailRevision="";
+async function loadLibrary() {
+  const request=++libraryRequest;
   try {
-    await api("/api/decide", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, verdict, note }),
-    });
-    await refreshPending();
-  } catch (e) {
-    $("status").textContent = String(e);
-  }
-}
-
-/* ---- session picker (directory mode) ------------------------------- */
-
-const sessionInfo = {};
-
-function showChain(info) {
-  const warn = $("chain-warning");
-  if (!warn) return;
-  if (info && info.chain_ok === false) {
-    warn.hidden = false;
-    warn.textContent =
-      "⚠ chain broken — first bad event: seq " + info.first_bad_seq +
-      (info.problem ? " (" + info.problem + ")" : "") +
-      ". This log was modified after writing; inspect it with `tapelog verify`.";
-  } else {
-    warn.hidden = true;
-    warn.textContent = "";
-  }
-}
-
-function showChainForFile(file) {
-  showChain(sessionInfo[file]);
-}
-
-async function refreshSessions() {
-  try {
-    const data = await api("/api/sessions");
-    if (!data.sessions || data.sessions.length === 0) return;
-    const picker = $("sessions");
-    picker.hidden = false;
-    const prev = currentFile;
-    picker.replaceChildren();
-    for (const s of data.sessions) {
-      sessionInfo[s.file] = s;
-      const opt = el("option", "",
-        (s.chain_ok === false ? "⚠ " : "") + s.file +
-        "  ·  " + s.events + " events" + (s.denies ? "  ·  " + s.denies + " denied" : ""));
-      opt.value = s.file;
-      picker.appendChild(opt);
+    const data=await api("/api/sessions?"+params( {
+      q:$("session-search").value,status:$("session-status").value,sort:$("session-sort").value,offset:libOffset,limit:50
     }
-    picker.onchange = () => {
-      currentFile = picker.value;
-      lastSeq = 0;
-      chainBroken = false;
-      $("log-list").replaceChildren();
-      $("log-count").textContent = "0";
-      showChainForFile(currentFile);
-      refreshLog();
-    };
-    // Keep the selection across re-polls; only drive the view when the
-    // picker is not actively being used to switch sessions.
-    if (prev && Array.prototype.some.call(picker.options, (o) => o.value === prev)) {
-      picker.value = prev;
+    ));
+    if(request!==libraryRequest)return;
+    library=data.sessions||[];
+    directory=data.directory;
+    single=data.single_session;
+    queueEnabled=data.queue_enabled;
+    $("approvals-nav").hidden=!queueEnabled;
+    $("storage-path").textContent=directory||"No recording configured";
+    $("library-count").textContent=data.total;
+    stats($("library-stats"),[[data.catalog_total,"Recordings in library"],[library.reduce((n,s)=>n+s.calls,0),"Observed calls · this page"],[library.filter(s=>s.denies||s.failures).length,"Sessions with issues · this page"],[library.filter(s=>s.chain_ok).length,"Verified chains · this page"]]);
+    const list=$("session-list");
+    list.replaceChildren();
+    if(!library.length)empty(list,data.catalog_total?"No matching sessions":"Your next session starts here.",data.catalog_total?"Try a different search or clear the status filter.":"Point tapelog web --dir at your recordings directory. After your client uses an MCP tool, refresh this library.");
+    for(const s of library) {
+      const row=button("",()=>openSession(s.file),"session-row");
+      const title=el("div");
+      title.append(el("strong","",s.name),el("small","",(s.harness||"Harness not recorded")+" · "+(s.servers?.join(", ")||"Server not recorded")));
+      const state=el("div");
+      state.append(integrity(s),el("small","",s.complete?"Recorded end · "+fmtDuration(s.duration_ms):"No recorded end"));
+      const counts=el("div","row-counts");
+      counts.append(el("span","badge",s.calls+" calls"));
+      if(s.denies)counts.append(el("span","badge denied",s.denies+(s.denies===1?" deny decision":" deny decisions")));
+      if(s.failures)counts.append(el("span","badge failed",s.failures+(s.failures===1?" tool error":" tool errors")));
+      const date=el("div","when",when(s.first_ts));
+      row.append(title,state,counts,date);
+      row.title=s.file;
+      list.append(row);
     }
-    currentFile = picker.value;
-    showChainForFile(currentFile);
-    if (!prev || prev !== currentFile) refreshLog();
-  } catch (e) {
-    /* single-session mode: no picker */
-  }
-}
-
-/* ---- session log panel -------------------------------------------- */
-
-function describe(p) {
-  if (p.tool) return p.tool;
-  if (p.reason) return p.reason;
-  return "";
-}
-
-function addEvent(e) {
-  const tbody = $("log-list");
-  const p = e.payload || {};
-  const cls = "decision-" + (p.verdict || "");
-  const tr = el("tr", e.type === "policy/decision" ? cls : "");
-  tr.appendChild(el("td", "", e.seq));
-  tr.appendChild(el("td", "", String(e.ts).slice(11, 19)));
-  tr.appendChild(el("td", "v", p.verdict ? p.verdict : e.type));
-  tr.appendChild(el("td", "detail", describe(p)));
-  tbody.prepend(tr);
-  while (tbody.children.length > 500) tbody.removeChild(tbody.lastChild);
-}
-
-let refreshing = false;
-
-async function refreshLog() {
-  if (refreshing) return; // boot + intervals can overlap; never double-render
-  refreshing = true;
-  try {
-    const file = currentFile; // capture: the picker may switch mid-poll
-    const url = "/api/log?after=" + lastSeq + (file ? "&file=" + encodeURIComponent(file) : "");
-    const data = await api(url);
-    if (file !== currentFile) return; // stale response for a session we left
-
-    // Chain status now rides on every poll (single-session mode too).
-    showChain(data.chain_ok === undefined ? sessionInfo[currentFile] : data);
-
-    // A tamper rewrites or truncates already-served events; incremental
-    // `after=` polling would keep showing the pre-tamper rows. When the
-    // chain just broke (or the file was replaced by a shorter one), do a
-    // full re-pull so the view shows what is actually on disk now; later
-    // polls resume incremental appends (the recorder keeps writing).
-    const broken = data.chain_ok === false;
-    const shrank = typeof data.max === "number" && data.max < lastSeq;
-    if ((broken && !chainBroken) || shrank) {
-      chainBroken = broken;
-      lastSeq = 0;
-      $("log-list").replaceChildren();
-      $("log-count").textContent = "0";
-      const full = await api("/api/log?after=0" + (file ? "&file=" + encodeURIComponent(file) : ""));
-      for (const e of full.events || []) addEvent(e);
-      if (full.events && full.events.length) {
-        lastSeq = full.events[full.events.length - 1].seq;
+    if(data.capped)notice(list,"Library file limit reached. Use a more focused recordings directory to browse older sessions.","warning");
+    pager("library-pager",data.total,libOffset,n=> {
+      libOffset=n;
+      loadLibrary();
+    }
+    );
+    if(!currentFile&&location.hash.startsWith("#session=")) {
+      try {
+        openSession(decodeURIComponent(location.hash.slice(9)),false);
+      } catch(e) {
+        error(e);
       }
-      $("log-count").textContent = String(lastSeq);
+    }
+  } catch(e) {
+    error(e);
+    $("connection").textContent="Offline · refresh to reconnect";
+    $("connection").className="connection-offline";
+  }
+}
+function showView(which) {
+  for(const name of ["library","session","approvals"])$(name+"-view").hidden=name!==which;
+  $("library-nav").classList.toggle("active",which!=="approvals");
+  $("approvals-nav").classList.toggle("active",which==="approvals");
+}
+function showLibrary() {
+  ++activityRequest;
+  ++eventRequest;
+  ++detailRequest;
+  ++testRequest;
+  ++compareRequest;
+  currentFile="";
+  selectedCall=null;
+  currentInfo=null;
+  showView("library");
+  history.replaceState(null,"",location.pathname+location.search);
+  $("breadcrumb").textContent="Workspace / Sessions";
+  clearError();
+}
+async function openSession(file,updateHash=true) {
+  currentFile=file;
+  currentInfo=null;
+  selectedCall=null;
+  callOffset=0;
+  eventOffset=0;
+  detailRevision="";
+  ++detailRequest;
+  ++eventRequest;
+  ++testRequest;
+  ++compareRequest;
+  $("main").focus( {
+    preventScroll:true
+  }
+  );
+  window.scrollTo(0,0);
+  clearTest();
+  showView("session");
+  $("session-title").textContent="Loading session…";
+  $("session-subtitle").textContent=file;
+  $("inspector").replaceChildren();
+  empty($("inspector"),"Follow the evidence","Select a call to see its policy decision, recorded result and related events.");
+  $("event-detail").replaceChildren();
+  $("compare-result").replaceChildren();
+  $("activity-search").value="";
+  $("activity-status").value="";
+  $("activity-server").replaceChildren(new Option("All servers",""));
+  $("fixture-path").value=file;
+  $("breadcrumb").textContent="Workspace / Session investigation";
+  if(updateHash)history.replaceState(null,"","#session="+encodeURIComponent(file));
+  setTab("activity");
+  await loadActivity();
+}
+function showSession(info) {
+  const changed=currentInfo&&currentInfo.revision!==info.revision;
+  currentInfo=info;
+  if(changed) {
+    selectedCall=null;
+    clearTest();
+    empty($("inspector"),"Recording changed","Select a call again to inspect the current evidence.");
+  }
+  $("session-title").textContent=info.name;
+  $("session-eyebrow").textContent=info.harness?info.harness.toUpperCase()+" / RECORDED SESSION":"RECORDED SESSION";
+  $("session-subtitle").textContent=when(info.first_ts,true)+" · "+info.file;
+  stats($("session-stats"),[[info.calls,"Observed calls"],[info.answered,"Recorded results"],[info.denies,"Deny decisions"],[info.failures,"Tool errors"]]);
+  const diag=$("session-diagnostics");
+  diag.replaceChildren();
+  if(!info.chain_ok)notice(diag,info.problem||"This recording has no verified event chain. Comparison and test creation are unavailable.","error");
+  else {
+    const n=notice(diag,"✓ Hash chain verified for this snapshot. This is an integrity check, not proof of authorship or a complete record of agent activity.");
+    n.classList.add("integrity-note");
+  }
+  if(!info.complete)notice(diag,"No session/end event was recorded. This may be a live session, interruption or failed startup; a missing end alone does not establish a connection failure.","warning");
+  if(info.end_reason)notice(diag,"Recorded end reason: "+info.end_reason);
+  if(info.calls===0)notice(diag,info.discovery?"Discovery was recorded, but no tool calls crossed this boundary. Explicitly invoke a tool from the wrapped MCP server. Built-in client operations will not appear here.":"No tool calls were recorded. Confirm that your client launches the generated Tapelog entry, then call one of that server’s MCP tools.","warning");
+  if(info.ambiguous)notice(diag,"Some request relationships are missing or ambiguous. The timeline does not guess a pairing; inspect All events. Comparison and test creation are disabled.","warning");
+  const server=$("activity-server"),prev=server.value;
+  server.replaceChildren(new Option("All servers",""));
+  for(const name of info.servers||[])server.add(new Option(name,name));
+  if([...server.options].some(o=>o.value===prev))server.value=prev;
+  $("run-compare").disabled=single;
+  $("compare-session").disabled=single;
+}
+async function loadActivity() {
+  const request=++activityRequest,file=currentFile;
+  if(!file&&!single)return;
+  try {
+    const data=await api("/api/activity?"+params( {
+      file,q:$("activity-search").value,status:$("activity-status").value,server:$("activity-server").value,offset:callOffset,limit:50
+    }
+    ));
+    if(request!==activityRequest||file!==currentFile)return;
+    showSession(data.session);
+    const list=$("activity-list");
+    list.replaceChildren();
+    $("activity-count").textContent=data.total+" calls";
+    if(!data.activities.length)empty(list,"No calls in this view",currentInfo.calls?"Clear an outcome or server filter to see more activity.":"Discovery, session boundaries and other recorded events are available in All events.");
+    for(const a of data.activities) {
+      const row=button("",()=>selectCall(a.seq),"activity-row"+(selectedCall?.seq===a.seq?" selected":""));
+      row.setAttribute("aria-label",a.tool+", "+a.status+", event "+a.seq);
+      row.setAttribute("aria-pressed",String(selectedCall?.seq===a.seq));
+      const text=el("div");
+      text.append(el("span","tool-name",a.tool));
+      const meta=el("div","tool-meta");
+      meta.append(el("span","",a.server),el("span","",when(a.ts)),el("span","",a.verdict?"Policy: "+a.verdict:"Policy not recorded"));
+      text.append(meta);
+      const status=el("div","tool-outcome");
+      status.append(badge(a.status),el("span","duration",fmtDuration(a.duration_ms)));
+      row.append(el("span","seq",String(a.seq).padStart(2,"0")),text,status);
+      list.append(row);
+    }
+    pager("activity-pager",data.total,callOffset,n=> {
+      callOffset=n;
+      loadActivity();
+    }
+    );
+  } catch(e) {
+    if(request===activityRequest&&file===currentFile)error(e);
+  }
+}
+function rawDetails(parent,e,open=false) {
+  const details=el("details");
+  details.open=open;
+  details.append(el("summary","","#"+e.seq+" · "+e.type+" · "+when(e.ts)),el("pre","",e.raw));
+  if(e.truncated)details.append(el("p","text-warn","Preview capped at 32 KiB. Use the original recording for full contents."));
+  parent.append(details);
+}
+function dl(parent,values) {
+  const n=el("dl");
+  for(const[k,v]of values)n.append(el("dt","",k),el("dd","",v));
+  parent.append(n);
+}
+async function selectCall(seq) {
+  const request=++detailRequest,file=currentFile;
+  try {
+    const data=await api("/api/event?"+params( {
+      file,seq
+    }
+    ));
+    if(request!==detailRequest||file!==currentFile)return;
+    showSession(data.session);
+    selectedCall=data.activity;
+    detailRevision=data.session.revision;
+    clearTest();
+    const a=selectedCall,parent=$("inspector");
+    parent.replaceChildren();
+    if(!a) {
+      empty(parent,"Call not found","This event is not a tool call. Use All events to inspect it.");
       return;
     }
-    chainBroken = broken;
-
-    for (const e of data.events || []) {
-      addEvent(e);
-      if (e.seq > lastSeq) lastSeq = e.seq;
+    parent.append(el("div","eyebrow","CALL INVESTIGATION / #"+a.seq),el("h2","mono",a.tool),badge(a.status));
+    const explanation=a.status==="failed"?"The recorded tool result is marked as an error. Open the result below for the server’s recorded response.":a.reason|| (a.status==="success"?"A result was recorded for this request. A successful response does not independently prove a downstream side effect.":"No matching result was recorded. Do not infer that the server did or did not execute the request.");
+    parent.append(el("p","explanation",explanation));
+    if(a.status==="failed"&&a.reason)parent.append(el("p","","Recorded policy explanation: "+a.reason));
+    dl(parent,[["Policy",a.verdict||"Not recorded"],["Rule",a.rule||"Not recorded"],["Server",a.server],["Source",a.server_source||"Server identity absent"],["Duration",fmtDuration(a.duration_ms)],["Linked by",a.link]]);
+    if(a.verdict==="deny")notice(parent,a.result_seq?"A result is also recorded for this denied call. Investigate the decision/result sequence; denial alone is not evidence of non-execution.":"A deny decision is recorded, with no matched result. This evidence alone does not prove whether a request reached the server.",a.result_seq?"error":"warning");
+    if(a.parent_seq)parent.append(button("Open recorded parent #"+a.parent_seq,()=>showRawEvent(a.parent_seq)));
+    parent.append(button("Make a regression test →",()=> {
+      updateTestSelection();
+      setTab("test");
+      $("tab-test").focus();
     }
-    $("log-count").textContent = String(lastSeq);
-    if ($("tail").checked) window.scrollTo({ top: 0 });
-  } catch (e) {
-    /* status already shown by refreshPending */
-  } finally {
-    refreshing = false;
+    ,"primary"));
+    const observed=el("details");
+    observed.append(el("summary","","Arguments, decisions & result (recorded JSON)"),el("p","muted","Recordings may contain secrets. Values are displayed as text; blob references are not fetched."));
+    for(const e of data.events)rawDetails(observed,e);
+    if(data.related_limited)observed.append(el("p","text-warn","Showing the first 20 related events. Use All events for the rest."));
+    parent.append(observed);
+    const before=el("details");
+    before.append(el("summary","","Preceding context · file order, not causation"));
+    for(const e of data.preceding)rawDetails(before,e);
+    parent.append(before);
+    for(const row of $("activity-list").children) {
+      const yes=row.getAttribute("aria-label")?.endsWith("event "+a.seq);
+      row.classList.toggle("selected",!!yes);
+      row.setAttribute("aria-pressed",String(!!yes));
+    }
+    updateTestSelection();
+  } catch(e) {
+    if(request===detailRequest&&file===currentFile)error(e);
   }
 }
-
-/* ---- boot ---------------------------------------------------------- */
-
-refreshSessions();
-refreshPending();
-refreshLog();
-setInterval(refreshPending, 3000);
-setInterval(refreshLog, 2000);
-setInterval(refreshSessions, 5000);
+async function loadEvents() {
+  const file=currentFile,request=++eventRequest;
+  try {
+    const data=await api("/api/events?"+params( {
+      file,offset:eventOffset,limit:50
+    }
+    ));
+    if(file!==currentFile||request!==eventRequest)return;
+    showSession(data.session);
+    const list=$("events-list");
+    list.replaceChildren();
+    for(const e of data.events) {
+      const details=el("details","recorded-event"),row=el("summary","event-row");
+      row.append(el("span","seq","#"+e.seq),el("span","mono",when(e.ts)),el("span","",e.type));
+      details.append(row,el("pre","",e.raw));
+      list.append(details);
+    }
+    if(!data.events.length)empty(list,"No readable events","This recording is empty or could not be parsed. Review its integrity message.");
+    pager("events-pager",data.total,eventOffset,n=> {
+      eventOffset=n;
+      loadEvents();
+    }
+    );
+  } catch(e) {
+    if(request===eventRequest&&file===currentFile)error(e);
+  }
+}
+async function showRawEvent(seq) {
+  const file=currentFile;
+  try {
+    const data=await api("/api/event?"+params( {
+      file,seq
+    }
+    ));
+    if(file!==currentFile)return;
+    setTab("events");
+    $("event-detail").replaceChildren();
+    for(const e of data.events)rawDetails($("event-detail"),e,true);
+  } catch(e) {
+    error(e);
+  }
+}
+function setTab(name) {
+  currentTab=name;
+  for(const tab of document.querySelectorAll(".tab")) {
+    const selected=tab.dataset.tab===name;
+    tab.classList.toggle("selected",selected);
+    tab.setAttribute("aria-selected",String(selected));
+    tab.tabIndex=selected?0:-1;
+    $(tab.dataset.tab+"-panel").hidden=!selected;
+  }
+  if(name==="events")loadEvents();
+  if(name==="compare")loadCompareChoices();
+  if(name==="test")updateTestSelection();
+}
+async function loadCompareChoices() {
+  const file=currentFile,request=++compareRequest;
+  try {
+    const data=await api("/api/sessions?limit=100");
+    if(data.total>100){const older=await api("/api/sessions?offset=100&limit=100");data.sessions.push(...older.sessions);}
+    if(request!==compareRequest||file!==currentFile)return;
+    const select=$("compare-session");
+    const previous=select.value;
+    select.replaceChildren();
+    for(const s of data.sessions||[]) {
+      if(s.file===file)continue;
+      select.add(new Option(s.name+" · "+when(s.first_ts),s.file));
+    }
+    if([...select.options].some(o=>o.value===previous))select.value=previous;
+    else $("compare-result").replaceChildren();
+    if(single||!select.options.length) {
+      select.add(new Option("Choose another recording in directory mode",""));
+      $("run-compare").disabled=true;
+    } else $("run-compare").disabled=false;
+  } catch(e) {
+    error(e);
+  }
+}
+async function compare() {
+  const file=currentFile,other=$("compare-session").value,request=++compareRequest;
+  const out=$("compare-result");
+  out.replaceChildren();
+  $("run-compare").disabled=true;
+  try {
+    const data=await api("/api/compare?"+params( {
+      a:file,b:other
+    }
+    ));
+    if(file!==currentFile||request!==compareRequest)return;
+    notice(out,data.diff.same?"No differences in answered calls and recorded results.":"The recorded workflows differ.",data.diff.same?"":"warning");
+    out.append(el("p","muted",data.scope));
+    const cols=el("div","comparison-columns");
+    for(const [side,title]of [[data.a,"This recording"],[data.b,"Compared recording"]]) {
+      const n=el("div");
+      n.append(el("h3","",title),el("p","",side.name),el("p","muted",side.answered+" results · "+side.denies+" deny decisions · "+side.failures+" tool errors"));
+      cols.append(n);
+    }
+    out.append(cols);
+    for(const[key,title]of [["only_in_a","Only in this recording"],["only_in_b","Only in compared recording"],["changed","Same call key, different recorded outcomes / count"]]) {
+      const n=el("div");
+      n.append(el("h3","",title));
+      const list=el("ul","mono");
+      for(const text of data.diff[key]||[])list.append(el("li","",text));
+      if(!list.children.length)list.append(el("li","muted","None"));
+      n.append(list);
+      out.append(n);
+    }
+    out.append(el("p","muted",data.diff.order_differs?"Answered call sequence differs. Added or missing calls also change this sequence.":"Answered call sequence is unchanged."));
+  } catch(e) {
+    if(file===currentFile&&request===compareRequest)notice(out,e.message,"warning");
+  } finally {
+    if(file===currentFile&&request===compareRequest)$("run-compare").disabled=false;
+  }
+}
+function clearTest() {
+  ++testRequest;
+  yamlPreview="";
+  $("test-yaml").hidden=true;
+  $("test-yaml").textContent="";
+  $("save-test").disabled=true;
+  $("test-result").replaceChildren();
+}
+function updateTestSelection() {
+  $("test-selection").textContent=selectedCall?"Event #"+selectedCall.seq+" · "+selectedCall.tool+" · "+selectedCall.status:"Select a call in Activity first.";
+  $("preview-test").disabled=!selectedCall;
+  $("run-test").disabled=!selectedCall;
+}
+async function generateTest(run) {
+  clearTest();
+  if(!selectedCall) {
+    notice($("test-result"),"Select a call in Activity first.","warning");
+    return;
+  }
+  const file=currentFile,seq=selectedCall.seq,request=++testRequest;
+  try {
+    const data=await api("/api/test", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify( {
+        file,revision:detailRevision,seq,kind:$("assertion-kind").value,fixture:$("fixture-path").value,run
+      }
+      )
+    }
+    );
+    if(request!==testRequest||file!==currentFile||seq!==selectedCall?.seq)return;
+    yamlPreview=data.yaml;
+    $("test-yaml").textContent=data.yaml;
+    $("test-yaml").hidden=false;
+    $("save-test").disabled=false;
+    notice($("test-result"),run?(data.passed?"✓ Assertion passed using the existing test engine. No tool was executed.":"Assertion failed. Review the recorded evidence."):"Preview ready. Review the assertion before saving.",run&&!data.passed?"error":"");
+    $("test-result").append(el("p","muted",data.scope));
+    for(const f of data.failures||[])$("test-result").append(el("p","text-bad",f.Detail));
+  } catch(e) {
+    if(request===testRequest&&file===currentFile)notice($("test-result"),e.message,"warning");
+  }
+}
+async function saveTest() {
+  if(!yamlPreview)return;
+  const text=yamlPreview;
+  try {
+    if(window.showSaveFilePicker) {
+      const handle=await window.showSaveFilePicker( {
+        suggestedName:"tapelog-regression.yaml",types:[ {
+          description:"Tapelog trajectory test",accept: {
+            "text/yaml":[".yaml"]
+          }
+        }
+        ]
+      }
+      );
+      const existing=await handle.getFile();
+      if(existing.size>0)throw new Error("That file already contains data. Choose a new filename to preserve it.");
+      const stream=await handle.createWritable();
+      await stream.write(text);
+      await stream.close();
+      notice($("test-result"),"Saved the test. The recording was not copied or modified.");
+    } else {
+      const url=URL.createObjectURL(new Blob([text], {
+        type:"text/yaml"
+      }
+      ));
+      const a=el("a");
+      a.href=url;
+      a.download="tapelog-regression-"+Date.now()+".yaml";
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      notice($("test-result"),"Test downloaded. Your browser controls the save location; check the fixture path before running tapelog test.");
+    }
+  } catch(e) {
+    if(e.name!=="AbortError")notice($("test-result"),e.message,"warning");
+  }
+}
+function shellArg(s) {
+  return /Win/.test(navigator.platform)?"'"+String(s).replaceAll("'","''")+"'":"'"+String(s).replaceAll("'","'\\''")+"'";
+}
+function fullPath() {
+  return directory+(directory.endsWith("/")||directory.endsWith("\\")?"":/Win/.test(navigator.platform)?"\\":"/")+currentFile;
+}
+function help(replay=false) {
+  $("help-title").textContent=replay?"Replay recorded responses, safely.":"Bring your sessions into view.";
+  const out=$("help-content");
+  out.replaceChildren();
+  if(replay) {
+    out.append(el("p","","Replay starts a hermetic MCP server and waits for client requests. It serves matching recorded responses; it does not re-run the upstream tool. Denied or unanswered calls are replay misses."),el("pre","","tapelog replay "+shellArg(fullPath())+" --strict"),el("p","","Inspect and verify the original recording:"),el("pre","","tapelog inspect "+shellArg(fullPath())+" --summary\ntapelog verify "+shellArg(fullPath())));
+    if(!currentInfo?.chain_ok)notice(out,"This recording has not passed chain verification. Replay refuses altered evidence by default.","warning");
+  } else {
+    out.append(el("p","","Use setup to preview a configuration for an existing MCP server, save a new candidate and review it before activation. Generated configs create a fresh recording on each start."),el("pre","","tapelog setup --client roo --config <client.json> --server <name>\ntapelog web --dir <recordings-directory>"),el("p","","Restart the wrapped server in your client, explicitly call one of its MCP tools, then refresh Sessions. Tapelog cannot see the client’s built-in file, terminal or browser operations."),el("p","","Use Activity to investigate policy decisions and failures. All events preserves file order. Compare uses recorded responses. Make a test creates a tool-level assertion without copying payloads."));
+  }
+  $("help-dialog").showModal();
+}
+let approvalsBusy=false;
+async function refreshPending() {
+  if(!queueEnabled||approvalsBusy)return;
+  if($("pending-list").contains(document.activeElement))return;
+  try {
+    const data=await api("/api/pending");
+    $("pending-count").textContent=data.pending.length;
+    const out=$("pending-list");
+    out.replaceChildren();
+    if(!data.pending.length)empty(out,"No calls waiting for review","A policy confirmation request will appear here when the live recording parks a call.");
+    for(const item of data.pending) {
+      const card=el("div","pending-card");
+      card.append(el("h2","mono",item.tool),el("p","muted","Request #"+item.id+" · waiting "+item.age_seconds+" seconds"),el("pre","",JSON.stringify(item.args,null,2).slice(0,32768)));
+      const actions=el("div","actions"),note=el("input");
+      note.placeholder="Review note (recorded)";
+      note.setAttribute("aria-label","Review note for request "+item.id);
+      actions.append(note);
+      for(const[v,label]of [["allow","Allow once"],["allow_session","Allow for session"],["deny","Deny"]])actions.append(button(label,()=>decide(item.id,v,note.value),v==="deny"?"danger":"secondary"));
+      card.append(actions);
+      out.append(card);
+    }
+  } catch(e) {
+    error(e);
+  }
+}
+async function decide(id,verdict,note) {
+  approvalsBusy=true;
+  try {
+    await api("/api/decide", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify( {
+        id,verdict,note
+      }
+      )
+    }
+    );
+  } catch(e) {
+    error(e);
+  } finally {
+    approvalsBusy=false;
+    await refreshPending();
+  }
+}
+$("library-nav").onclick=showLibrary;
+$("back").onclick=showLibrary;
+$("approvals-nav").onclick=()=> {
+  showView("approvals");
+  refreshPending();
+};
+$("help-nav").onclick=()=>help();
+$("replay-help").onclick=()=>help(true);
+$("close-help").onclick=()=>$("help-dialog").close();
+$("refresh").onclick=()=> {
+  clearError();
+  if(!$("session-view").hidden) {
+    if(currentTab==="events")loadEvents();
+    else loadActivity();
+  } else if(!$("approvals-view").hidden)refreshPending();
+  else loadLibrary();
+};
+$("library-filters").onsubmit=e=> {
+  e.preventDefault();
+  libOffset=0;
+  loadLibrary();
+};
+$("session-search").oninput=debounce(()=> {
+  libOffset=0;
+  loadLibrary();
+}
+);
+for(const id of ["session-status","session-sort"])$(id).onchange=()=> {
+  libOffset=0;
+  loadLibrary();
+};
+$("activity-search").oninput=debounce(()=> {
+  callOffset=0;
+  loadActivity();
+}
+);
+for(const id of ["activity-status","activity-server"])$(id).onchange=()=> {
+  callOffset=0;
+  loadActivity();
+};
+for(const tab of document.querySelectorAll(".tab")) {
+  tab.onclick=()=>setTab(tab.dataset.tab);
+  tab.onkeydown=e=> {
+    const tabs=[...document.querySelectorAll(".tab")];
+    let i=tabs.indexOf(tab);
+    if(e.key==="ArrowRight")i=(i+1)%tabs.length;
+    else if(e.key==="ArrowLeft")i=(i+tabs.length-1)%tabs.length;
+    else if(e.key==="Home")i=0;
+    else if(e.key==="End")i=tabs.length-1;
+    else return;
+    e.preventDefault();
+    tabs[i].focus();
+    setTab(tabs[i].dataset.tab);
+  };
+}
+$("run-compare").onclick=compare;
+$("compare-session").onchange=()=>{++compareRequest;$("compare-result").replaceChildren();$("run-compare").disabled=single||!$("compare-session").value;};
+$("preview-test").onclick=()=>generateTest(false);
+$("run-test").onclick=()=>generateTest(true);
+$("save-test").onclick=saveTest;
+$("assertion-kind").onchange=clearTest;
+$("fixture-path").oninput=clearTest;
+let light=false;
+try {
+  light=localStorage.getItem("tapelog-appearance")==="light";
+} catch {
+}
+function applyTheme() {
+  document.documentElement.dataset.theme=light?"light":"dark";
+  $("theme").textContent=light?"◐ Dark appearance":"◐ Light appearance";
+}
+applyTheme();
+$("theme").onclick=()=> {
+  light=!light;
+  applyTheme();
+  try {
+    localStorage.setItem("tapelog-appearance",light?"light":"dark");
+  } catch {
+  }
+};
+window.addEventListener("hashchange",()=> {
+  if(location.hash==="#main")return;
+  if(location.hash.startsWith("#session="))openSession(decodeURIComponent(location.hash.slice(9)),false);
+  else showLibrary();
+}
+);
+loadLibrary().then(()=>refreshPending());
+setInterval(refreshPending,3000);
