@@ -200,9 +200,11 @@ func (s *server) eventAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	seq, _ := strconv.ParseUint(r.URL.Query().Get("seq"), 10, 64)
 	var a *activity
-	for _, item := range rec.Activities {
+	activityIndex := -1
+	for i, item := range rec.Activities {
 		if item.Seq == seq {
 			a = item
+			activityIndex = i
 			break
 		}
 	}
@@ -261,7 +263,7 @@ func (s *server) eventAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	evidence["decisions"] = decisions
-	writeJSON(w, map[string]any{"activity": safeActivity(a), "evidence": evidence, "events": related, "preceding": preceding, "session": rec.Info, "related_limited": len(wanted) > 20})
+	writeJSON(w, map[string]any{"activity": safeActivity(a), "activity_index": activityIndex, "evidence": evidence, "events": related, "preceding": preceding, "session": rec.Info, "related_limited": len(wanted) > 20})
 }
 
 // Engines consume the exact in-memory snapshot that the UI inspected, never a
@@ -469,6 +471,7 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		Description string   `json:"description"`
 		Reference   string   `json:"reference"`
 		Candidate   string   `json:"candidate"`
+		Eligibility string   `json:"eligibility"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
@@ -543,6 +546,7 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 			seqs = req.Seqs
 		}
 		c := lab.Case{Version: 1, Title: req.Title, Description: req.Description, Evidence: req.File, EvidenceSHA256: rec.Info.Revision, Reference: req.Reference, EvidenceSeqs: seqs, Expectations: []lab.Expectation{expectation}}
+		c.Eligibility = req.Eligibility
 		if err := c.Validate(); err != nil {
 			apiError(w, 422, err)
 			return

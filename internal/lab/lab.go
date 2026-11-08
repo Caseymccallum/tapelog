@@ -34,6 +34,7 @@ type Expectation struct {
 }
 type Case struct {
 	Version        int           `json:"version"`
+	Eligibility    string        `json:"eligibility,omitempty"`
 	Title          string        `json:"title"`
 	Description    string        `json:"description,omitempty"`
 	Evidence       string        `json:"evidence"`
@@ -65,12 +66,12 @@ type Result struct {
 	Note     string        `json:"note"`
 }
 type SuiteResult struct {
-	Version      int      `json:"version"`
-	Title        string   `json:"title"`
-	Status       string   `json:"status"`
-	Pass         int      `json:"pass"`
-	Fail         int      `json:"fail"`
-	Inconclusive int      `json:"inconclusive"`
+	Version      int    `json:"version"`
+	Title        string `json:"title"`
+	Status       string `json:"status"`
+	Pass         int    `json:"pass"`
+	Fail         int    `json:"fail"`
+	Inconclusive int    `json:"inconclusive"`
 	// Invalid counts suite entries whose case definition could not be loaded.
 	// They are also counted in Inconclusive, because a broken case never proves
 	// the expectation and must never read as a pass.
@@ -125,6 +126,9 @@ func leaf(s, ext string) bool {
 }
 func literal(s string) bool { return s != "" && len(s) <= 512 && !strings.ContainsAny(s, "*?\x00\r\n") }
 func (c Case) Validate() error {
+	if c.Eligibility != "" && c.Eligibility != "complete-boundary" {
+		return fmt.Errorf("unsupported eligibility mode %q", c.Eligibility)
+	}
 	if c.Version != 1 || strings.TrimSpace(c.Title) == "" || len(c.Title) > 200 || len(c.Description) > 2000 {
 		return fmt.Errorf("case needs version 1 and a title (maximum 200 characters)")
 	}
@@ -387,6 +391,7 @@ func testCheck(x Expectation) scenario.Check {
 	}
 	return scenario.Check{}
 }
+
 // eligibility decides whether the recorded evidence is capable of evaluating one
 // expectation. It returns an empty code when the scenario engine may decide PASS
 // or FAIL; otherwise it names the missing evidence.
@@ -532,12 +537,23 @@ func Evaluate(c Case, data []byte, candidate string) Result {
 	}
 	for _, x := range c.Expectations {
 		check := CheckResult{Kind: x.Kind, Status: "PASS", Detail: "Expectation satisfied by eligible recorded evidence."}
-		if code, reason := eligibility(x, tape); code != "" {
+		code, reason := eligibility(x, tape)
+		if c.Eligibility == "complete-boundary" {
+			code, reason = completeBoundaryEligibility(x, tape)
+		}
+		if code != "" {
 			check.Status = "INCONCLUSIVE"
 			check.Detail = reason
 			check.Code = code
 		} else {
-			failures := scenario.Run(&scenario.Scenario{Version: 1, Assert: []scenario.Check{testCheck(x)}}, tape, nil)
+			assertion := testCheck(x)
+			if c.Eligibility == "complete-boundary" && x.Kind == "attempt_ceiling" {
+				// Legacy max-only assertions imply at least one match. This explicit
+				// counting mode states the mathematical range 0..maximum instead.
+				zero := 0
+				assertion.Attempted.Min = &zero
+			}
+			failures := scenario.Run(&scenario.Scenario{Version: 1, Assert: []scenario.Check{assertion}}, tape, nil)
 			if len(failures) > 0 {
 				check.Status = "FAIL"
 				check.Detail = failures[0].Detail
@@ -551,6 +567,75 @@ func Evaluate(c Case, data []byte, candidate string) Result {
 		}
 	}
 	return r
+}
+
+// completeBoundaryEligibility is opt-in. The global verification gate has already
+// established start/end and unambiguous correlation. Empty sets can decide an
+// existential or count, but cannot demonstrate absence in result text. The
+// scenario engine remains the only assertion evaluator.
+func completeBoundaryEligibility(x Expectation, t *replay.Tape) (string, string) {
+	var results []replay.Interaction
+	calls, missingResults, missingDecisions := 0, 0, 0
+	deny := false
+	for _, group := range [][]replay.Interaction{t.Interactions, t.Unanswered} {
+		for _, it := range group {
+			if it.Tool != x.Tool {
+				continue
+			}
+			calls++
+			if it.Verdict == "" {
+				missingDecisions++
+			}
+			if it.Verdict == "deny" {
+				deny = true
+			}
+		}
+	}
+	for _, it := range t.Interactions {
+		if it.Tool == x.Tool {
+			results = append(results, it)
+		}
+	}
+	missingResults = calls - len(results)
+	switch x.Kind {
+	case "attempted", "no_attempts", "attempt_ceiling", "sequence":
+		return "", ""
+	case "answered":
+		if calls == 0 || len(results) > 0 {
+			return "", ""
+		}
+		return CodeNoResults, "matching calls have no recorded result; whether they were answered cannot be established"
+	case "denied":
+		if deny || calls == 0 || missingDecisions == 0 {
+			return "", ""
+		}
+		return CodeMissingDecision, "no deny witness was found and a matching call has no recorded decision"
+	case "result_contains", "result_never_contains":
+		// A recorded witness/counterexample decides the explicit text claim even
+		// when another matching call has no result. The engine checks it again.
+		for _, it := range results {
+			if strings.Contains(string(it.Result), x.Text) {
+				return "", ""
+			}
+		}
+		if x.Kind == "result_contains" && calls == 0 {
+			return "", ""
+		}
+		if len(results) == 0 {
+			return CodeNoResults, "no recorded result is available to search"
+		}
+		if missingResults > 0 {
+			return CodeNoResults, "a matching call has no recorded result, so the text claim cannot be decided"
+		}
+		for _, it := range results {
+			if strings.Contains(string(it.Result), session.Redacted) {
+				return CodeRedacted, "redacted result content may hide the requested text"
+			}
+		}
+		return "", ""
+	default:
+		return eligibility(x, t)
+	}
 }
 func RunCase(dir string, c Case, candidate string) (Result, error) {
 	if err := c.Validate(); err != nil {

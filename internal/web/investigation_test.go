@@ -91,9 +91,13 @@ func TestM3LargeSyntheticRecording(t *testing.T) {
 		t.Fatalf("summary=%d full=%d", summary.Body.Len(), full.Body.Len())
 	}
 	start = time.Now()
-	detail, _ := requestJSON(t, h, "GET", "/api/event?file=large.jsonl&seq=4000", nil)
+	detail, detailBody := requestJSON(t, h, "GET", "/api/event?file=large.jsonl&seq=4000", nil)
 	if detail.Code != 200 {
 		t.Fatal(detail.Body.String())
+	}
+	var activityIndex int
+	if err := json.Unmarshal(detailBody["activity_index"], &activityIndex); err != nil || activityIndex != 1999 {
+		t.Fatalf("late evidence cannot locate its activity page: index=%d err=%v", activityIndex, err)
 	}
 	t.Logf("4002 events: 50-row summary %d bytes in %s; full %d bytes in %s; late detail in %s", summary.Body.Len(), summaryTime, full.Body.Len(), fullTime, time.Since(start))
 }

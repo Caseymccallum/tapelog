@@ -41,6 +41,8 @@ type labCaseEntry struct {
 	Title           string            `json:"title"`
 	Description     string            `json:"description,omitempty"`
 	Evidence        string            `json:"evidence"`
+	Eligibility     string            `json:"eligibility,omitempty"`
+	EvidenceSeqs    []uint64          `json:"evidence_seqs,omitempty"`
 	EvidencePresent bool              `json:"evidence_present"`
 	Reference       string            `json:"reference,omitempty"`
 	Expectations    []lab.Expectation `json:"expectations"`
@@ -216,6 +218,7 @@ func caseEntry(dir, name string, c lab.Case, rev string) labCaseEntry {
 		File: name, Title: c.Title, Description: c.Description, Evidence: c.Evidence,
 		EvidencePresent: labFileExists(dir, c.Evidence), Reference: c.Reference,
 		Expectations: c.Expectations, Revision: rev,
+		Eligibility: c.Eligibility, EvidenceSeqs: c.EvidenceSeqs,
 	}
 }
 
@@ -626,11 +629,8 @@ func (s *server) labSuiteRunAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{
 		"file": req.File, "revision": rev, "suite": result, "comparisons": comparisons,
+		"case_files":            suite.Cases,
 		"comparisons_truncated": len(comparisons) == maxSuiteComparisons && len(suite.Cases) > maxSuiteComparisons,
 		"command":               "tapelog lab suite --dir . --suite " + req.File,
 	})
 }
-
-
-
-

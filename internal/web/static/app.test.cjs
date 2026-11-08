@@ -11,6 +11,9 @@ class Node {
  set innerHTML(_){throw new Error('Untrusted HTML sink used');}
  set outerHTML(_){throw new Error('Untrusted HTML sink used');}
  append(...nodes){this.children.push(...nodes);}
+ prepend(...nodes){this.children.unshift(...nodes);}
+ focus(){}
+ scrollIntoView(){}
  replaceChildren(...nodes){this.text='';this.children=nodes;if(this.tagName==='select')this.value='';}
  add(node){if(!this.children.length)this.value=node.value;this.append(node);}
  get options(){return this.children;}
@@ -22,7 +25,7 @@ function app(){
  const nodes=new Map(),tags=[];
  const context=vm.createContext({
   document:{createElement:tag=>{tags.push(tag);return new Node(tag);},getElementById:id=>{if(!nodes.has(id))nodes.set(id,new Node(id==='compare-session'?'select':'div'));return nodes.get(id);},querySelectorAll:()=>[]},
-  window:{addEventListener:()=>{}},navigator:{platform:'Win32'},localStorage:{getItem:()=>null},history:{replaceState:()=>{}},location:{hash:'',pathname:'/',search:''},
+  window:{addEventListener:()=>{},scrollTo:()=>{}},navigator:{platform:'Win32'},localStorage:{getItem:()=>null,setItem:()=>{}},history:{replaceState:()=>{},pushState:()=>{}},location:{hash:'',pathname:'/',search:''},
   URLSearchParams,Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}},setTimeout:()=>0,clearTimeout:()=>{},setInterval:()=>0,fetch:()=>new Promise(()=>{}),console
  });
  context.document.documentElement={dataset:{}};
@@ -309,7 +312,7 @@ test('a failed lab result names the outcome and offers the evidence',()=>{
 test('every expectation kind is explained in words',()=>{
   const {context}=app();
   const read=x=>vm.runInContext('labExpectationText(x)',Object.assign(context,{x}));
-  assert.match(read({kind:"denied",tool:"git__push"}),/has a recorded deny decision/);
+  assert.match(read({kind:"denied",tool:"git__push"}),/final recorded policy decision is deny/);
   assert.match(read({kind:"result_never_contains",tool:"db__query",text:"does not exist"}),/No recorded result of/);
   assert.match(read({kind:"no_attempts",tool:"jobs__status"}),/never reached the boundary/);
   assert.match(read({kind:"sequence",sequence:["a","b"]}),/“a” → “b”/);
@@ -348,6 +351,132 @@ test('hostile recorded text in the lab is literal and never markup',()=>{
   assert.match(nodes.get('lab-run').textContent,/<img src=x/);
   assert.equal(tags.includes('img'),false);
   assert.equal(context.pwned,undefined);
+});
+
+test('event deep links round-trip hostile filenames and reject unsafe event identifiers',()=>{
+  const {context}=app();
+  context.filename='a & b<script>.jsonl';
+  context.location.hash=vm.runInContext('sessionHash(filename,"activity",123)',context);
+  const target=vm.runInContext('hashTarget()',context);
+  assert.equal(target.file,context.filename);assert.equal(target.seq,123);
+  for(const value of ['-1','NaN','1.5','9007199254740992']) {
+    context.seq=value;assert.equal(vm.runInContext('validEventSeq(seq)',context),0);
+  }
+});
+
+test('browser history restores an evidence route without creating more history',async()=>{
+  const {context}=app();
+  context.location.hash='#session=case%20evidence.jsonl&tab=activity&seq=6';
+  context.history.pushState=()=>{throw new Error('route restoration created a history entry');};
+  vm.runInContext('openSession=async(file,update)=>{globalThis.opened={file,update,seq:hashTarget().seq};setWorkspaceRoute("#unexpected");}',context);
+  await vm.runInContext('restoreWorkspaceRoute()',context);
+  assert.equal(context.opened.file,'case evidence.jsonl');assert.equal(context.opened.seq,6);assert.equal(context.opened.update,false);
+});
+
+test('returning from evidence restores the cached outcome without running the case again',()=>{
+  const {context,nodes}=app();
+  context.saved=labRunBody('FAIL',[{kind:'answered',status:'FAIL',detail:'Expected response was not recorded'}],{});
+  vm.runInContext('labRunCache["case:case.json"]=saved;api=()=>{throw new Error("Unexpected rerun")};restoreLabRun("case","case.json")',context);
+  assert.match(nodes.get('lab-run').textContent,/Expected response/);
+  assert.match(nodes.get('lab-run').textContent,/Last run in this page session/);
+  vm.runInContext('restoreLabRun("case","unknown.json")',context);
+  assert.equal(nodes.get('lab-run').textContent,'');
+  assert.match(nodes.get('lab-run-target').textContent,/Run it explicitly/);
+});
+
+test('the current investigation context carries literal evidence identity across views',()=>{
+  const {context,nodes,tags}=app();
+  vm.runInContext('currentFile="a.jsonl";currentInfo={name:"<img src=x>"};selectedCall={seq:6,tool:"db__query"};returnRoute="#lab&suite=suite.json&outcome=latest";activeView="session";updateWorkspaceContext()',context);
+  const text=nodes.get('workspace-context').textContent;
+  assert.match(text,/<img src=x>/);assert.match(text,/event #6/);assert.match(text,/Return to suite outcome/);
+  assert.equal(tags.includes('img'),false);
+});
+
+test('saved investigations are directory scoped and cannot contain external navigation routes',()=>{
+  const {context,nodes,tags}=app();
+  const entries=[
+    {id:'1',title:'<script>literal</script>',directory:'here',file:'a.jsonl',route:'#session=a.jsonl',saved:'2026-01-01'},
+    {id:'2',title:'Other private directory',directory:'elsewhere',file:'secret.jsonl',route:'#session=secret.jsonl'},
+    {id:'3',title:'External route',directory:'here',file:'a.jsonl',route:'https://example.com/'},
+    {id:'4',title:'Script route',directory:'here',file:'a.jsonl',route:'javascript:alert(1)'}
+  ];
+  context.localStorage.getItem=()=>JSON.stringify(entries);
+  vm.runInContext('directory="here";renderInvestigations()',context);
+  const text=nodes.get('saved-investigations').textContent;
+  assert.match(text,/<script>literal/);assert.doesNotMatch(text,/Other private|External route|Script route/);assert.equal(tags.includes('script'),false);
+});
+
+test('saving an investigation stores only navigation metadata, never recorded arguments or results',()=>{
+  const {context,nodes}=app();
+  let saved;context.localStorage.setItem=(key,text)=>{saved=JSON.parse(text);};
+  context.document.getElementById('investigation-title').value='Investigate the lookup';
+  context.document.getElementById('investigation-dialog').close=()=>{};
+  vm.runInContext('directory="fictional";currentFile="a.jsonl";currentInfo={revision:"snapshot"};currentTab="activity";selectedCall={seq:6,tool:"db__query",args:{secret:"do-not-copy"},result:"do-not-copy"};saveInvestigation({preventDefault(){}})',context);
+  assert.equal(saved[0].seq,6);assert.match(saved[0].route,/seq=6/);
+  assert.doesNotMatch(JSON.stringify(saved),/do-not-copy/);
+  assert.match(nodes.get('workspace-context').textContent,/Investigation saved/);
+});
+
+test('an unavailable recording cannot leave the previous timeline on screen',async()=>{
+  const {context,nodes}=app();
+  context.document.getElementById('activity-list').textContent='Previous recording contents';
+  vm.runInContext('currentFile="gone.jsonl";api=async()=>{throw new Error("recording is missing")}',context);
+  await vm.runInContext('loadActivity()',context);
+  assert.doesNotMatch(nodes.get('activity-list').textContent,/Previous recording/);
+  assert.match(nodes.get('activity-list').textContent,/could not be opened/);
+  assert.match(nodes.get('session-subtitle').textContent,/Recording unavailable/);
+});
+
+test('session tab navigation cannot hide lab panels or select lab tabs',()=>{
+  const {context,nodes}=app();
+  const session=new Node('button');session.dataset.tab='activity';
+  const lab=new Node('button');lab.dataset.labtab='cases';
+  context.document.querySelectorAll=selector=>selector==='[data-tab]'?[session]:selector==='[data-labtab]'?[lab]:[];
+  vm.runInContext('setTab("activity")',context);
+  assert.equal(session.getAttribute('aria-selected'),'true');
+  assert.equal(lab.getAttribute('aria-selected'),undefined);
+  assert.equal(nodes.has('undefined-panel'),false);
+});
+
+test('nested server error messages are readable while hostile text remains literal',()=>{
+  const {context}=app();context.result=JSON.stringify({error:{code:-32000,message:'relation <script>x</script> does not exist'}});
+  assert.equal(vm.runInContext('readableRecorded(result)',context),'relation <script>x</script> does not exist');
+});
+
+test('opening a saved case from a suite makes the case panel visible without rerunning it',async()=>{
+  const {context,nodes}=app();
+  context.body={case:{file:'case.json',title:'Case',evidence:'a.jsonl',expectations:[{kind:'answered',tool:'x'}]},evidence:{present:true},json:'{}'};
+  vm.runInContext('activeView="lab";labTab="suites";workspaceRecordings=[{file:"a.jsonl",name:"A"}];api=async path=>{if(!path.startsWith("/api/lab/case?"))throw new Error("unexpected run");return body}',context);
+  await vm.runInContext('openLabCase("case.json")',context);
+  assert.equal(vm.runInContext('labTab',context),'cases');
+  assert.match(nodes.get('lab-case-detail').textContent,/What this case asserts/);
+  assert.match(nodes.get('lab-run-target').textContent,/Run it explicitly/);
+});
+
+test('the empty suites state retains a discoverable create action',()=>{
+  const {context,nodes}=app();
+  vm.runInContext('renderLabSuites({suites:[]})',context);
+  assert.match(nodes.get('lab-suite-list').textContent,/No suites yet/);
+  assert.match(nodes.get('lab-suite-list').textContent,/New suite/);
+});
+
+test('editing suite membership cannot silently run the old saved membership',()=>{
+  const {context,nodes}=app();
+  vm.runInContext('suiteDraft={file:"suite.json",title:"Suite",cases:["case.json"],revision:"r",isNew:false,dirty:true};renderSuiteEditor()',context);
+  const all=n=>[n,...n.children.flatMap(all)];
+  const run=all(nodes.get('lab-suite-detail')).find(n=>n.tagName==='button'&&n.textContent==='Run this suite →');
+  assert.equal(run.disabled,true);
+  assert.match(nodes.get('lab-suite-detail').textContent,/Unsaved changes/);
+});
+
+test('changing the comparison reference makes the former reference available as a candidate',()=>{
+  const {context,nodes}=app();
+  context.document.getElementById('compare-base').value='b.jsonl';
+  context.document.getElementById('compare-session').value='c.jsonl';
+  vm.runInContext('workspaceRecordings=[{file:"a.jsonl",name:"A"},{file:"b.jsonl",name:"B"},{file:"c.jsonl",name:"C"}];updateComparisonCandidate()',context);
+  const values=nodes.get('compare-session').options.map(x=>x.value);
+  assert.equal(values.includes('a.jsonl'),true);assert.equal(values.includes('b.jsonl'),false);
+  assert.equal(nodes.get('compare-session').value,'c.jsonl');
 });
 
 
