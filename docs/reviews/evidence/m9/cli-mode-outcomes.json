@@ -1,0 +1,23 @@
+[
+  {
+    "expected_status": "PASS",
+    "exit": 0,
+    "status": "PASS",
+    "case": "new-zero.json",
+    "expected_exit": 0
+  },
+  {
+    "expected_status": "FAIL",
+    "exit": 1,
+    "status": "FAIL",
+    "case": "new-exists.json",
+    "expected_exit": 1
+  },
+  {
+    "expected_status": "INCONCLUSIVE",
+    "exit": 2,
+    "status": "INCONCLUSIVE",
+    "case": "new-incomplete.json",
+    "expected_exit": 2
+  }
+]

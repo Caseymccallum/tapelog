@@ -1,0 +1,21 @@
+{
+  "case": {
+    "version": 1,
+    "title": "Historical absent tool",
+    "evidence": "evidence.jsonl",
+    "revision": "4f303d0f2fa93d8a494cc00fe2fe6e6c794106b25bc135291ad5ff7a465318bd",
+    "status": "INCONCLUSIVE",
+    "checks": [
+      {
+        "kind": "attempted",
+        "status": "INCONCLUSIVE",
+        "detail": "no call to absent__tool reached the boundary",
+        "code": "no_calls"
+      }
+    ],
+    "note": "Observed MCP boundary only; verified chain is not proof of authorship or actions outside the recording."
+  },
+  "comparison": null,
+  "comparison_status": "not_requested",
+  "schema_version": 1
+}
