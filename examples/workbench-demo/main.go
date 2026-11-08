@@ -54,6 +54,9 @@ func main() {
 					verdict, rule, reason = "confirm", "review-writes", "A human confirmation was required by the recorded policy."
 				}
 				appendEvent(session.EventPolicyDecision, map[string]any{"id": n + 1, "parent_seq": call.Seq, "verdict": verdict, "rule_id": rule, "reason": reason})
+				if i == 2 && tool == "workspace__write_file" {
+					appendEvent(session.EventPolicyDecision, map[string]any{"id": n + 1, "parent_seq": call.Seq, "verdict": "allow", "rule_id": "review-writes", "reason": "Fictional later decision recorded."})
+				}
 				if i == 4 && n == 1 {
 					break
 				}

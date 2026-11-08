@@ -63,6 +63,7 @@ test('changing the selected call invalidates an in-flight test preview',async()=
  const {context,nodes}=app();
  let release;
  context.testResponse=new Promise(resolve=>{release=resolve;});
+ context.document.getElementById("assertion-kind").value="attempted";
  vm.runInContext('currentFile="a.jsonl";selectedCall={seq:3};detailRevision="snapshot";api=()=>testResponse;',context);
  const pending=vm.runInContext('generateTest(true)',context);
  vm.runInContext('selectedCall={seq:6};clearTest();',context);
@@ -79,4 +80,16 @@ test('comparison retains its pair across tabs and clears stale results on a new 
  assert.equal(select.value,'c.jsonl');
  context.document.getElementById('compare-result').textContent='old result';select.value='b.jsonl';select.onchange();
  assert.equal(nodes.get('compare-result').textContent,'');assert.equal(nodes.get('run-compare').disabled,false);
+});
+test('selected calls are visible, reorderable, and removed without HTML interpretation',()=>{
+ const {context,nodes}=app();
+ vm.runInContext('selectedEvents=[{seq:3,tool:"<script>danger</script>",result_seq:4},{seq:6,tool:"second",result_seq:7}];updateSelectedEvents();moveSelected(1,-1);',context);
+ assert.match(nodes.get('selected-events').textContent,/<script>danger<\/script>/);
+ assert.equal(vm.runInContext('selectedEvents[0].tool',context),'second');
+ assert.equal(nodes.get('save-test').disabled,true);
+});
+test('recorded text extraction remains literal and tolerates non-JSON previews',()=>{
+ const {context}=app();context.value='{"content":[{"text":"<img src=x onerror=alert(1)>"}]}';
+ assert.equal(vm.runInContext('readableRecorded(value)',context),'<img src=x onerror=alert(1)>');
+ context.value='truncated raw';assert.equal(vm.runInContext('readableRecorded(value)',context),'truncated raw');
 });

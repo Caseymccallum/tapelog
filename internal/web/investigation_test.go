@@ -48,8 +48,11 @@ func TestM3ScenarioSemantics(t *testing.T) {
 	if err != nil || len(seq.Assert[0].Sequence) != 2 {
 		t.Fatal(seq, err)
 	}
-	if _, err = buildScenario(rec, 1, "sequence", "fixture.jsonl", 3, 1); err == nil {
-		t.Fatal("accepted reversed selection")
+	if reversed, err := buildScenario(rec, 1, "sequence", "fixture.jsonl", 3, 1); err != nil || reversed.Assert[0].Sequence[0] != "write" {
+		t.Fatal("explicit order not preserved", err)
+	}
+	if _, err = buildScenario(rec, 1, "sequence", "fixture.jsonl", 1, 1); err == nil {
+		t.Fatal("accepted repeated event")
 	}
 	if _, err = buildScenario(rec, 1, "failure_absent", "fixture.jsonl"); err == nil {
 		t.Fatal("accepted unsupported error assertion")

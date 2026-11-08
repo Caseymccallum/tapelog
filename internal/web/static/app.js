@@ -109,6 +109,7 @@ function pager(id,total,offset,onChange) {
 let library=[],directory="",single=false,queueEnabled=false,currentFile="",currentInfo=null,selectedCall=null,currentTab="activity";
 let libOffset=0,callOffset=0,eventOffset=0,libraryRequest=0,activityRequest=0,eventRequest=0,detailRequest=0,testRequest=0,compareRequest=0,yamlPreview="";
 let detailRevision="";
+let selectedEvents=[];
 async function loadLibrary() {
   const request=++libraryRequest;
   try {
@@ -185,6 +186,8 @@ async function openSession(file,updateHash=true) {
   currentFile=file;
   currentInfo=null;
   selectedCall=null;
+  selectedEvents=[];
+  updateSelectedEvents();
   callOffset=0;
   eventOffset=0;
   detailRevision="";
@@ -218,6 +221,8 @@ function showSession(info) {
   const changed=currentInfo&&currentInfo.revision!==info.revision;
   currentInfo=info;
   if(changed) {
+    selectedEvents=[];
+    updateSelectedEvents();
     selectedCall=null;
     clearTest();
     empty($("inspector"),"Recording changed","Select a call again to inspect the current evidence.");
@@ -274,7 +279,10 @@ async function loadActivity() {
       const status=el("div","tool-outcome");
       status.append(badge(a.status),el("span","duration",fmtDuration(a.duration_ms)));
       row.append(el("span","seq",String(a.seq).padStart(2,"0")),text,status);
-      list.append(row);
+      const wrapper=el("div","activity-choice");
+      const pick=el("input","call-checkbox"); pick.type="checkbox"; pick.checked=selectedEvents.some(x=>x.seq===a.seq); pick.setAttribute("aria-label","Select "+a.tool+" event "+a.seq+" for test");
+      pick.onchange=()=>{ if(pick.checked) { if(selectedEvents.length>=10){pick.checked=false;error(new Error("Select at most 10 calls."));return;} selectedEvents.push({seq:a.seq,tool:a.tool,status:a.status,result_seq:a.result_seq}); } else selectedEvents=selectedEvents.filter(x=>x.seq!==a.seq); clearTest(); updateSelectedEvents(); if(!selectedCall && pick.checked)selectCall(a.seq); };
+      wrapper.append(pick,row); list.append(wrapper);
     }
     pager("activity-pager",data.total,callOffset,n=> {
       callOffset=n;
@@ -291,6 +299,9 @@ function rawDetails(parent,e,open=false) {
   details.append(el("summary","","#"+e.seq+" · "+e.type+" · "+when(e.ts)),el("pre","",e.raw));
   if(e.truncated)details.append(el("p","text-warn","Preview capped at 32 KiB. Use the original recording for full contents."));
   parent.append(details);
+}
+function readableRecorded(value) {
+  try { const parsed=JSON.parse(value); if(typeof parsed==="string")return parsed; if(parsed && typeof parsed.message==="string")return parsed.message; if(parsed && Array.isArray(parsed.content)){const texts=parsed.content.filter(x=>x && typeof x.text==="string").map(x=>x.text);if(texts.length)return texts.join("\n");} return JSON.stringify(parsed,null,2); } catch { return String(value); }
 }
 function dl(parent,values) {
   const n=el("dl");
@@ -318,6 +329,19 @@ async function selectCall(seq) {
     parent.append(el("div","eyebrow","CALL INVESTIGATION / #"+a.seq),el("h2","mono",a.tool),badge(a.status));
     const explanation=a.status==="failed"?"The recorded tool result is marked as an error. Open the result below for the server’s recorded response.":a.reason|| (a.status==="success"?"A result was recorded for this request. A successful response does not independently prove a downstream side effect.":"No matching result was recorded. Do not infer that the server did or did not execute the request.");
     parent.append(el("p","explanation",explanation));
+    const evidence=data.evidence||{};
+    const evidenceCard=el("section","evidence-card"); evidenceCard.append(el("h3","",a.status==="failed"?"Recorded error":"Recorded evidence"));
+    evidenceCard.append(el("p","muted",when(a.ts,true)+" · "+a.server+" · values are as recorded and may contain sensitive information."));
+    if(evidence.result!==undefined) evidenceCard.append(el("pre","evidence-value",readableRecorded(evidence.result)));
+    else evidenceCard.append(el("p","muted",a.result_seq?"A result is linked but is outside this limited preview. Open All events to inspect it.":"No related result was recorded. This does not establish whether the tool executed."));
+    if(evidence.input!==undefined){const input=el("details","evidence-input");input.append(el("summary","","Recorded input"),el("pre","evidence-value",readableRecorded(evidence.input)));evidenceCard.append(input);}
+    parent.append(evidenceCard);
+    const decisions=evidence.decisions||[];
+    const policy=el("section","policy-history");policy.append(el("h3","","Recorded policy decisions"));
+    if(!decisions.length)policy.append(el("p","muted","No linked policy decision was recorded."));
+    for(const d of decisions){const item=el("div","policy-step");item.append(badge(d.verdict),el("span","", "Decision #"+d.seq+(d.rule?" · rule "+d.rule:"")),el("p","muted",d.reason||"No explanation recorded."));policy.append(item);}
+    if(data.related_limited)policy.append(el("p","text-warn","Only the first 20 related events are shown. Inspect All events for the complete history."));
+    parent.append(policy);
     if(a.status==="failed") parent.append(el("p","muted","Next: inspect the recorded result and policy decisions below, review preceding context, then compare another verified recording or create a boundary assertion. These are investigation steps, not a diagnosis."));
     if(a.status==="failed"&&a.reason)parent.append(el("p","","Recorded policy explanation: "+a.reason));
     dl(parent,[["Policy",a.verdict||"Not recorded"],["Rule",a.rule||"Not recorded"],["Server",a.server],["Source",a.server_source||"Server identity absent"],["Duration",fmtDuration(a.duration_ms)],["Linked by",a.link]]);
@@ -338,7 +362,8 @@ async function selectCall(seq) {
     before.append(el("summary","","Preceding context · file order, not causation"));
     for(const e of data.preceding)rawDetails(before,e);
     parent.append(before);
-    for(const row of $("activity-list").children) {
+    for(const wrapper of $("activity-list").children) {
+      const row=wrapper.children[1]; if(!row)continue;
       const yes=row.getAttribute("aria-label")?.endsWith("event "+a.seq);
       row.classList.toggle("selected",!!yes);
       row.setAttribute("aria-pressed",String(!!yes));
@@ -446,6 +471,7 @@ async function compare() {
     if(inv.change_count>100)out.append(el("p","muted","Showing first 100 differences."));
     out.append(el("p","muted",inv.sequence_differs?"Attempt sequence differs (including added or missing attempts).":"Attempt sequence matches."));
     out.append(el("p","muted",data.scope));
+    const history=data.policy_history; if(history){const section=el("section","policy-history");section.append(el("h3","","Policy decision history"),el("p","muted",history.total+" matched call histories changed (verdict, rule or reason). Matching shares the same occurrence uncertainty."));for(const change of history.changes)section.append(el("p","mono",change));if(history.total>100)section.append(el("p","muted","Showing the first 100 changes."));out.append(section);}
     const cols=el("div","comparison-columns");
     for(const [side,title]of [[data.a,"This recording"],[data.b,"Compared recording"]]) {
       const n=el("div");
@@ -457,7 +483,8 @@ async function compare() {
       const n=el("div");
       n.append(el("h3","",title));
       const list=el("ul","mono");
-      for(const text of data.diff[key]||[])list.append(el("li","",text));
+      for(const text of (data.diff[key]||[]).slice(0,100))list.append(el("li","",String(text).slice(0,512)));
+      if((data.diff[key]||[]).length>100)list.append(el("li","muted","Showing the first 100 entries."));
       if(!list.children.length)list.append(el("li","muted","None"));
       n.append(list);
       out.append(n);
@@ -477,6 +504,18 @@ function clearTest() {
   $("save-test").disabled=true;
   $("test-result").replaceChildren();
 }
+function updateSelectedEvents() {
+  const summary=$("activity-selection"), list=$("selected-events");
+  summary.textContent=selectedEvents.length+" selected";
+  list.replaceChildren();
+  if(!selectedEvents.length)list.append(el("p","muted","No calls selected for a sequence. Choose calls in Activity."));
+  selectedEvents.forEach((item,i)=>{const row=el("div","selected-event");row.append(el("span","selection-index",String(i+1)),el("strong","mono",item.tool),el("span","muted",item.result_seq?"Result recorded":"No result"));
+    const up=button("↑",()=>moveSelected(i,-1));up.disabled=i===0;up.setAttribute("aria-label","Move "+item.tool+" earlier");
+    const down=button("↓",()=>moveSelected(i,1));down.disabled=i===selectedEvents.length-1;down.setAttribute("aria-label","Move "+item.tool+" later");
+    const remove=button("Remove",()=>{selectedEvents.splice(i,1);clearTest();updateSelectedEvents();}); row.append(up,down,remove);list.append(row);
+  });
+}
+function moveSelected(i,delta) { const j=i+delta;if(j<0||j>=selectedEvents.length)return;[selectedEvents[i],selectedEvents[j]]=[selectedEvents[j],selectedEvents[i]];clearTest();updateSelectedEvents(); }
 function updateTestSelection() {
   $("test-selection").textContent=selectedCall?"Event #"+selectedCall.seq+" · "+selectedCall.tool+" · "+selectedCall.status:"Select a call in Activity first.";
   $("preview-test").disabled=!selectedCall;
@@ -488,6 +527,8 @@ async function generateTest(run) {
     notice($("test-result"),"Select a call in Activity first.","warning");
     return;
   }
+  if(!$("assertion-kind").value) { notice($("test-result"),"Choose a regression rule first.","warning"); return; }
+  if($("assertion-kind").value==="attempt_ceiling" && ($("attempt-ceiling").value.trim()==="" || !Number.isInteger(Number($("attempt-ceiling").value)) || Number($("attempt-ceiling").value)<0 || Number($("attempt-ceiling").value)>100000)) { notice($("test-result"),"Enter a whole-number attempt ceiling from 0 to 100000.","warning"); return; }
   const file=currentFile,seq=selectedCall.seq,request=++testRequest;
   try {
     const data=await api("/api/test", {
@@ -495,7 +536,7 @@ async function generateTest(run) {
         "Content-Type":"application/json"
       }
       ,body:JSON.stringify( {
-        file,revision:detailRevision,seq,kind:$("assertion-kind").value,fixture:$("fixture-path").value,seqs:$("sequence-events").value.trim()?$("sequence-events").value.split(",").map(x=>Number(x.trim())):[],run
+        file,revision:detailRevision,seq,kind:$("assertion-kind").value,fixture:$("fixture-path").value,seqs:selectedEvents.map(x=>x.seq),ceiling:$("assertion-kind").value==="attempt_ceiling"?Number($("attempt-ceiling").value):null,run
       }
       )
     }
@@ -671,9 +712,15 @@ $("compare-session").onchange=()=>{++compareRequest;$("compare-result").replaceC
 $("preview-test").onclick=()=>generateTest(false);
 $("run-test").onclick=()=>generateTest(true);
 $("save-test").onclick=saveTest;
-$("assertion-kind").onchange=clearTest;
+$("assertion-kind").onchange=()=>{
+  clearTest(); const kind=$("assertion-kind").value; $("ceiling-field").hidden=kind!=="attempt_ceiling";
+  const descriptions={denied:"At least one recorded decision for this tool must be deny.",attempted:"At least one attempt must reach this recorded boundary.",answered:"At least one call to this tool must have a recorded result.",never_answered:"No recorded result for this tool; this does not prove non-execution.",no_attempts:"No attempts to this tool may appear at the recorded boundary.",sequence:"The selected answered tool names must appear in the displayed order, as a subsequence.",invariant:"Checks for recorded deny decisions with recorded results; it cannot observe actions outside this boundary.",attempt_ceiling:"Counts all recorded boundary attempts for the selected tool, including unanswered calls."};
+  $("assertion-help").textContent=descriptions[kind]||"Choose a rule that reflects the behaviour you want to test.";
+};
 $("fixture-path").oninput=clearTest;
-$("sequence-events").oninput=clearTest;
+$("attempt-ceiling").oninput=clearTest;
+$("choose-events").onclick=()=>{setTab("activity");loadActivity();};
+$("selection-to-test").onclick=()=>{updateSelectedEvents();setTab("test");$("tab-test").focus();};
 let light=false;
 try {
   light=localStorage.getItem("tapelog-appearance")==="light";

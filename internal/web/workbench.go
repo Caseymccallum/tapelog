@@ -122,18 +122,22 @@ func (s *server) activitiesAPI(w http.ResponseWriter, r *http.Request) {
 			first = a
 		}
 		if a.Verdict == "deny" && len(findings) < 5 {
-			findings = append(findings, map[string]any{"seq": a.Seq, "index": i, "tool": a.Tool, "label": "Recorded deny decision"})
+			findings = append(findings, map[string]any{"seq": a.Seq, "index": i, "tool": shortText(a.Tool, 512), "label": "Recorded deny decision"})
 		}
 	}
 	if first != nil {
 		for i, a := range rec.Activities {
 			if a == first {
-				findings = append([]map[string]any{{"seq": a.Seq, "index": i, "tool": a.Tool, "label": fmt.Sprintf("First recorded error result #%d", a.ResultSeq)}}, findings...)
+				findings = append([]map[string]any{{"seq": a.Seq, "index": i, "tool": shortText(a.Tool, 512), "label": fmt.Sprintf("First recorded error result #%d", a.ResultSeq)}}, findings...)
 				break
 			}
 		}
 	}
-	writeJSON(w, map[string]any{"session": rec.Info, "activities": items[start:end], "total": len(items), "offset": start, "findings": findings})
+	visible := make([]*activity, 0, end-start)
+	for _, a := range items[start:end] {
+		visible = append(visible, safeActivity(a))
+	}
+	writeJSON(w, map[string]any{"session": rec.Info, "activities": visible, "total": len(items), "offset": start, "findings": findings})
 }
 
 type eventView struct {
@@ -200,10 +204,36 @@ func (s *server) eventAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	related := []eventView{}
+	evidence := map[string]any{"decisions": []map[string]any{}}
+	decisions := []map[string]any{}
+	bounded := func(raw json.RawMessage) string {
+		if len(raw) > 4096 {
+			return strings.ToValidUTF8(string(raw[:4096]), "�") + "… [preview limited]"
+		}
+		return string(raw)
+	}
 	precedingEvents := []session.Event{}
 	for _, e := range rec.Events {
 		if wanted[e.Seq] && len(related) < 20 {
 			related = append(related, viewEvent(e))
+			switch e.Type {
+			case session.EventToolCall:
+				var p session.ToolCallPayload
+				if json.Unmarshal(e.Payload, &p) == nil {
+					evidence["input"] = bounded(p.Args)
+				}
+			case session.EventToolResult:
+				var p session.ToolResultPayload
+				if json.Unmarshal(e.Payload, &p) == nil {
+					evidence["result"] = bounded(p.Result)
+					evidence["is_error"] = p.IsError
+				}
+			case session.EventPolicyDecision:
+				var p session.PolicyDecisionPayload
+				if json.Unmarshal(e.Payload, &p) == nil {
+					decisions = append(decisions, map[string]any{"seq": e.Seq, "verdict": shortText(p.Verdict, 256), "rule": shortText(p.RuleID, 256), "reason": shortText(p.Reason, 2048)})
+				}
+			}
 		}
 		if e.Seq < seq {
 			precedingEvents = append(precedingEvents, e)
@@ -220,7 +250,8 @@ func (s *server) eventAPI(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 404, fmt.Errorf("event not found in this snapshot"))
 		return
 	}
-	writeJSON(w, map[string]any{"activity": a, "events": related, "preceding": preceding, "session": rec.Info, "related_limited": len(wanted) > 20})
+	evidence["decisions"] = decisions
+	writeJSON(w, map[string]any{"activity": safeActivity(a), "evidence": evidence, "events": related, "preceding": preceding, "session": rec.Info, "related_limited": len(wanted) > 20})
 }
 
 // Engines consume the exact in-memory snapshot that the UI inspected, never a
@@ -297,7 +328,7 @@ func (s *server) compareAPI(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 422, err)
 		return
 	}
-	writeJSON(w, map[string]any{"a": a.Info, "b": b.Info, "diff": replay.Diff(at, bt), "investigation": compareAttempts(at, bt), "scope": "Boundary attempts matched by tool and canonical argument hash, then occurrence order. Repeated identical calls are ambiguous. Policy comparison uses the last recorded decision per call. Differences do not automatically indicate regressions."})
+	writeJSON(w, map[string]any{"a": a.Info, "b": b.Info, "diff": replay.Diff(at, bt), "investigation": compareAttempts(at, bt), "policy_history": comparePolicyHistory(a, b, at, bt), "scope": "Boundary attempts matched by tool and canonical argument hash, then occurrence order. Repeated identical calls are ambiguous. Policy comparison uses the last recorded decision per call. Differences do not automatically indicate regressions."})
 }
 
 func buildScenario(rec *recording, seq uint64, kind, fixture string, seqs ...uint64) (*scenario.Scenario, error) {
@@ -324,6 +355,8 @@ func buildScenario(rec *recording, seq uint64, kind, fixture string, seqs ...uin
 			return nil, fmt.Errorf("this call has no recorded deny verdict")
 		}
 		check.Denied = selected.Tool
+	case "attempt_ceiling":
+		check.Attempted = &scenario.AttemptSpec{Tool: selected.Tool}
 	case "no_attempts":
 		zero := 0
 		check.Attempted = &scenario.AttemptSpec{Tool: selected.Tool, Times: &zero}
@@ -331,18 +364,21 @@ func buildScenario(rec *recording, seq uint64, kind, fixture string, seqs ...uin
 		check.Invariant = "no_deny_bypassed"
 	case "sequence":
 		if len(seqs) < 2 || len(seqs) > 10 {
-			return nil, fmt.Errorf("select 2 to 10 answered event numbers in file order")
+			return nil, fmt.Errorf("select 2 to 10 answered calls")
 		}
-		previous := -1
+		used := map[uint64]bool{}
 		for _, n := range seqs {
+			if used[n] {
+				return nil, fmt.Errorf("select each call only once")
+			}
+			used[n] = true
 			found := false
-			for i, a := range rec.Activities {
+			for _, a := range rec.Activities {
 				if a.Seq == n {
-					if i <= previous || a.ResultSeq == 0 || strings.ContainsAny(a.Tool, "*?") {
-						return nil, fmt.Errorf("sequence requires distinct answered calls in file order with literal tool names")
+					if a.ResultSeq == 0 || strings.ContainsAny(a.Tool, "*?") {
+						return nil, fmt.Errorf("sequence requires distinct answered calls with literal tool names")
 					}
 					check.Sequence = append(check.Sequence, a.Tool)
-					previous = i
 					found = true
 					break
 				}
@@ -384,6 +420,7 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		Fixture  string   `json:"fixture"`
 		Run      bool     `json:"run"`
 		Seqs     []uint64 `json:"seqs"`
+		Ceiling  *int     `json:"ceiling"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
@@ -414,12 +451,19 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 422, err)
 		return
 	}
+	if req.Kind == "attempt_ceiling" {
+		if req.Ceiling == nil || *req.Ceiling < 0 || *req.Ceiling > 100000 {
+			apiError(w, 422, fmt.Errorf("enter an attempt ceiling from 0 to 100000"))
+			return
+		}
+		sc.Assert[0].Attempted.Max = req.Ceiling
+	}
 	data, err := yaml.Marshal(sc)
 	if err != nil {
 		apiError(w, 500, err)
 		return
 	}
-	resp := map[string]any{"yaml": string(data), "scope": "Assertions apply to tool names across the cassette, not a request ID. Zero attempts checks only this recorded boundary; never_called checks answered calls only. Sequence is an ordered subsequence of answered tools. The invariant checks recorded denials and results. The engine cannot assert that a specific error does not recur. No arguments or results are copied, no live tool runs, and no file is written by the server."}
+	resp := map[string]any{"yaml": string(data), "scope": "Assertions apply to tool names across the cassette, not a request ID. Zero attempts checks only this recorded boundary; never_called checks answered calls only. Sequence is an ordered subsequence of answered tools. The invariant checks recorded denials and results. Attempt ceiling counts boundary attempts, including unanswered calls. The engine cannot assert that a specific error does not recur. No arguments or results are copied, no live tool runs, and no file is written by the server."}
 	if req.Run {
 		fails := scenario.Run(sc, tape, nil)
 		resp["passed"] = len(fails) == 0

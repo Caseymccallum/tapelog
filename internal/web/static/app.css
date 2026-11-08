@@ -987,3 +987,23 @@ dialog p {
     transition:background .12s ease,border-color .12s ease
   }
 }
+/* M4 evidence rail and keyboard-operable selection controls. */
+.selection-bar { display:flex; align-items:center; gap:18px; padding:16px 18px; margin:14px 0; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+.selection-bar p { margin:4px 0 0; font-size:12px; color:var(--muted); }
+.selection-bar > div:first-child { flex:1; }
+.selection-bar #activity-selection { color:var(--muted); white-space:nowrap; }
+.activity-choice { display:flex; align-items:stretch; border-bottom:1px solid var(--line); }
+.activity-choice .activity-row { flex:1; min-width:0; border-bottom:0; }
+.call-checkbox { flex:none; width:18px; height:18px; margin:20px 12px 0 8px; accent-color:#baff80; }
+.selected-events { display:grid; gap:6px; margin:16px 0; }
+.selected-event { display:flex; align-items:center; gap:10px; padding:10px; border:1px solid var(--line); border-radius:6px; }
+.selected-event strong { flex:1; overflow-wrap:anywhere; }
+.selected-event button { padding:5px 9px; }
+.selection-index { font-family:Consolas,monospace; color:var(--muted); }
+.evidence-card,.policy-history { padding:15px; margin:18px 0; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+.evidence-card h3,.policy-history h3 { margin:0 0 8px; }
+.evidence-value { max-height:250px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+.policy-step { border-left:2px solid var(--line); padding:8px 12px; margin:9px 0; overflow-wrap:anywhere; }
+.policy-step p { margin:6px 0 0; }
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible { outline:2px solid #baff80; outline-offset:3px; }
+@media (max-width:700px) { .selection-bar { flex-wrap:wrap; } .selected-event { flex-wrap:wrap; } }
