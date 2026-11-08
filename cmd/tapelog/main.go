@@ -36,6 +36,7 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 	root.AddCommand(newSetupCmd())
 	root.AddCommand(newWebCmd())
 	root.AddCommand(newBehaviourCmd())
+	root.AddCommand(newLabCmd())
 	root.AddCommand(newSandboxExecCmd())
 	root.AddCommand(newCompletionCmd())
 	root.AddCommand(newReplayCmd())
@@ -55,7 +56,7 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
-		if errors.Is(err, errIncompleteBehaviour) {
+		if errors.Is(err, errIncompleteBehaviour) || errors.Is(err, errLabInconclusive) {
 			os.Exit(2)
 		}
 		os.Exit(1)

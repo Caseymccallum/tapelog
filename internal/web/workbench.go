@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Caseymccallum/tapelog/internal/lab"
 	"github.com/Caseymccallum/tapelog/internal/replay"
 	"github.com/Caseymccallum/tapelog/internal/scenario"
 	"github.com/Caseymccallum/tapelog/internal/session"
@@ -455,14 +456,19 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		File     string   `json:"file"`
-		Revision string   `json:"revision"`
-		Seq      uint64   `json:"seq"`
-		Kind     string   `json:"kind"`
-		Fixture  string   `json:"fixture"`
-		Run      bool     `json:"run"`
-		Seqs     []uint64 `json:"seqs"`
-		Ceiling  *int     `json:"ceiling"`
+		File        string   `json:"file"`
+		Revision    string   `json:"revision"`
+		Seq         uint64   `json:"seq"`
+		Kind        string   `json:"kind"`
+		Fixture     string   `json:"fixture"`
+		Run         bool     `json:"run"`
+		Seqs        []uint64 `json:"seqs"`
+		Ceiling     *int     `json:"ceiling"`
+		Lab         bool     `json:"lab"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Reference   string   `json:"reference"`
+		Candidate   string   `json:"candidate"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
@@ -499,6 +505,67 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sc.Assert[0].Attempted.Max = req.Ceiling
+	}
+	if req.Lab {
+		expectation := lab.Expectation{Kind: req.Kind}
+		check := sc.Assert[0]
+		switch req.Kind {
+		case "denied":
+			expectation.Tool = check.Denied
+		case "answered":
+			expectation.Tool = check.Called.Tool
+		case "attempted", "no_attempts":
+			expectation.Tool = check.Attempted.Tool
+		case "attempt_ceiling":
+			expectation.Tool = check.Attempted.Tool
+			expectation.Maximum = req.Ceiling
+		case "sequence":
+			expectation.Sequence = check.Sequence
+		case "invariant":
+			expectation.Kind = "no_deny_bypassed"
+		default:
+			apiError(w, 422, fmt.Errorf("this rule is not available as a lab case; choose a supported rule"))
+			return
+		}
+		seqs := []uint64{req.Seq}
+		if req.Kind == "sequence" {
+			seqs = req.Seqs
+		}
+		c := lab.Case{Version: 1, Title: req.Title, Description: req.Description, Evidence: req.File, EvidenceSHA256: rec.Info.Revision, Reference: req.Reference, EvidenceSeqs: seqs, Expectations: []lab.Expectation{expectation}}
+		if err := c.Validate(); err != nil {
+			apiError(w, 422, err)
+			return
+		}
+		data, err := json.MarshalIndent(c, "", "  ")
+		if err != nil {
+			apiError(w, 500, err)
+			return
+		}
+		result := lab.Evaluate(c, rec.Data, "")
+		if req.Candidate != "" {
+			if s.dir == "" {
+				apiError(w, 422, fmt.Errorf("candidate comparison needs directory mode"))
+				return
+			}
+			result, err = lab.RunCase(s.dir, c, req.Candidate)
+			if err != nil {
+				apiError(w, 422, err)
+				return
+			}
+		}
+		var comparison any
+		comparisonStatus := "not_requested"
+		if req.Reference != "" && req.Reference != result.Evidence && s.dir != "" {
+			delta, e := BehaviourWorkflowCompare(s.dir, req.Reference, result.Evidence)
+			if e == nil {
+				comparison = delta.Result
+				comparisonStatus = delta.Status
+			} else {
+				comparisonStatus = "unavailable"
+			}
+		}
+		writeJSON(w, map[string]any{"case_json": string(data) + "\n", "result": result, "comparison": comparison, "comparison_status": comparisonStatus})
+		return
 	}
 	data, err := yaml.Marshal(sc)
 	if err != nil {

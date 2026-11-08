@@ -109,6 +109,7 @@ function pager(id,total,offset,onChange) {
 let library=[],directory="",single=false,queueEnabled=false,currentFile="",currentInfo=null,selectedCall=null,currentTab="activity";
 let libOffset=0,callOffset=0,eventOffset=0,libraryRequest=0,activityRequest=0,eventRequest=0,detailRequest=0,testRequest=0,compareRequest=0,yamlPreview="";
 let detailRevision="";
+let labPreview="";
 let selectedEvents=[];
 async function loadLibrary() {
   const request=++libraryRequest;
@@ -522,6 +523,7 @@ async function compare() {
   }
 }
 function clearTest() {
+  labPreview=""; $("lab-save").disabled=true; $("lab-json").hidden=true; $("lab-json").textContent=""; $("lab-result").replaceChildren();
   ++testRequest;
   yamlPreview="";
   $("test-yaml").hidden=true;
@@ -614,6 +616,28 @@ async function saveTest() {
     if(e.name!=="AbortError")notice($("test-result"),e.message,"warning");
   }
 }
+
+async function previewLab() {
+  clearTest();
+  if(!selectedCall){notice($("lab-result"),"Select a call in Activity first.","warning");return;}
+  const kind=$("assertion-kind").value;if(!kind){notice($("lab-result"),"Choose an expectation above.","warning");return;}
+  if(!$("lab-title-input").value.trim()){notice($("lab-result"),"Give this case a title.","warning");return;}
+  const file=currentFile,seq=selectedCall.seq,request=++testRequest;
+  try {
+    const data=await api("/api/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({file,revision:detailRevision,seq,kind,fixture:$("fixture-path").value,seqs:selectedEvents.map(x=>x.seq),ceiling:kind==="attempt_ceiling"&&$("attempt-ceiling").value.trim()!==""?Number($("attempt-ceiling").value):null,run:true,lab:true,title:$("lab-title-input").value,description:$("lab-description").value,reference:$("lab-reference").value,candidate:$("lab-candidate").value})});
+    if(request!==testRequest||file!==currentFile||seq!==selectedCall?.seq)return;
+    labPreview=data.case_json;$("lab-json").textContent=labPreview;$("lab-json").hidden=false;$("lab-save").disabled=false;
+    const out=$("lab-result"),result=data.result;notice(out,result.status+" · "+result.evidence,result.status==="FAIL"?"error":result.status==="INCONCLUSIVE"?"warning":"");
+    for(const c of result.checks||[])out.append(el("p","",c.status+" · "+c.detail));
+    out.append(el("p","muted",result.note));if(data.comparison_status!=="not_requested")out.append(el("p","muted","Reference comparison: "+data.comparison_status+". Open Behaviour for the complete recorded comparison; changes are not automatic failures."));
+    out.append(button("Return to selected evidence",()=>{setTab("activity");selectCall(seq);}));
+  }catch(e){if(request===testRequest&&file===currentFile)notice($("lab-result"),e.message,"warning");}
+}
+async function saveLabCase() {
+ if(!labPreview)return;const text=labPreview;
+ try {if(window.showSaveFilePicker){const handle=await window.showSaveFilePicker({suggestedName:"tapelog-case.json",types:[{description:"Tapelog regression case",accept:{"application/json":[".json"]}}]});const existing=await handle.getFile();if(existing.size>0)throw new Error("That file already contains data. Choose a new filename to preserve it.");const stream=await handle.createWritable();await stream.write(text);await stream.close();notice($("lab-result"),"Case saved. Recordings were not modified.");} else {const url=URL.createObjectURL(new Blob([text],{type:"application/json"}));const a=el("a");a.href=url;a.download="tapelog-case-"+Date.now()+".json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notice($("lab-result"),"Case downloaded. Put the case alongside the referenced recordings before running it.");}}catch(e){if(e.name!=="AbortError")notice($("lab-result"),e.message,"warning");}
+}
+
 function shellArg(s) {
   return /Win/.test(navigator.platform)?"'"+String(s).replaceAll("'","''")+"'":"'"+String(s).replaceAll("'","'\\''")+"'";
 }
@@ -739,6 +763,8 @@ $("compare-session").onchange=()=>{++compareRequest;$("compare-result").replaceC
 $("preview-test").onclick=()=>generateTest(false);
 $("run-test").onclick=()=>generateTest(true);
 $("save-test").onclick=saveTest;
+$("lab-preview").onclick=previewLab;$("lab-save").onclick=saveLabCase;
+for(const id of ["lab-title-input","lab-description","lab-reference","lab-candidate"])$(id).oninput=clearTest;
 $("assertion-kind").onchange=()=>{
   clearTest(); const kind=$("assertion-kind").value; $("ceiling-field").hidden=kind!=="attempt_ceiling";
   const descriptions={denied:"At least one recorded decision for this tool must be deny.",attempted:"At least one attempt must reach this recorded boundary.",answered:"At least one call to this tool must have a recorded result.",never_answered:"No recorded result for this tool; this does not prove non-execution.",no_attempts:"No attempts to this tool may appear at the recorded boundary.",sequence:"The selected answered tool names must appear in the displayed order, as a subsequence.",invariant:"Checks for recorded deny decisions with recorded results; it cannot observe actions outside this boundary.",attempt_ceiling:"Counts all recorded boundary attempts for the selected tool, including unanswered calls."};
