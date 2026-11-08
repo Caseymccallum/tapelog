@@ -1,0 +1,18 @@
+﻿
+--- PASS: TestNoPackUsesPercentInACondition (0.00s)
+--- PASS: TestNoPackHasAConditionThatCannotMatch (0.00s)
+--- PASS: TestEveryDenyRuleCanFire (0.01s)
+--- PASS: TestFetchDeniesEnforce (0.00s)
+--- PASS: TestFilesystemAndSlackEnforce (0.00s)
+--- PASS: TestGitDeniesEnforce (0.00s)
+--- PASS: TestPostgresDeniesEnforce (0.00s)
+--- PASS: TestShellDeniesEnforce (0.00s)
+ok  	github.com/Caseymccallum/tapelog/packs	0.731s
+--- PASS: TestCedarLikeSemanticsThePacksRelyOn (0.00s)
+ok  	github.com/Caseymccallum/tapelog/internal/policy	0.713s
+--- PASS: TestStudioDescribesTheRepairedConditions (0.01s)
+--- PASS: TestStudioWhatIfShowsTheRepairedDenies (0.04s)
+--- PASS: TestStudioReportsNoDeadConditionsInShippedPacks (0.01s)
+ok  	github.com/Caseymccallum/tapelog/internal/web	1.084s
+
+

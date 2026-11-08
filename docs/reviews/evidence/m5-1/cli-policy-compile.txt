@@ -1,0 +1,7 @@
+﻿starter.yaml -> compile lines: 16, first rule line: @id("allow-reads")
+shell.yaml -> compile lines: 18, first rule line: @id("no-catastrophe")
+git.yaml -> compile lines: 25, first rule line: @id("no-history-destruction")
+postgres.yaml -> compile lines: 18, first rule line: @id("no-schema-destruction")
+fetch.yaml -> compile lines: 20, first rule line: @id("no-internal-urls")
+slack.yaml -> compile lines: 16, first rule line: @id("no-channel-creation")
+filesystem.yaml -> compile lines: 24, first rule line: @id("no-secret-files")

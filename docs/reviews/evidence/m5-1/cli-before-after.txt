@@ -1,0 +1,60 @@
+﻿# tapelog policy test: M5 baseline vs M5.1 corrections
+# fictional calls from representative-calls.jsonl; no tool was executed
+
+## shell.yaml
+- confirm  exec_cmd                       default        no rule matched; policy default is "confirm"
++ deny     exec_cmd                       no-catastrophe catastrophic or self-installing commands are out of bounds
+- confirm  bash                           default        no rule matched; policy default is "confirm"
++ deny     bash                           no-catastrophe catastrophic or self-installing commands are out of bounds
+- confirm  bash                           default        no rule matched; policy default is "confirm"
++ deny     bash                           no-catastrophe catastrophic or self-installing commands are out of bounds
+- confirm  bash                           default        no rule matched; policy default is "confirm"
++ deny     bash                           no-catastrophe catastrophic or self-installing commands are out of bounds
+- confirm  bash                           default        no rule matched; policy default is "confirm"
++ deny     bash                           no-catastrophe catastrophic or self-installing commands are out of bounds
+- confirm  bash                           default        no rule matched; policy default is "confirm"
++ deny     bash                           no-catastrophe catastrophic or self-installing commands are out of bounds
+- confirm  bash                           default        no rule matched; policy default is "confirm"
++ deny     bash                           no-privilege-escalation privilege escalation is not delegated to agents
+
+## git.yaml
+- allow    run_git_command                default        no rule matched; policy default is "allow"
++ deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+- allow    run_git_command                default        no rule matched; policy default is "allow"
++ deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+- allow    run_git_command                default        no rule matched; policy default is "allow"
++ deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+- allow    run_git_command                default        no rule matched; policy default is "allow"
++ deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+- allow    run_git_command                default        no rule matched; policy default is "allow"
++ deny     run_git_command                no-hook-or-config-tamper hook and transport config tampering is a supply-chain attack
+- allow    run_git_command                default        no rule matched; policy default is "allow"
++ confirm  run_git_command                pushes-confirm pushes change shared state
+
+## postgres.yaml
+- allow    query                          default        no rule matched; policy default is "allow"
++ deny     query                          no-schema-destruction schema destruction and privilege changes are out of bounds
+- allow    query                          default        no rule matched; policy default is "allow"
++ deny     query                          no-schema-destruction schema destruction and privilege changes are out of bounds
+- allow    query                          default        no rule matched; policy default is "allow"
++ deny     query                          no-schema-destruction schema destruction and privilege changes are out of bounds
+- allow    query                          default        no rule matched; policy default is "allow"
++ deny     query                          no-schema-destruction schema destruction and privilege changes are out of bounds
+- allow    query                          default        no rule matched; policy default is "allow"
++ confirm  query                          writes-confirm data writes need a human in the loop
+
+## fetch.yaml
+- allow    fetch                          default        no rule matched; policy default is "allow"
++ deny     fetch                          no-internal-urls internal/metadata URLs are SSRF pivots
+- allow    fetch                          default        no rule matched; policy default is "allow"
++ deny     fetch                          no-internal-urls internal/metadata URLs are SSRF pivots
+- allow    post                           default        no rule matched; policy default is "allow"
++ deny     post                           https-only-for-posts outbound data must travel over TLS
+
+## slack.yaml
+- confirm  create_channel                 sends-confirm  messages to humans need a human in the loop
++ deny     create_channel                 no-channel-creation workspace structure is not an agent's to change
+
+## filesystem.yaml
+(no verdict changes)
+

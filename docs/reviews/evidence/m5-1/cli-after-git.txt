@@ -1,0 +1,32 @@
+﻿VERDICT  TOOL                           RULE           REASON
+allow    exec_cmd                       default        no rule matched; policy default is "allow"
+allow    bash                           default        no rule matched; policy default is "allow"
+allow    bash                           default        no rule matched; policy default is "allow"
+allow    bash                           default        no rule matched; policy default is "allow"
+allow    bash                           default        no rule matched; policy default is "allow"
+allow    bash                           default        no rule matched; policy default is "allow"
+allow    bash                           default        no rule matched; policy default is "allow"
+allow    bash                           default        no rule matched; policy default is "allow"
+deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+deny     run_git_command                no-history-destruction history-destroying git commands are out of bounds
+deny     run_git_command                no-hook-or-config-tamper hook and transport config tampering is a supply-chain attack
+confirm  run_git_command                pushes-confirm pushes change shared state
+allow    run_git_command                default        no rule matched; policy default is "allow"
+allow    query                          default        no rule matched; policy default is "allow"
+allow    query                          default        no rule matched; policy default is "allow"
+allow    query                          default        no rule matched; policy default is "allow"
+allow    query                          default        no rule matched; policy default is "allow"
+allow    query                          default        no rule matched; policy default is "allow"
+allow    query                          default        no rule matched; policy default is "allow"
+allow    fetch                          default        no rule matched; policy default is "allow"
+allow    fetch                          default        no rule matched; policy default is "allow"
+allow    fetch                          default        no rule matched; policy default is "allow"
+allow    fetch                          default        no rule matched; policy default is "allow"
+allow    post                           default        no rule matched; policy default is "allow"
+allow    post                           default        no rule matched; policy default is "allow"
+allow    send_message                   default        no rule matched; policy default is "allow"
+allow    create_channel                 default        no rule matched; policy default is "allow"
+
+29 calls evaluated against packs/git.yaml

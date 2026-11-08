@@ -32,9 +32,37 @@ tapelog fuzz --policy my-policy.yaml session.jsonl   # hole-hunting
 
 ## Why packs ship with tests
 
-Every pack in this directory is loaded and compiled (including its Cedar
-`where` conditions) by `packs/packs_test.go` on every commit — a pack
-that stops parsing or grows a broken condition fails CI. Rule hygiene
-you can trust, enforced by the same tooling we sell.
+Two layers, because they catch different failures:
 
-Contributions welcome: a pack for a popular server is the ideal first PR.
+1. **Compilation** — `packs/packs_test.go` loads every pack, compiles its Cedar
+   `where` conditions and requires at least one hard deny.
+2. **Enforcement** — `packs/enforcement_*_test.go` evaluates fictional calls
+   against every security-sensitive rule and asserts the documented verdict,
+   the rule that matched, and that a legitimate neighbouring call is still
+   handled as documented.
+
+Compilation alone is not enough, and M5.1 exists because we learned that the
+expensive way. Cedar's `like` has exactly one wildcard, `*`. `%`, `?` and
+`[a-z]` are **literal characters**, so `like "%rm -rf /%"` compiles perfectly,
+passes a compile-only test, and can never match. Three packs shipped that way
+and every deny in them was inert. Two more guards now make that class of
+mistake loud:
+
+- `TestNoPackUsesPercentInACondition` fails on any `%` inside a condition.
+- `TestEveryDenyRuleCanFire` fails if a deny rule in any pack is never reached
+  by the enforcement tables — a rule that cannot match, or is untested.
+
+`internal/policy/cedar_semantics_test.go` pins the `like` behaviour these tests
+assume, so a change in the engine cannot silently disarm the packs.
+
+Validate your own edits the same way:
+
+```bash
+tapelog policy test --policy my-policy.yaml --calls samples.jsonl
+tapelog test agent-tests/                 # trajectory regression
+tapelog fuzz --policy my-policy.yaml session.jsonl   # hole-hunting
+```
+
+Contributions welcome: a pack for a popular server is the ideal first PR — with
+an enforcement test for each deny.
+

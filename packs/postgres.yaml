@@ -2,19 +2,72 @@
 #
 # Philosophy: SELECTs are free, writes are confirmed, schema-destroying
 # statements are hard-denied. Adjust table names for your estate.
+#
+# Condition note (M5.1): Cedar's like has exactly one wildcard, `*`. `%` is a
+# literal character there, so the previous `%`-style patterns never matched and
+# every rule in this pack was inert (DROP was allowed by the default).
+#
+# Casing: SQL keywords are case-insensitive but Cedar's like is not, so each
+# keyword is listed in UPPER, lower and Title case. A deliberately mixed case
+# (`DrOp`) is NOT matched — see the limitations section of
+# docs/reviews/TAPELOG_M5_1_POLICY_CORRECTNESS.md.
+#
+# Whitespace: the keyword/target separator is matched as a single space and as
+# a tab. A newline, `\r` or an SQL comment (`DR/**/OP`) between them is not
+# matched.
+#
+# Honesty: this is text matching, not SQL parsing. A keyword inside a string
+# literal or an identifier can produce a false positive (e.g. a column named
+# `delete_flag`), and a CTE or prepared statement that builds DDL at run time
+# is out of reach entirely. Combine this pack with a database role that holds
+# no DDL privileges.
 version: 1
 default: allow
 
 rules:
   - id: no-schema-destruction
     tool: ["query", "execute", "sql", "run_query", "postgres_*"]
-    where: 'context.args.query like "%DROP %" || context.args.query like "%TRUNCATE%" || context.args.query like "%ALTER USER%" || context.args.query like "%ALTER SYSTEM%" || context.args.query like "%GRANT %"'
+    where: >-
+      context.args.query like "*DROP *" ||
+      context.args.query like "*drop *" ||
+      context.args.query like "*Drop *" ||
+      context.args.query like "*DROP\t*" ||
+      context.args.query like "*drop\t*" ||
+      context.args.query like "*TRUNCATE*" ||
+      context.args.query like "*truncate*" ||
+      context.args.query like "*Truncate*" ||
+      context.args.query like "*ALTER USER*" ||
+      context.args.query like "*alter user*" ||
+      context.args.query like "*Alter User*" ||
+      context.args.query like "*ALTER SYSTEM*" ||
+      context.args.query like "*alter system*" ||
+      context.args.query like "*Alter System*" ||
+      context.args.query like "*GRANT *" ||
+      context.args.query like "*grant *" ||
+      context.args.query like "*Grant *" ||
+      context.args.query like "*GRANT\t*" ||
+      context.args.query like "*grant\t*"
     action: deny
     reason: "schema destruction and privilege changes are out of bounds"
 
   - id: writes-confirm
     tool: ["query", "execute", "sql", "run_query", "postgres_*"]
-    where: 'context.args.query like "%INSERT %" || context.args.query like "%UPDATE %" || context.args.query like "%DELETE %"'
+    where: >-
+      context.args.query like "*INSERT *" ||
+      context.args.query like "*insert *" ||
+      context.args.query like "*Insert *" ||
+      context.args.query like "*INSERT\t*" ||
+      context.args.query like "*insert\t*" ||
+      context.args.query like "*UPDATE *" ||
+      context.args.query like "*update *" ||
+      context.args.query like "*Update *" ||
+      context.args.query like "*UPDATE\t*" ||
+      context.args.query like "*update\t*" ||
+      context.args.query like "*DELETE *" ||
+      context.args.query like "*delete *" ||
+      context.args.query like "*Delete *" ||
+      context.args.query like "*DELETE\t*" ||
+      context.args.query like "*delete\t*"
     action: confirm
     reason: "data writes need a human in the loop"
 

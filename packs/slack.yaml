@@ -4,19 +4,24 @@
 # sensitive sources must never flow to a sink (cross-tool taint rule —
 # most powerful when the messaging server is behind `tapelog mux` with
 # your filesystem/database servers).
+#
+# Ordering note (M5.1): the engine is first-match-wins, so a deny must appear
+# before any confirm whose tool globs overlap it. `sends-confirm` matches
+# `create_*`, which previously shadowed the `no-channel-creation` deny and
+# turned a hard deny into a confirmation prompt. The deny now comes first.
 version: 1
 default: allow
 
 rules:
-  - id: sends-confirm
-    tool: ["send_*", "post_*", "create_*", "invite*", "*message*"]
-    action: confirm
-    reason: "messages to humans need a human in the loop"
-
   - id: no-channel-creation
     tool: ["create_conversation", "create_channel", "archive*"]
     action: deny
     reason: "workspace structure is not an agent's to change"
+
+  - id: sends-confirm
+    tool: ["send_*", "post_*", "create_*", "invite*", "*message*"]
+    action: confirm
+    reason: "messages to humans need a human in the loop"
 
 flows:
   - id: no-exfil-to-chat

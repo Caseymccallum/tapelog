@@ -2,25 +2,46 @@
 #
 # Philosophy: history is readable, pushes are confirmed, history-destroying
 # and hook-touching commands are hard-denied. Matches on the command string.
+#
+# Condition note (M5.1): Cedar's like has exactly one wildcard, `*`. `%`, `?`
+# and `[a-z]` sequences are LITERAL characters there, so a pattern written with
+# them can never match. Every condition below uses `*`.
+#
+# Casing: git subcommands and flags are case-sensitive, so `GIT PUSH` is not a
+# variant of `git push`; no case alternatives are needed here.
+# Quoting: shell quoting does not stop git from honouring a flag, so the force
+# patterns also cover `push "--force"` and `push '-f'`.
 version: 1
 default: allow
 
 rules:
   - id: no-history-destruction
     tool: ["git_*", "run_git*", "exec*"]
-    where: 'context.args.command like "%reset --hard%" || context.args.command like "%push --force%" || context.args.command like "%push -f%" || context.args.command like "%filter-branch%" || context.args.command like "%filter-repo%" || context.args.command like "%update-ref -d%" || context.args.command like "%clean -f%" || context.args.command like "%clean -fd%" || context.args.command like "%clean -xdf%"'
+    where: >-
+      context.args.command like "*reset --hard*" ||
+      context.args.command like "*push *--force*" ||
+      context.args.command like "*push -f*" ||
+      context.args.command like "*push \"-f\"*" ||
+      context.args.command like "*push '-f'*" ||
+      context.args.command like "*filter-branch*" ||
+      context.args.command like "*filter-repo*" ||
+      context.args.command like "*update-ref -d*" ||
+      context.args.command like "*clean -*f*"
     action: deny
     reason: "history-destroying git commands are out of bounds"
 
   - id: no-hook-or-config-tamper
     tool: ["git_*", "run_git*", "exec*"]
-    where: 'context.args.command like "%core.hooksPath%" || context.args.command like "%--upload-pack%" || context.args.command like "%--receive-pack%"'
+    where: >-
+      context.args.command like "*core.hooksPath*" ||
+      context.args.command like "*--upload-pack*" ||
+      context.args.command like "*--receive-pack*"
     action: deny
     reason: "hook and transport config tampering is a supply-chain attack"
 
   - id: pushes-confirm
     tool: ["git_*", "run_git*"]
-    where: 'context.args.command like "%push%"'
+    where: 'context.args.command like "*push*"'
     action: confirm
     reason: "pushes change shared state"
 

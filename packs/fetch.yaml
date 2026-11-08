@@ -3,19 +3,68 @@
 # Philosophy: public URLs are fine, internal network space is not. An
 # agent-side fetch tool aimed at localhost/RFC1918/link-local/metadata
 # endpoints is the classic SSRF pivot.
+#
+# Condition note (M5.1): Cedar's like has exactly one wildcard, `*`. `%`, `?`
+# and `[6-9]` are LITERAL characters there, so the previous rule missed the
+# whole 172.16/12 range. Patterns now use `*://` so the scheme does not have to
+# be spelled out: that covers http, https and any scheme casing in one pattern.
+# The 16 private third octets of 172.16/12 are listed explicitly because a
+# character class cannot express a range.
+#
+# Known gaps, deliberately not hidden:
+#   - Hostname casing. DNS is case-insensitive, so `LOCALHOST` reaches the same
+#     place as `localhost`; a case-sensitive matcher cannot cover that without
+#     enumerating 2^n spellings. Numeric hosts (127.x, 10.x, 169.254.x, 172.x)
+#     have no case, so they are unaffected.
+#   - Non-canonical numeric hosts: `http://2130706433/` (127.0.0.1 as an
+#     integer), octal or hex forms. A network-layer egress control is the
+#     reliable defense here; this pack is a heuristic.
+#   - The 100.64/10 CGNAT range is covered at `100.64.*` only, not the whole
+#     /10, because expressing 64-127 needs a character class.
 version: 1
 default: allow
 
 rules:
   - id: no-internal-urls
     tool: ["fetch", "fetch_*", "http_*", "get", "download*"]
-    where: 'context.args.url like "http://localhost*" || context.args.url like "http://127.*" || context.args.url like "http://[::1]*" || context.args.url like "http://10.*" || context.args.url like "http://192.168.*" || context.args.url like "http://172.1[6-9]*" || context.args.url like "http://172.2[0-9]*" || context.args.url like "http://172.3[0-1]*" || context.args.url like "http://169.254.*" || context.args.url like "http://metadata*" || context.args.url like "http://100.64.*"'
+    where: >-
+      context.args.url like "*://localhost*" ||
+      context.args.url like "*://127.*" ||
+      context.args.url like "*://[::1]*" ||
+      context.args.url like "*://[0:0:0:0:0:0:0:1]*" ||
+      context.args.url like "*://10.*" ||
+      context.args.url like "*://192.168.*" ||
+      context.args.url like "*://172.16.*" ||
+      context.args.url like "*://172.17.*" ||
+      context.args.url like "*://172.18.*" ||
+      context.args.url like "*://172.19.*" ||
+      context.args.url like "*://172.20.*" ||
+      context.args.url like "*://172.21.*" ||
+      context.args.url like "*://172.22.*" ||
+      context.args.url like "*://172.23.*" ||
+      context.args.url like "*://172.24.*" ||
+      context.args.url like "*://172.25.*" ||
+      context.args.url like "*://172.26.*" ||
+      context.args.url like "*://172.27.*" ||
+      context.args.url like "*://172.28.*" ||
+      context.args.url like "*://172.29.*" ||
+      context.args.url like "*://172.30.*" ||
+      context.args.url like "*://172.31.*" ||
+      context.args.url like "*://169.254.*" ||
+      context.args.url like "*://metadata*" ||
+      context.args.url like "*://100.64.*"
     action: deny
     reason: "internal/metadata URLs are SSRF pivots"
 
+  # Fails closed: a post whose arguments carry no `url` at all cannot prove it
+  # travels over TLS, so it is denied rather than allowed by the default.
   - id: https-only-for-posts
     tool: ["post", "http_post", "submit*"]
-    where: '!(context.args.url like "https://*")'
+    where: >-
+      !(context.args has url) ||
+      (!(context.args.url like "https://*") &&
+       !(context.args.url like "HTTPS://*") &&
+       !(context.args.url like "Https://*"))
     action: deny
     reason: "outbound data must travel over TLS"
 

@@ -4,19 +4,79 @@
 # confirmed, catastrophe is hard-denied, and injection scanning is
 # escalated. Consider also --sandbox-ro/--sandbox-rw (Linux) to contain
 # what slips through.
+#
+# Condition note (M5.1): Cedar's like has exactly one wildcard, `*`. `%` is a
+# literal character there, so the previous `%`-style patterns never matched and
+# every deny in this pack was inert. All conditions below use `*`.
+#
+# What the rm patterns deliberately do NOT cover: recursive force deletes of an
+# ordinary path (`rm -rf /tmp/build`, `rm -rf ~/proj/build`). Those stay on the
+# confirm default, which is this pack's documented policy for non-catastrophes.
+# `like` patterns are anchored, so `*rm -rf /` matches a command that *ends*
+# with that token; it does not match `/tmp/build`. The root/home target is
+# followed by end-of-string, a space, `;`, `&`, `|` or a trailing slash, and the
+# quoted forms `"/"`, `'/'` and `"$HOME"` are covered.
+#
+# Known gap: this pack's patterns are Unix-shaped. Windows destructive commands
+# (`format C:`, `rd /s /q C:\`) are not covered, and a case-sensitive matcher
+# cannot cover cmd.exe's case-insensitivity. Use --sandbox-* or an OS-level
+# boundary for those.
 version: 1
 default: confirm
 
 rules:
   - id: no-catastrophe
     tool: ["exec*", "run_*", "shell*", "bash*"]
-    where: 'context.args.command like "%rm -rf /%" || context.args.command like "%rm -rf ~%" || context.args.command like "%mkfs%" || context.args.command like "%dd of=/dev/%" || context.args.command like "%:(){ :|:& };:%" || context.args.command like "%curl%|%sh%" || context.args.command like "%curl%|%bash%" || context.args.command like "%wget%|%sh%" || context.args.command like "%wget%|%bash%" || context.args.command like "%chmod 777%" || context.args.command like "%> /dev/sd%"'
+    where: >-
+      context.args.command like "*--no-preserve-root*" ||
+      context.args.command like "*rm -rf /" ||
+      context.args.command like "*rm -rf / *" ||
+      context.args.command like "*rm -rf /;*" ||
+      context.args.command like "*rm -rf /&*" ||
+      context.args.command like "*rm -rf /|*" ||
+      context.args.command like "*rm -rf \"/\"*" ||
+      context.args.command like "*rm -rf '/'*" ||
+      context.args.command like "*rm -fr /" ||
+      context.args.command like "*rm -fr / *" ||
+      context.args.command like "*rm -fr /;*" ||
+      context.args.command like "*rm -fr /&*" ||
+      context.args.command like "*rm -fr /|*" ||
+      context.args.command like "*rm -rf ~" ||
+      context.args.command like "*rm -rf ~ *" ||
+      context.args.command like "*rm -rf ~;*" ||
+      context.args.command like "*rm -rf ~/" ||
+      context.args.command like "*rm -fr ~" ||
+      context.args.command like "*rm -fr ~ *" ||
+      context.args.command like "*rm -fr ~;*" ||
+      context.args.command like "*rm -fr ~/" ||
+      context.args.command like "*rm -rf $HOME" ||
+      context.args.command like "*rm -rf $HOME *" ||
+      context.args.command like "*rm -rf $HOME/" ||
+      context.args.command like "*rm -rf ${HOME}" ||
+      context.args.command like "*rm -rf ${HOME} *" ||
+      context.args.command like "*rm -rf ${HOME}/" ||
+      context.args.command like "*rm -fr $HOME" ||
+      context.args.command like "*rm -fr $HOME *" ||
+      context.args.command like "*rm -rf \"$HOME\"*" ||
+      context.args.command like "*mkfs*" ||
+      context.args.command like "*mke2fs*" ||
+      context.args.command like "*dd *of=/dev/*" ||
+      context.args.command like "*:(){*};:*" ||
+      context.args.command like "*curl*|*sh*" ||
+      context.args.command like "*curl*|*bash*" ||
+      context.args.command like "*wget*|*sh*" ||
+      context.args.command like "*wget*|*bash*" ||
+      context.args.command like "*chmod *777*" ||
+      context.args.command like "*> /dev/sd*"
     action: deny
     reason: "catastrophic or self-installing commands are out of bounds"
 
   - id: no-privilege-escalation
     tool: ["exec*", "run_*", "shell*", "bash*"]
-    where: 'context.args.command like "%sudo %" || context.args.command like "%su -%" || context.args.command like "%doas %"'
+    where: >-
+      context.args.command like "*sudo *" ||
+      context.args.command like "*su -*" ||
+      context.args.command like "*doas *"
     action: deny
     reason: "privilege escalation is not delegated to agents"
 

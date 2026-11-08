@@ -40,3 +40,5 @@ smoke-junit.xml
 examples/trajectory-demo/scenario-tampered.yaml
 # blanket: transient test output at repo root (*.md is our doc format)
 /*.txt
+# M5.1 policy-pack regression evidence: fictional sample calls, never recordings
+!docs/reviews/evidence/**/*.jsonl
