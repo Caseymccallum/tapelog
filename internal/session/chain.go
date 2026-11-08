@@ -2,10 +2,13 @@ package session
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +52,35 @@ func NewWriter(path, sessionID string) (*Writer, error) {
 		return nil, fmt.Errorf("close session log: %w", err)
 	}
 	return &Writer{path: path, sessionID: sessionID, now: time.Now}, nil
+}
+
+// NewWriterInDir creates a fresh log in dir without ever replacing an
+// existing recording. The filename combines UTC time with cryptographic
+// randomness; O_EXCL makes concurrent launches safe even after a collision.
+func NewWriterInDir(dir, sessionID string) (*Writer, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create recordings directory: %w", err)
+	}
+	for attempt := 0; attempt < 16; attempt++ {
+		random := make([]byte, 12)
+		if _, err := rand.Read(random); err != nil {
+			return nil, fmt.Errorf("generate unique recording name: %w", err)
+		}
+		name := fmt.Sprintf("session-%s-%s.jsonl", time.Now().UTC().Format("20060102T150405.000000000"), hex.EncodeToString(random))
+		path := filepath.Join(dir, name)
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			if err := f.Close(); err != nil {
+				_ = os.Remove(path)
+				return nil, fmt.Errorf("close new session log: %w", err)
+			}
+			return &Writer{path: path, sessionID: sessionID, now: time.Now}, nil
+		}
+		if !os.IsExist(err) {
+			return nil, fmt.Errorf("create new session log: %w", err)
+		}
+	}
+	return nil, fmt.Errorf("could not allocate a unique session log in %s after repeated filename collisions", dir)
 }
 
 // SetClock overrides the time source (tests / deterministic recording).
@@ -124,10 +156,13 @@ func (w *Writer) Close() error {
 	return nil
 }
 
+// Path returns the log path selected for this writer.
+func (w *Writer) Path() string { return w.path }
+
 // VerifyResult reports the outcome of chain verification.
 type VerifyResult struct {
 	Events      int    `json:"events"`
-	SessionID   string `json:"session_id,omitempty"` // session id of the first event
+	SessionID   string `json:"session_id,omitempty"`    // session id of the first event
 	FirstBadSeq uint64 `json:"first_bad_seq,omitempty"` // 0 = intact
 	Problem     string `json:"problem,omitempty"`
 	LastHash    string `json:"last_hash,omitempty"` // chain head (last event hash)

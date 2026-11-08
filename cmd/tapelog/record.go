@@ -9,15 +9,16 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
-	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
-	"github.com/Caseymccallum/tapelog/internal/mediator"
 	"github.com/Caseymccallum/tapelog/internal/inject"
+	"github.com/Caseymccallum/tapelog/internal/jsonrpc"
 	"github.com/Caseymccallum/tapelog/internal/limits"
+	"github.com/Caseymccallum/tapelog/internal/mediator"
 	"github.com/Caseymccallum/tapelog/internal/plugin"
 	"github.com/Caseymccallum/tapelog/internal/policy"
 	"github.com/Caseymccallum/tapelog/internal/proxy"
@@ -30,20 +31,21 @@ import (
 
 func newRecordCmd() *cobra.Command {
 	var (
-		policyPath   string
-		logPath      string
-		sessionID    string
-		harness      string
-		task         string
-		autoConfirm  bool
-		denyOnDrift  bool
-		pluginPaths  []string
-		sandboxRO    []string
-		sandboxRW    []string
-		sandboxLax   bool
-		auditMode    string
-		strictSchemas bool
-		blobThreshold int
+		policyPath      string
+		logPath         string
+		recordingsDir   string
+		sessionID       string
+		harness         string
+		task            string
+		autoConfirm     bool
+		denyOnDrift     bool
+		pluginPaths     []string
+		sandboxRO       []string
+		sandboxRW       []string
+		sandboxLax      bool
+		auditMode       string
+		strictSchemas   bool
+		blobThreshold   int
 		approvalListen  string
 		approvalToken   string
 		approvalTimeout time.Duration
@@ -85,9 +87,23 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				sessionID = generateSessionID()
 			}
 
-			// Evidence-preserving overwrite warning lives in
-			// session.NewWriter (shared with `tapelog mux`).
-			writer, err := session.NewWriter(logPath, sessionID)
+			var writer *session.Writer
+			if recordingsDir != "" {
+				if cmd.Flags().Changed("log") {
+					return fmt.Errorf("--log and --recordings-dir cannot be used together")
+				}
+				recordingsDir, err = filepath.Abs(recordingsDir)
+				if err != nil {
+					return fmt.Errorf("resolve recordings directory: %w", err)
+				}
+				writer, err = session.NewWriterInDir(recordingsDir, sessionID)
+				if err == nil {
+					logPath = writer.Path()
+				}
+			} else {
+				// Explicit --log retains the legacy path behavior for existing scripts.
+				writer, err = session.NewWriter(logPath, sessionID)
+			}
 			if err != nil {
 				return err
 			}
@@ -198,6 +214,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 	}
 	cmd.Flags().StringVar(&policyPath, "policy", "", "policy YAML file (omit for no-policy recording: default-allow rules; boundary protections stay active)")
 	cmd.Flags().StringVar(&logPath, "log", "session.jsonl", "session log output path")
+	cmd.Flags().StringVar(&recordingsDir, "recordings-dir", "", "create a unique, non-overwriting log per run in this directory (mutually exclusive with explicit --log)")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "session id (generated if omitted)")
 	cmd.Flags().StringVar(&harness, "harness", "unknown", "name of the agent harness being proxied")
 	cmd.Flags().StringVar(&task, "task", "", "task label (enables task-scoped policy rules)")

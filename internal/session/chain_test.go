@@ -1,13 +1,100 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestNewWriterInDirPreservesRecordingsAndSupportsConcurrentStarts(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "recordings")
+	first, err := NewWriterInDir(dir, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Append(EventSessionStart, map[string]string{"run": "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Append(EventSessionEnd, map[string]string{"reason": "test"}); err != nil {
+		t.Fatal(err)
+	}
+	firstBytes, err := os.ReadFile(first.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := VerifyFile(first.Path()); err != nil || !got.OK() {
+		t.Fatalf("first verification: %+v %v", got, err)
+	}
+
+	const runs = 16
+	paths := make(chan string, runs)
+	errs := make(chan error, runs)
+	var wait sync.WaitGroup
+	for i := 0; i < runs; i++ {
+		wait.Add(1)
+		go func(i int) {
+			defer wait.Done()
+			w, err := NewWriterInDir(dir, fmt.Sprintf("parallel-%d", i))
+			if err != nil {
+				errs <- err
+				return
+			}
+			if _, err := w.Append(EventSessionStart, map[string]int{"run": i}); err != nil {
+				errs <- err
+				return
+			}
+			if _, err := w.Append(EventSessionEnd, map[string]string{"reason": "test"}); err != nil {
+				errs <- err
+				return
+			}
+			paths <- w.Path()
+		}(i)
+	}
+	wait.Wait()
+	close(paths)
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	seen := map[string]bool{}
+	for path := range paths {
+		if seen[path] {
+			t.Errorf("concurrent runs selected same path: %s", path)
+		}
+		seen[path] = true
+		if got, err := VerifyFile(path); err != nil || !got.OK() {
+			t.Errorf("verify %s: %+v %v", path, got, err)
+		}
+	}
+	if len(seen) != runs {
+		t.Fatalf("got %d unique logs, want %d", len(seen), runs)
+	}
+	got, err := os.ReadFile(first.Path())
+	if err != nil || !bytes.Equal(firstBytes, got) {
+		t.Fatalf("prior recording changed: %v", err)
+	}
+}
+
+func TestNewWriterInDirFailsSafely(t *testing.T) {
+	base := t.TempDir()
+	blocked := filepath.Join(base, "file-not-directory")
+	if err := os.WriteFile(blocked, []byte("preserve"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewWriterInDir(blocked, "startup-failure"); err == nil {
+		t.Fatal("expected directory creation failure")
+	}
+	got, err := os.ReadFile(blocked)
+	if err != nil || string(got) != "preserve" {
+		t.Fatalf("existing file changed: %q %v", got, err)
+	}
+}
 
 func fixedClock() time.Time {
 	return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)

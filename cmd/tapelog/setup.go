@@ -16,7 +16,7 @@ import (
 )
 
 func newSetupCmd() *cobra.Command {
-	var client, config, name, logPath, output, binary, policyPath string
+	var client, config, name, logPath, recordingsDir, output, binary, policyPath string
 	var dryRun bool
 	cmd := &cobra.Command{
 		Use: "setup", Short: "Preview recording for an existing MCP server; optionally save a new config",
@@ -29,6 +29,11 @@ Without --output this is a dry run. --output writes a NEW candidate file;
 review it locally, back up your original, then activate it yourself.
 Environment variables, credentials, other servers and client settings
 are preserved. Preview never prints server arguments or credentials.
+
+By default, each client start creates a unique log under
+<config-directory>/tapelog-recordings. Use --recordings-dir to choose
+another directory. Explicit --log keeps the legacy fixed-file behavior;
+never reuse it for repeated client starts.
 
   tapelog setup --client roo --config .roo/mcp.json --server filesystem
   tapelog setup --client roo --config .roo/mcp.json --server filesystem --output candidate.json
@@ -122,22 +127,60 @@ remain active. Confirm decisions remain fail closed without an approval path.`,
 			if strings.ContainsRune(binary, '\x00') || strings.ContainsRune(original, '\x00') {
 				return fmt.Errorf("command contains an invalid NUL character")
 			}
-			if logPath == "" {
-				logPath = "tapelog-first.jsonl"
+			uniqueLogs := !cmd.Flags().Changed("log")
+			if uniqueLogs {
+				if recordingsDir == "" {
+					recordingsDir = filepath.Join(filepath.Dir(config), "tapelog-recordings")
+				}
+				recordingsDir, err = filepath.Abs(recordingsDir)
+				if err != nil {
+					return err
+				}
+				if st, statErr := os.Stat(recordingsDir); statErr == nil && !st.IsDir() {
+					return fmt.Errorf("recordings path exists and is not a directory")
+				} else if statErr != nil && !os.IsNotExist(statErr) {
+					return fmt.Errorf("check recordings directory: %w", statErr)
+				}
+				if st, statErr := os.Stat(filepath.Dir(recordingsDir)); statErr != nil || !st.IsDir() {
+					return fmt.Errorf("recordings directory parent must already exist")
+				}
+			} else {
+				if recordingsDir != "" {
+					return fmt.Errorf("--log and --recordings-dir cannot be used together")
+				}
+				if logPath == "" {
+					logPath = "tapelog-first.jsonl"
+				}
+				logPath, err = filepath.Abs(logPath)
+				if err != nil {
+					return err
+				}
+				if _, err = os.Lstat(logPath); err == nil {
+					return fmt.Errorf("log already exists; choose a fresh --log path to preserve earlier recordings")
+				} else if !os.IsNotExist(err) {
+					return fmt.Errorf("check log path: %w", err)
+				}
+				if st, statErr := os.Stat(filepath.Dir(logPath)); statErr != nil || !st.IsDir() {
+					return fmt.Errorf("log parent must already be a directory; create it first")
+				}
 			}
-			logPath, err = filepath.Abs(logPath)
-			if err != nil {
-				return err
+			if output != "" {
+				if err := validateSetupPaths(config, output, recordingsDir); err != nil {
+					return err
+				}
+				if !uniqueLogs {
+					if err := validateDistinctPaths(output, logPath); err != nil {
+						return err
+					}
+				}
 			}
-			if _, err = os.Lstat(logPath); err == nil {
-				return fmt.Errorf("log already exists; choose a fresh --log path to preserve earlier recordings")
-			} else if !os.IsNotExist(err) {
-				return fmt.Errorf("check log path: %w", err)
+			wrapped := []string{"record"}
+			if uniqueLogs {
+				wrapped = append(wrapped, "--recordings-dir", recordingsDir)
+			} else {
+				wrapped = append(wrapped, "--log", logPath)
 			}
-			if st, err := os.Stat(filepath.Dir(logPath)); err != nil || !st.IsDir() {
-				return fmt.Errorf("log parent must already be a directory; create it first")
-			}
-			wrapped := []string{"record", "--log", logPath, "--harness", client}
+			wrapped = append(wrapped, "--harness", client)
 			if policyPath != "" {
 				policyPath, err = filepath.Abs(policyPath)
 				if err != nil {
@@ -158,7 +201,11 @@ remain active. Confirm decisions remain fail closed without an approval path.`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Preview: wrap server %q for %s with Tapelog record.\nConfig: %s\nLog: %s\nOnly command/args change; other servers, env and settings are preserved.\nArguments and credentials are omitted from this preview.\n", name, client, config, logPath)
+			location := logPath
+			if uniqueLogs {
+				location = recordingsDir + "\\<new unique recording per start>"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Preview: wrap server %q for %s with Tapelog record.\nConfig: %s\nRecording: %s\nOnly command/args change; other servers, env and settings are preserved.\nArguments and credentials are omitted from this preview.\n", name, client, config, location)
 			if policyPath == "" {
 				fmt.Fprintln(cmd.OutOrStdout(), "No policy selected: default allow, with existing boundary protections. Use --policy to retain your chosen enforcement rules.")
 			}
@@ -174,19 +221,94 @@ remain active. Confirm decisions remain fail closed without an approval path.`,
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Saved candidate: %s\nContains the original credentials: keep it private. Review locally; back up %s before manually activating. Undo by restoring that backup. No client settings were activated.\n", output, config)
-			fmt.Fprintf(cmd.OutOrStdout(), "Restart the selected server in your client, explicitly call one of its MCP tools, then:\n  tapelog inspect %s --summary\n  tapelog verify %s\n  tapelog web --dir %s\nReplay as an MCP server (waits for client input): tapelog replay %s --strict\n", shellArg(logPath), shellArg(logPath), shellArg(filepath.Dir(logPath)), shellArg(logPath))
+			if uniqueLogs {
+				fmt.Fprintf(cmd.OutOrStdout(), "Each client start creates a separate recording in %s. Run `tapelog inspect <recording>.jsonl --summary`, `tapelog verify <recording>.jsonl`, or `tapelog web --dir %s`.\n", shellArg(recordingsDir), shellArg(recordingsDir))
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Restart the selected server in your client, explicitly call one of its MCP tools, then:\n  tapelog inspect %s --summary\n  tapelog verify %s\n  tapelog web --dir %s\nReplay as an MCP server (waits for client input): tapelog replay %s --strict\n", shellArg(logPath), shellArg(logPath), shellArg(filepath.Dir(logPath)), shellArg(logPath))
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&client, "client", "", "client: roo, cline, vscode, claude-code, claude-desktop")
 	cmd.Flags().StringVar(&config, "config", "", "existing client configuration (strict JSON)")
 	cmd.Flags().StringVar(&name, "server", "", "existing stdio server name")
-	cmd.Flags().StringVar(&logPath, "log", "", "fresh session log; converted to absolute path (default tapelog-first.jsonl)")
+	cmd.Flags().StringVar(&logPath, "log", "", "legacy fixed session log path (one recording only; repeated starts overwrite)")
+	cmd.Flags().StringVar(&recordingsDir, "recordings-dir", "", "directory for one unique, non-overwriting recording per start")
 	cmd.Flags().StringVar(&binary, "tapelog", "", "Tapelog executable (default current executable)")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "existing policy to validate and use; never edited")
 	cmd.Flags().StringVar(&output, "output", "", "NEW candidate JSON file; never replaces existing files")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview only, even with --output")
 	return cmd
+}
+
+func validateSetupPaths(config, output, recordingsDir string) error {
+	configPath, err := canonicalPath(config)
+	if err != nil {
+		return fmt.Errorf("resolve client config path: %w", err)
+	}
+	outputPath, err := canonicalPath(output)
+	if err != nil {
+		return fmt.Errorf("resolve candidate path: %w", err)
+	}
+	if samePath(configPath, outputPath) {
+		return fmt.Errorf("candidate output resolves to the active client configuration; choose a different --output")
+	}
+	if recordingsDir != "" {
+		logDir, err := canonicalPath(recordingsDir)
+		if err != nil {
+			return fmt.Errorf("resolve recordings directory: %w", err)
+		}
+		if samePath(logDir, outputPath) || samePath(logDir, configPath) {
+			return fmt.Errorf("candidate, active client config and recordings directory must be separate paths")
+		}
+	}
+	return nil
+}
+
+func validateDistinctPaths(a, b string) error {
+	left, err := canonicalPath(a)
+	if err != nil {
+		return err
+	}
+	right, err := canonicalPath(b)
+	if err != nil {
+		return err
+	}
+	if samePath(left, right) {
+		return fmt.Errorf("candidate output and recording path resolve to the same location")
+	}
+	return nil
+}
+
+// canonicalPath resolves existing symlink ancestors as well as lexical aliases.
+func canonicalPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	abs = filepath.Clean(abs)
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return filepath.Clean(resolved), nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	parent := filepath.Dir(abs)
+	if parent == abs {
+		return abs, nil
+	}
+	resolvedParent, err := canonicalPath(parent)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(resolvedParent, filepath.Base(abs)), nil
+}
+
+func samePath(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // Reject duplicate keys at every depth so parsing cannot silently discard settings.

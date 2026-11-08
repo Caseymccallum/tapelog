@@ -76,7 +76,8 @@ func run() error {
 	}
 	config := filepath.Join(dir, "client.json")
 	candidate := filepath.Join(dir, "candidate.json")
-	logPath := filepath.Join(dir, "session.jsonl")
+	recordingsDir := filepath.Join(dir, "tapelog-recordings")
+	var logPath string
 	policyPath := filepath.Join(dir, "demo-policy.yaml")
 	raw, _ := json.MarshalIndent(map[string]any{"mcpServers": map[string]any{"demo": map[string]any{"command": self, "args": []string{"--fixture"}}}}, "", "  ")
 	if err := os.WriteFile(config, raw, 0600); err != nil {
@@ -96,7 +97,7 @@ func run() error {
 	if err := command("doctor", "--server", self, "--log", logPath); err != nil {
 		return err
 	}
-	if err := command("setup", "--client", "claude-code", "--config", config, "--server", "demo", "--policy", policyPath, "--log", logPath, "--output", candidate); err != nil {
+	if err := command("setup", "--client", "claude-code", "--config", config, "--server", "demo", "--policy", policyPath, "--recordings-dir", recordingsDir, "--output", candidate); err != nil {
 		return err
 	}
 	var doc struct {
@@ -123,6 +124,19 @@ func run() error {
 	recorded, err := conversation(writer, entry.Command, entry.Args, requests)
 	if err != nil {
 		return err
+	}
+	logs, err := os.ReadDir(recordingsDir)
+	if err != nil {
+		return err
+	}
+	for _, log := range logs {
+		if !log.IsDir() && filepath.Ext(log.Name()) == ".jsonl" {
+			logPath = filepath.Join(recordingsDir, log.Name())
+			break
+		}
+	}
+	if logPath == "" {
+		return fmt.Errorf("recording did not create a session log in %s", recordingsDir)
 	}
 	if !bytes.Contains(recorded[3], []byte("demo-no-delete")) {
 		return fmt.Errorf("expected policy denial missing")
@@ -161,7 +175,7 @@ func run() error {
 	if err := command("inspect", idle, "--summary"); err != nil {
 		return err
 	}
-	fmt.Fprintf(writer, "\nPASS: recorded result replayed identically. Denied calls have no recorded result and are not replayed; repeating one would be a miss.\nArtifacts: %s\nMeasured demo runtime: %s (excludes installation and go run compilation; not a five-minute onboarding measurement).\nOpen the local dashboard with tapelog web --dir <artifact-directory> (use the Artifacts path above).\nThe generated candidate references a temporary demo executable; it is NOT a persistent client configuration.\n", dir, time.Since(started).Round(time.Millisecond))
+	fmt.Fprintf(writer, "\nPASS: recorded result replayed identically. Denied calls have no recorded result and are not replayed; repeating one would be a miss.\nRecording: %s\nArtifacts: %s\nMeasured demo runtime: %s (excludes installation and go run compilation; not a five-minute onboarding measurement).\nOpen the local dashboard with tapelog web --dir %s.\nThe generated candidate references a temporary demo executable; it is NOT a persistent client configuration.\n", logPath, dir, time.Since(started).Round(time.Millisecond), recordingsDir)
 	return nil
 }
 
