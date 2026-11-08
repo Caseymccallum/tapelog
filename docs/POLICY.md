@@ -311,7 +311,24 @@ tapelog queue deny  4
 tapelog policy test   --policy p.yaml --calls samples.jsonl   # dry-run verdicts
 tapelog policy whatif --policy p.yaml session.jsonl           # re-evaluate a recording (CI: exits non-zero on verdict changes)
 tapelog policy compile --policy p.yaml                        # export portable Cedar text
+tapelog web --dir sessions --policy p.yaml                    # read-only Policy Studio over recordings
 ```
+
+### Policy Studio
+
+`tapelog web --policy p.yaml` opens a read-only Studio that explains the rules
+above in plain language, drafts one supported rule, validates it with this
+compiler and simulates it against a recording with the same evaluator as
+`policy whatif`. It writes and activates nothing: a candidate is text in the
+browser until an operator saves it. Rules the visual editor cannot express —
+nested arguments, compound `where` expressions, extra keys — are shown as source
+rather than rewritten. See docs/WORKBENCH.md.
+
+The Studio also reports conditions that **cannot match**. Cedar's `like` has
+exactly one wildcard, `*`; `%` and `?` are literal characters. A pattern such as
+`like "%rm -rf /%"` only matches an argument that literally contains percent
+signs, so a rule carrying it never fires. Several shipped packs use that `%`
+style, so the Studio flags them instead of presenting them as working denies.
 
 `what-if` re-runs recorded calls against a candidate policy and diffs the
 verdicts against what was recorded at run time — **policy regression tests

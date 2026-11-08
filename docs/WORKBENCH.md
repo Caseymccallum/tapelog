@@ -92,6 +92,52 @@ result: it does **not** prove that the tool never executed. A changed recording
 invalidates the UI preview. Saved tests reference the fixture rather than
 pinning its hash; verify evidence separately when integrity matters.
 
+## Policy Studio (read-only)
+
+Point the workbench at the policy you enforce to read it in plain language:
+
+```powershell
+.\bin\tapelog.exe web --dir <recordings-directory> --policy .\tapelog.yaml
+```
+
+Policy Studio explains rules, precedence and scope; drafts one supported rule;
+validates it with the policy compiler; and simulates it against a recording
+before you save anything. It is read-only by construction:
+
+- No endpoint writes, replaces, formats or activates a policy. Saving a
+  candidate is an explicit browser action into a **new** file, and a non-empty
+  file is refused.
+- The active policy is only ever read. Verify that yourself with
+  `docs/reviews/evidence/m5/verify-no-write.ps1`, which hashes the policy and
+  every recording before and after exercising all Studio endpoints.
+- The builder expresses only what the engine supports: `allow`/`deny`/`confirm`,
+  tool globs, one top-level argument condition per clause (`equals`, `starts
+  with`, `ends with`, `contains`, whole numbers, booleans), task labels and an
+  RFC 3339 expiry. Nested or unusual argument names are refused with a pointer
+  to the source editor instead of being approximated.
+- Extending an existing policy inserts the new rule as text at the top of
+  `rules:` and leaves every other byte alone, so comments, unknown fields and
+  hand-written `where` expressions survive. Inline (`rules: [...]`) policies are
+  refused. The result is re-parsed and the new rule must be first, or the
+  candidate is not offered.
+- Explanations never invent a simpler meaning. A `where:` expression is only
+  described when the whole expression is one supported comparison; anything else
+  is labelled "advanced, not simplified" and shown as Cedar source.
+
+Studio findings worth acting on: **broad permissions** (`*`, short prefixes),
+**unreachable rules** (an earlier unconditional rule always matches first),
+**conditions that cannot match** (for example `%` in a Cedar `like` pattern,
+where Cedar's only wildcard is `*`), and **fields the engine ignores**.
+
+## Visual what-if
+
+Simulation re-evaluates the recording with the boundary's own pipeline — value
+taint rebuilt from recorded results, then session flows, then ordered rules —
+so it agrees with `tapelog policy whatif`. Filters show changes, newly blocked,
+newly allowed and new approvals, each with the recorded decision, the candidate
+decision and the matching rule and reason. Evaluating recorded activity does not
+prove the behaviour of future, unseen calls, and the panel says so.
+
 ## Replay and live approvals
 
 Replay & CLI shows safely quoted commands for inspection, verification and

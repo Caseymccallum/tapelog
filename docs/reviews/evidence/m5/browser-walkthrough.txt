@@ -1,0 +1,97 @@
+M5 Policy Studio — browser walkthrough transcript
+==================================================
+
+Environment
+  go build -o bin/tapelog.exe ./cmd/tapelog
+  go run ./examples/workbench-demo --out m5-demo-sessions
+  .\bin\tapelog.exe web --dir m5-demo-sessions --policy packs/starter.yaml --listen 127.0.0.1:8934
+
+All recordings are fictional output of examples/workbench-demo. The policy is
+the shipped starter pack. Nothing below executed a tool or wrote a file.
+
+Step 1 — library
+  Seven fictional sessions listed, one marked "Integrity failure", one
+  "No recorded end", one "Server discovery" with 0 calls.
+
+Step 2 — investigate a call
+  Opened "Workspace audit" (4 calls, 1 deny decision, 1 tool error).
+  Selected the recorded deny: workspace__delete_file, event 12.
+  Inspector reported:
+    Recorded policy decisions
+      deny
+      A deny decision is recorded, with no matched result. This evidence alone
+      does not prove whether a request reached the server.
+    Create policy proposal ->      (new in M5)
+    Make a regression test ->
+
+Step 3 — from event to proposal
+  Clicked "Create policy proposal ->". The workbench switched to Policy Studio
+  and reported:
+    Draft prepared from the recording. Choose the outcome, then preview.
+    From recorded call #9 · packages__lookup · recorded decision: allow
+    This proposal comes from a single recorded call. One call shows what
+    happened once, not what the agent intended or will do next.
+    A rule matches the tool name, so it governs every future call to
+    packages__lookup — not only calls that look like this one.
+    Nothing here is applied. Review the rule, simulate it, and save it yourself.
+    This call also has a recorded result. Adding a rule does not change or
+    remove recorded evidence.
+  "Which tools?" was prefilled with the exact tool name packages__lookup.
+  "What should happen to these calls?" defaulted to "Require human approval"
+  for an already-allowed call; no outcome was applied automatically.
+
+Step 4 — preview with default deny
+  Reason: "package lookups of sensitive packages need a human"
+  Where: New candidate file. Default: Block anything not matched (deny).
+  Preview candidate ->
+    CANDIDATE — NOT ACTIVE
+    Validated as a standalone candidate. It does not inherit rules from any
+    other policy.
+    This candidate would block 2 call(s) that were recorded as allowed.
+    sha256 89148f4f0b890cca...
+    Against this recording the candidate changes 3 of 4 recorded decisions.
+      Calls re-evaluated 4 · Decisions changed 3 · Newly blocked 2 ·
+      Newly allowed 0 · New approvals 1
+  evidence: walkthrough-1-candidate-and-simulation-default-deny.pdf
+
+Step 5 — preview with default allow (same rule)
+  Switched Default to "Allow anything not matched (allow)", previewed again:
+      Newly blocked (0) · Newly allowed (1) · New approvals (1)
+      Allow → Require approval    Require approval · rule confirm-packages-lookup
+    This candidate would permit 1 call(s) that the recording shows as denied.
+    This shows what the candidate would have decided about activity that was
+    already recorded. It does not prove how future, unseen calls will behave,
+    and it cannot see traffic that bypassed this boundary.
+  evidence: walkthrough-2-candidate-and-simulation-default-allow.pdf
+
+  The safety warning is the point: loosening the default releases a call the
+  recording shows as denied, and the Studio says so before anything is saved.
+
+Step 6 — explained built-in pack
+  Selected the shell pack. Default: "Require approval". Findings: "2
+  condition(s) contain a pattern that cannot match the arguments they appear to
+  target. A rule with only dead conditions silently stops applying."
+  Each of the two deny rules shows:
+    Advanced condition: shown as source below, not simplified.
+    Cannot match as written: This pattern contains % , which Cedar's like
+    operator treats as a literal character rather than a wildcard, so the
+    condition only matches an argument that really contains a percent sign.
+    Cedar's wildcard is * .
+  The raw Cedar expression is one click away under "Original Cedar condition".
+  evidence: studio-shell-findings.png
+
+Step 7 — light appearance
+  Toggled Appearance. Studio, rule cards, chips and the builder render in the
+  light palette with no unreadable state.
+  evidence: studio-light-theme.pdf
+
+Step 8 — saving
+  "Save candidate as…" opens the browser save picker, suggests
+  tapelog-candidate.yaml, and refuses a file that already contains data
+  (asserted by the node test "the candidate save refuses a non-empty file").
+  No server endpoint writes; the candidate is never activated.
+
+Post-conditions
+  packs/starter.yaml and all seven recordings had identical SHA-256 hashes and
+  identical modification times before and after steps 1-8
+  (docs/reviews/evidence/m5/no-write-verification.txt).
