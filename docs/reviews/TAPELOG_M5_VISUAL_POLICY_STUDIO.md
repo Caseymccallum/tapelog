@@ -16,8 +16,9 @@ reports what `internal/policy` and `internal/replay` already decide.
 | Role | Commit | Note |
 | --- | --- | --- |
 | Starting point (M4) | `5b7614e` "Document visual investigation evidence" on `feat/m4-visual-investigation` | verified with `git log feat/m4-visual-investigation` |
-| M5 implementation | `f8455a6` "feat(studio): add a read-only visual policy studio to the session workbench" | this milestone's code |
-| M5 documentation | this commit | review, docs, evidence |
+| M5 implementation | `f8455a6` "feat(studio): add a read-only visual policy studio to the session workbench" | the Studio itself |
+| M5 documentation | `3b28a2f` "docs(review): record M5 visual policy studio evidence" | this review, docs and evidence |
+| M5 final commit | `605a538` "fix(studio): answer Studio JSON with an explicit UTF-8 charset" | the last defect found while proving the saved-candidate path |
 
 Branch creation was `git switch -c feat/m5-visual-policy-studio 5b7614e`, so M2,
 M3, M4, the DX branches and all existing recordings/configurations are untouched.
