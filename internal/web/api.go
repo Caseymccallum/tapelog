@@ -3,19 +3,33 @@ package web
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
-	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
-//go:embed static
+//go:embed static/index.html static/app.js static/app.css
 var staticFS embed.FS
 
 func newMux(s *server) http.Handler {
 	mux := http.NewServeMux()
+	// At most two bounded snapshot scans per handler, with no unbounded queue.
+	scans := make(chan struct{}, 2)
+	limited := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case scans <- struct{}{}:
+				defer func() { <-scans }()
+				h(w, r)
+			default:
+				w.Header().Set("Retry-After", "1")
+				apiError(w, 429, fmt.Errorf("workbench is reading recordings; try again shortly"))
+			}
+		}
+	}
 
 	static := func(name, contentType string) http.HandlerFunc {
 		return secure(s.token, func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +71,7 @@ func newMux(s *server) http.Handler {
 			Verdict string `json:"verdict"`
 			Note    string `json:"note"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
 			http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
 			return
 		}
@@ -77,44 +91,54 @@ func newMux(s *server) http.Handler {
 			http.Error(w, `{"error":"GET only"}`, http.StatusMethodNotAllowed)
 			return
 		}
-		path := s.logPath
 		if s.dir != "" {
 			name := r.URL.Query().Get("file")
 			if name == "" {
 				writeJSON(w, map[string]any{"events": []any{}, "next": 0})
 				return
 			}
-			resolved, ok := safeJoin(s.dir, name)
+			_, ok := safeJoin(s.dir, name)
 			if !ok {
 				http.Error(w, `{"error":"invalid file"}`, http.StatusBadRequest)
 				return
 			}
-			path = resolved
 		}
-		events, next, max := readLog(path, queryInt(r, "after"))
-		// Verify the hash chain on every fetch (not just at page load):
-		// a tamper mid-session must surface live, in both single-session
-		// and directory mode, without a restart or a hard refresh.
-		resp := map[string]any{"events": events, "next": next, "max": max}
-		if res, err := session.VerifyFile(path); err == nil {
-			resp["chain_ok"] = res.OK()
-			resp["first_bad_seq"] = res.FirstBadSeq
-			resp["problem"] = res.Problem
-		}
-		writeJSON(w, resp)
-	}
-	sessions := func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, `{"error":"GET only"}`, http.StatusMethodNotAllowed)
+		rec, err := s.recording(r.URL.Query().Get("file"))
+		if err != nil {
+			apiError(w, 400, err)
 			return
 		}
-		writeJSON(w, map[string]any{"sessions": listSessions(s.dir)})
+		events := []json.RawMessage{}
+		after, next, max := queryInt(r, "after"), queryInt(r, "after"), 0
+		budget := 1 << 20
+		for _, e := range rec.Events {
+			if int(e.Seq) > max {
+				max = int(e.Seq)
+			}
+			if int(e.Seq) <= after || len(events) >= 100 {
+				continue
+			}
+			raw, _ := json.Marshal(e)
+			if len(raw) > budget {
+				break
+			}
+			budget -= len(raw)
+			events = append(events, raw)
+			next = int(e.Seq)
+		}
+		resp := map[string]any{"events": events, "next": next, "max": max, "chain_ok": rec.Info.ChainOK, "first_bad_seq": rec.Info.FirstBadSeq, "problem": rec.Info.Problem, "integrity": rec.Info.Integrity}
+		writeJSON(w, resp)
 	}
 
 	mux.HandleFunc("/api/pending", secure(s.token, pending))
 	mux.HandleFunc("/api/decide", secure(s.token, decide))
-	mux.HandleFunc("/api/log", secure(s.token, logAPI))
-	mux.HandleFunc("/api/sessions", secure(s.token, sessions))
+	mux.HandleFunc("/api/log", secure(s.token, limited(logAPI)))
+	mux.HandleFunc("/api/sessions", secure(s.token, limited(s.libraryAPI)))
+	mux.HandleFunc("/api/activity", secure(s.token, limited(s.activitiesAPI)))
+	mux.HandleFunc("/api/events", secure(s.token, limited(s.eventsAPI)))
+	mux.HandleFunc("/api/event", secure(s.token, limited(s.eventAPI)))
+	mux.HandleFunc("/api/compare", secure(s.token, limited(s.compareAPI)))
+	mux.HandleFunc("/api/test", secure(s.token, limited(s.testAPI)))
 	mux.HandleFunc("/pending", secure(s.token, pending))
 	mux.HandleFunc("/decide", secure(s.token, decide))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +164,7 @@ func parseVerdict(v string) (approval.Choice, bool) {
 // safeJoin resolves a client-supplied file name inside dir. The name must
 // be a plain *.jsonl base name — path-traversal defense.
 func safeJoin(dir, name string) (string, bool) {
-	if name != strings.TrimSpace(name) || name != filepath.Base(name) || !strings.HasSuffix(name, ".jsonl") {
+	if name == "" || strings.ContainsAny(name, "/\\:\x00") || name != strings.TrimSpace(name) || name != filepath.Base(name) || !strings.HasSuffix(name, ".jsonl") {
 		return "", false
 	}
 	return filepath.Join(dir, name), true

@@ -1,0 +1,393 @@
+package web
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/Caseymccallum/tapelog/internal/replay"
+	"github.com/Caseymccallum/tapelog/internal/scenario"
+	"github.com/Caseymccallum/tapelog/internal/session"
+	"gopkg.in/yaml.v3"
+)
+
+func apiError(w http.ResponseWriter, code int, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+}
+func getOnly(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		apiError(w, 405, fmt.Errorf("GET only"))
+		return false
+	}
+	return true
+}
+func pageBounds(r *http.Request, total int) (int, int) {
+	offset := queryInt(r, "offset")
+	limit := queryInt(r, "limit")
+	if limit == 0 || limit > 100 {
+		limit = 100
+	}
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return offset, end
+}
+
+func (s *server) libraryAPI(w http.ResponseWriter, r *http.Request) {
+	if !getOnly(w, r) {
+		return
+	}
+	items, capped, err := catalog(s)
+	if err != nil {
+		apiError(w, 400, err)
+		return
+	}
+	q := strings.ToLower(r.URL.Query().Get("q"))
+	status := r.URL.Query().Get("status")
+	filtered := make([]SessionInfo, 0, len(items))
+	for _, item := range items {
+		if q != "" && !strings.Contains(strings.ToLower(item.Name+" "+item.File+" "+item.SessionID+" "+item.Harness+" "+strings.Join(item.Servers, " ")), q) {
+			continue
+		}
+		if status == "denied" && item.Denies == 0 || status == "failed" && item.Failures == 0 || status == "incomplete" && item.Complete || status == "integrity" && item.Integrity == "verified" {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	switch r.URL.Query().Get("sort") {
+	case "activity":
+		sort.SliceStable(filtered, func(i, j int) bool { return filtered[i].Calls > filtered[j].Calls })
+	case "status":
+		sort.SliceStable(filtered, func(i, j int) bool {
+			return filtered[i].Denies+filtered[i].Failures > filtered[j].Denies+filtered[j].Failures
+		})
+	case "oldest":
+		sort.SliceStable(filtered, func(i, j int) bool { return recordedTimeBefore(filtered[i].FirstTS, filtered[j].FirstTS, false) })
+	}
+	start, end := pageBounds(r, len(filtered))
+	directory := s.dir
+	if directory == "" && s.logPath != "" {
+		directory = filepath.Dir(s.logPath)
+	}
+	if directory != "" {
+		if absolute, err := filepath.Abs(directory); err == nil {
+			directory = absolute
+		}
+	}
+	writeJSON(w, map[string]any{"sessions": filtered[start:end], "total": len(filtered), "catalog_total": len(items), "capped": capped, "directory": directory, "queue_enabled": s.queue != nil, "single_session": s.dir == "", "limit_bytes": maxRecordingBytes, "limit_events": maxRecordingEvents})
+}
+
+func (s *server) activitiesAPI(w http.ResponseWriter, r *http.Request) {
+	if !getOnly(w, r) {
+		return
+	}
+	rec, err := s.recording(r.URL.Query().Get("file"))
+	if err != nil {
+		apiError(w, 400, err)
+		return
+	}
+	q := strings.ToLower(r.URL.Query().Get("q"))
+	status := r.URL.Query().Get("status")
+	server := r.URL.Query().Get("server")
+	items := make([]*activity, 0)
+	for _, a := range rec.Activities {
+		if q != "" && !strings.Contains(strings.ToLower(a.Tool+" "+a.Rule+" "+a.Reason), q) {
+			continue
+		}
+		if status != "" && a.Status != status && a.Verdict != status && !(status == "denied" && a.Verdict == "deny") && !(status == "confirmation" && a.Verdict == "confirm") {
+			continue
+		}
+		if server != "" && a.Server != server {
+			continue
+		}
+		items = append(items, a)
+	}
+	start, end := pageBounds(r, len(items))
+	writeJSON(w, map[string]any{"session": rec.Info, "activities": items[start:end], "total": len(items), "offset": start})
+}
+
+type eventView struct {
+	Seq       uint64            `json:"seq"`
+	TS        string            `json:"ts"`
+	Type      session.EventType `json:"type"`
+	Raw       string            `json:"raw"`
+	Truncated bool              `json:"truncated"`
+}
+
+func viewEvent(e session.Event) eventView {
+	data, _ := json.MarshalIndent(e, "", "  ")
+	view := eventView{Seq: e.Seq, TS: e.TS, Type: e.Type, Raw: string(data)}
+	if len(data) > maxPreviewBytes {
+		view.Raw = strings.ToValidUTF8(string(data[:maxPreviewBytes]), "�") + "\n… preview limited to 32 KiB; inspect the original locally."
+		view.Truncated = true
+	}
+	return view
+}
+
+func (s *server) eventsAPI(w http.ResponseWriter, r *http.Request) {
+	if !getOnly(w, r) {
+		return
+	}
+	rec, err := s.recording(r.URL.Query().Get("file"))
+	if err != nil {
+		apiError(w, 400, err)
+		return
+	}
+	start, end := pageBounds(r, len(rec.Events))
+	views := []eventView{}
+	for _, e := range rec.Events[start:end] {
+		views = append(views, viewEvent(e))
+	}
+	writeJSON(w, map[string]any{"events": views, "total": len(rec.Events), "session": rec.Info})
+}
+
+func (s *server) eventAPI(w http.ResponseWriter, r *http.Request) {
+	if !getOnly(w, r) {
+		return
+	}
+	rec, err := s.recording(r.URL.Query().Get("file"))
+	if err != nil {
+		apiError(w, 400, err)
+		return
+	}
+	seq, _ := strconv.ParseUint(r.URL.Query().Get("seq"), 10, 64)
+	var a *activity
+	for _, item := range rec.Activities {
+		if item.Seq == seq {
+			a = item
+			break
+		}
+	}
+	wanted := map[uint64]bool{seq: true}
+	if a != nil {
+		wanted[a.ResultSeq] = true
+		for _, n := range a.DecisionSeqs {
+			wanted[n] = true
+		}
+	}
+	related := []eventView{}
+	preceding := []eventView{}
+	for _, e := range rec.Events {
+		if wanted[e.Seq] && len(related) < 20 {
+			related = append(related, viewEvent(e))
+		}
+		if e.Seq < seq {
+			preceding = append(preceding, viewEvent(e))
+			if len(preceding) > 3 {
+				preceding = preceding[1:]
+			}
+		}
+	}
+	if len(related) == 0 {
+		apiError(w, 404, fmt.Errorf("event not found in this snapshot"))
+		return
+	}
+	writeJSON(w, map[string]any{"activity": a, "events": related, "preceding": preceding, "session": rec.Info, "related_limited": len(wanted) > 20})
+}
+
+// Engines consume the exact in-memory snapshot that the UI inspected, never a
+// second path read or an untrusted blob reference. Legacy duplicate IDs are
+// refused rather than silently paired by the CLI loader's ID map.
+func workbenchTape(rec *recording) (*replay.Tape, error) {
+	if !rec.Info.ChainOK || !rec.Info.Complete || rec.Info.Calls == 0 {
+		return nil, fmt.Errorf("choose a non-empty, completed recording with a verified chain")
+	}
+	if rec.Info.Ambiguous {
+		return nil, fmt.Errorf("request relationships are ambiguous; use the event inspector instead")
+	}
+	if len(rec.Events) > 10000 {
+		return nil, fmt.Errorf("comparison and test creation are limited to 10,000 events; use the CLI for larger sessions")
+	}
+	tape, err := replay.LoadInline(bytes.NewReader(rec.Data))
+	if err != nil {
+		return nil, err
+	}
+	// The existing engine is ID-based. Refuse any parent link that would produce
+	// a different pairing; the activity timeline can still show that evidence.
+	bySeq := make(map[uint64]session.Event, len(rec.Events))
+	for _, e := range rec.Events {
+		bySeq[e.Seq] = e
+	}
+	for _, e := range rec.Events {
+		if e.Type != session.EventPolicyDecision && e.Type != session.EventToolResult {
+			continue
+		}
+		var p struct {
+			ID     json.RawMessage `json:"id"`
+			Parent *uint64         `json:"parent_seq"`
+		}
+		_ = json.Unmarshal(e.Payload, &p)
+		if p.Parent == nil {
+			continue
+		}
+		if call, ok := bySeq[*p.Parent]; ok {
+			var cp session.ToolCallPayload
+			_ = json.Unmarshal(call.Payload, &cp)
+			if idKey(cp.ID) != idKey(p.ID) {
+				return nil, fmt.Errorf("parent and request ID disagree; engine comparison would be ambiguous")
+			}
+		}
+	}
+	return tape, nil
+}
+
+func (s *server) compareAPI(w http.ResponseWriter, r *http.Request) {
+	if !getOnly(w, r) {
+		return
+	}
+	if s.dir == "" {
+		apiError(w, 400, fmt.Errorf("comparison needs directory mode"))
+		return
+	}
+	a, err := s.recording(r.URL.Query().Get("a"))
+	if err != nil {
+		apiError(w, 400, err)
+		return
+	}
+	b, err := s.recording(r.URL.Query().Get("b"))
+	if err != nil {
+		apiError(w, 400, err)
+		return
+	}
+	at, err := workbenchTape(a)
+	if err != nil {
+		apiError(w, 422, err)
+		return
+	}
+	bt, err := workbenchTape(b)
+	if err != nil {
+		apiError(w, 422, err)
+		return
+	}
+	if len(at.Interactions) == 0 || len(bt.Interactions) == 0 {
+		apiError(w, 422, fmt.Errorf("this comparison needs answered tool calls on both sides; unanswered and denied calls are not compared by the existing diff engine"))
+		return
+	}
+	tools := map[string]bool{}
+	for _, it := range at.Interactions {
+		tools[it.Tool] = true
+	}
+	shared := false
+	for _, it := range bt.Interactions {
+		if tools[it.Tool] {
+			shared = true
+		}
+	}
+	if !shared {
+		apiError(w, 422, fmt.Errorf("no shared answered tool names; choose recordings from a comparable workflow"))
+		return
+	}
+	writeJSON(w, map[string]any{"a": a.Info, "b": b.Info, "diff": replay.Diff(at, bt), "scope": "Answered tool calls and their recorded results, using the existing diff engine. Timestamps and request IDs are ignored. Denied/unanswered calls and policy verdicts are not aligned by this comparison. Counts below summarize each whole recording."})
+}
+
+func buildScenario(rec *recording, seq uint64, kind, fixture string) (*scenario.Scenario, error) {
+	if len(fixture) == 0 || len(fixture) > 1024 || strings.ContainsAny(fixture, "\x00\r\n") {
+		return nil, fmt.Errorf("enter the fixture path relative to where you will save the test")
+	}
+	var selected *activity
+	for _, a := range rec.Activities {
+		if a.Seq == seq {
+			selected = a
+			break
+		}
+	}
+	if selected == nil {
+		return nil, fmt.Errorf("select a recorded tool call")
+	}
+	if strings.ContainsAny(selected.Tool, "*?") {
+		return nil, fmt.Errorf("tool name contains assertion glob characters; build this assertion manually")
+	}
+	check := scenario.Check{}
+	switch kind {
+	case "denied":
+		if selected.Verdict != "deny" {
+			return nil, fmt.Errorf("this call has no recorded deny verdict")
+		}
+		check.Denied = selected.Tool
+	case "attempted":
+		check.Attempted = &scenario.AttemptSpec{Tool: selected.Tool}
+	case "answered":
+		if selected.ResultSeq == 0 {
+			return nil, fmt.Errorf("this call has no recorded result")
+		}
+		check.Called = &scenario.CalledSpec{Tool: selected.Tool}
+	case "never_answered":
+		for _, a := range rec.Activities {
+			if a.Tool == selected.Tool && a.ResultSeq != 0 {
+				return nil, fmt.Errorf("this tool has recorded results in this session")
+			}
+		}
+		check.NeverCalled = selected.Tool
+	default:
+		return nil, fmt.Errorf("choose denied, attempted, answered or never_answered")
+	}
+	return &scenario.Scenario{Version: 1, Name: "Recorded boundary regression", Fixture: fixture, Assert: []scenario.Check{check}}, nil
+}
+
+func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		apiError(w, 405, fmt.Errorf("POST only"))
+		return
+	}
+	var req struct {
+		File     string `json:"file"`
+		Revision string `json:"revision"`
+		Seq      uint64 `json:"seq"`
+		Kind     string `json:"kind"`
+		Fixture  string `json:"fixture"`
+		Run      bool   `json:"run"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		apiError(w, 400, fmt.Errorf("invalid test request (maximum 4 KiB)"))
+		return
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		apiError(w, 400, fmt.Errorf("request must contain one JSON object"))
+		return
+	}
+	rec, err := s.recording(req.File)
+	if err != nil {
+		apiError(w, 400, err)
+		return
+	}
+	if req.Revision != rec.Info.Revision {
+		apiError(w, 409, fmt.Errorf("recording changed; refresh and review this call before generating a test"))
+		return
+	}
+	tape, err := workbenchTape(rec)
+	if err != nil {
+		apiError(w, 422, err)
+		return
+	}
+	sc, err := buildScenario(rec, req.Seq, req.Kind, req.Fixture)
+	if err != nil {
+		apiError(w, 422, err)
+		return
+	}
+	data, err := yaml.Marshal(sc)
+	if err != nil {
+		apiError(w, 500, err)
+		return
+	}
+	resp := map[string]any{"yaml": string(data), "scope": "Tool-level assertion over this cassette, not a selected request ID. never_called means no recorded result, not proof of non-execution. No arguments, results or fixture contents are copied. No tool is executed and no server file is written."}
+	if req.Run {
+		fails := scenario.Run(sc, tape, nil)
+		resp["passed"] = len(fails) == 0
+		resp["failures"] = fails
+	}
+	writeJSON(w, resp)
+}

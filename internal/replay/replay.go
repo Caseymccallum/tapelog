@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -88,8 +89,24 @@ func Load(path string) (*Tape, error) {
 	defer f.Close()
 
 	blobs := session.NewBlobStore(session.DefaultBlobDir(path))
+	return loadReader(f, blobs.Resolve)
+}
+
+// LoadInline reads a cassette without opening any external files. Workbench
+// callers supply an already bounded, verified snapshot. Blob-backed recordings
+// remain available in the CLI; this surface never follows untrusted blob paths.
+func LoadInline(r io.Reader) (*Tape, error) {
+	return loadReader(r, func(raw json.RawMessage) (json.RawMessage, error) {
+		if session.IsBlobRef(raw) {
+			return nil, fmt.Errorf("blob-backed payload: use the CLI with its blob store")
+		}
+		return raw, nil
+	})
+}
+
+func loadReader(r io.Reader, resolveRaw func(json.RawMessage) (json.RawMessage, error)) (*Tape, error) {
 	resolve := func(raw json.RawMessage, what string, lineNo int) (json.RawMessage, error) {
-		out, err := blobs.Resolve(raw)
+		out, err := resolveRaw(raw)
 		if err != nil {
 			return nil, fmt.Errorf("line %d: %s: %w", lineNo, what, err)
 		}
@@ -104,7 +121,7 @@ func Load(path string) (*Tape, error) {
 	var calls []*Interaction
 	byID := map[string]*pending{}
 
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	lineNo := 0
 	for sc.Scan() {
