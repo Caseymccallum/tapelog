@@ -418,14 +418,15 @@ verified milestone work.
 | Local `main` before | `f79d48a` |
 | Verified M9 | `befb356` |
 | Integration branch | `integration/m9-complete-main` = `befb356` (clean worktree) |
-| Push | `f79d48a..befb356  main -> main`, exit 0 |
-| `origin/main` after re-fetch | `befb356cff234631e996f8f4ff223a6fc96c1e28` |
+| First push | `f79d48a..befb356  main -> main`, exit 0 |
+| `origin/main` after first push + re-fetch | `befb356cff234631e996f8f4ff223a6fc96c1e28` |
 | Milestones reachable from `origin/main` | all 11 (verified individually after the push) |
-| This document | committed on `main` immediately after `befb356` |
+| Final `origin/main` | the commit that adds this document, directly on top of `befb356`; confirmed with `git ls-remote` after the push |
 | Working state | clean; local `main` == `origin/main` |
 
 Re-checked immediately before pushing (`git ls-remote` still returned `f79d48a`),
-and again afterwards (returned `befb356`).
+and again afterwards (returned `befb356`, then the document commit).
+
 
 ---
 
