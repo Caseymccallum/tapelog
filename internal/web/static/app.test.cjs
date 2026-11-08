@@ -280,5 +280,75 @@ test('the overview renders every section from the API without inventing numbers'
   assert.match(nodes.get('behaviour-definitions').textContent,/One tools\/call event\./);
   assert.match(nodes.get('behaviour-notes').textContent,/5 calls were never answered/);
 });
+/* ------------------- M8.1: regression lab controls ------------------- */
+// A case result shaped exactly like /api/lab/run returns it.
+function labRunBody(status,checks,extra){
+  return Object.assign({result:{version:1,title:"Lookup answered",evidence:"04-denials.jsonl",status,checks,note:"Observed MCP boundary only."},comparison_status:"not_requested",command:"tapelog lab run --dir . --case lookup.json"},extra||{});
+}
+test('an inconclusive lab result is never rendered as a success',()=>{
+  const {context,nodes}=app();
+  context.body=labRunBody("INCONCLUSIVE",[{kind:"result_never_contains",status:"INCONCLUSIVE",detail:"a call has no recorded result",code:"no_results"}]);
+  vm.runInContext('renderCaseResult(body)',context);
+  const text=nodes.get('lab-run').textContent;
+  assert.match(text,/INCONCLUSIVE/);
+  assert.match(text,/This is not a pass/);
+  assert.match(text,/No recorded result to judge/);
+  // The word "pass" may only appear inside the warning, never as an outcome.
+  assert.match(nodes.get('lab-run-target').textContent,/Lookup answered/);
+});
+test('a failed lab result names the outcome and offers the evidence',()=>{
+  const {context,nodes}=app();
+  context.body=labRunBody("FAIL",[{kind:"no_attempts",status:"FAIL",detail:"matched 6 attempt(s), want at most 0"}]);
+  vm.runInContext('renderCaseResult(body)',context);
+  const text=nodes.get('lab-run').textContent;
+  assert.match(text,/contradicts the expectation/);
+  assert.match(text,/matched 6 attempt\(s\)/);
+  assert.match(text,/Open the evidence/);
+  assert.match(text,/Reproduce it: tapelog lab run/);
+});
+test('every expectation kind is explained in words',()=>{
+  const {context}=app();
+  const read=x=>vm.runInContext('labExpectationText(x)',Object.assign(context,{x}));
+  assert.match(read({kind:"denied",tool:"git__push"}),/has a recorded deny decision/);
+  assert.match(read({kind:"result_never_contains",tool:"db__query",text:"does not exist"}),/No recorded result of/);
+  assert.match(read({kind:"no_attempts",tool:"jobs__status"}),/never reached the boundary/);
+  assert.match(read({kind:"sequence",sequence:["a","b"]}),/“a” → “b”/);
+  assert.match(read({kind:"attempt_ceiling",tool:"t",maximum:3}),/at most 3/);
+  assert.match(read({kind:"no_deny_bypassed"}),/No denied call produced a recorded result/);
+  assert.equal(read({kind:"unknown_kind"}),"unknown_kind");
+});
+test('a suite result separates unusable definitions from inconclusive evidence',()=>{
+  const {context,nodes}=app();
+  context.body={file:"suite.json",command:"tapelog lab suite --dir . --suite suite.json",suite:{version:1,title:"Nightly",status:"INCONCLUSIVE",pass:1,fail:0,inconclusive:2,invalid:1,cases:[
+    {version:1,title:"Good",evidence:"a.jsonl",status:"PASS",checks:[{kind:"answered",status:"PASS",detail:"Expectation satisfied by eligible recorded evidence."}]},
+    {version:1,title:"Gone",evidence:"",status:"INCONCLUSIVE",checks:[{kind:"case",status:"INCONCLUSIVE",detail:"the case file cannot be opened",code:"invalid_case"}]}
+  ]}};
+  vm.runInContext('renderSuiteResult(body)',context);
+  const text=nodes.get('lab-run').textContent;
+  assert.match(text,/Unusable case definitions/);
+  assert.match(text,/The case definition could not be used/);
+  assert.match(text,/not a passing suite/);
+});
+test('a comparison is shown as observation and never as a case outcome',()=>{
+  const {context,nodes}=app();
+  context.parent=new Node();
+  context.delta={new_failures:[{label:"x"}],resolved_failures:[],new_denials:[{tool:"git__push"}],resolved_denials:[],new_repeats:[],resolved_repeats:[],caveats:["Different tasks are not a regression."]};
+  vm.runInContext('renderComparison(parent,delta,"complete")',context);
+  const text=context.parent.textContent;
+  assert.match(text,/New failure groups/);
+  assert.match(text,/Different tasks are not a regression/);
+  assert.match(text,/never changes the case outcome/);
+});
+test('hostile recorded text in the lab is literal and never markup',()=>{
+  const {context,nodes,tags}=app();
+  const evil='<img src=x onerror="globalThis.pwned=true">';
+  context.body=labRunBody("FAIL",[{kind:"answered",status:"FAIL",detail:evil}],{});
+  context.body.result.title=evil;
+  vm.runInContext('renderCaseResult(body)',context);
+  assert.match(nodes.get('lab-run').textContent,/<img src=x/);
+  assert.equal(tags.includes('img'),false);
+  assert.equal(context.pwned,undefined);
+});
+
 
 

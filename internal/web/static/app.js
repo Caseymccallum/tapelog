@@ -160,6 +160,8 @@ async function loadLibrary() {
       }
     } else if(location.hash.startsWith("#behaviour")) {
       showBehaviour(false);
+    } else if(location.hash.startsWith("#lab")) {
+      showLab(false);
     } else if(location.hash.startsWith("#studio")) {
       const parts=location.hash.split("=");
       openStudio(parts.length>1?decodeURIComponent(parts[1]):"");
@@ -184,9 +186,10 @@ function hashTarget() {
   };
 }
 function showView(which) {
-  for(const name of ["library","behaviour","session","studio","approvals"])$(name+"-view").hidden=name!==which;
+  for(const name of ["library","behaviour","lab","session","studio","approvals"])$(name+"-view").hidden=name!==which;
   $("library-nav").classList.toggle("active",which==="library"||which==="session");
   $("behaviour-nav").classList.toggle("active",which==="behaviour");
+  $("lab-nav").classList.toggle("active",which==="lab");
   $("studio-nav").classList.toggle("active",which==="studio");
   $("approvals-nav").classList.toggle("active",which==="approvals");
 }
@@ -444,6 +447,9 @@ async function showRawEvent(seq) {
 function setTab(name) {
   currentTab=name;
   for(const tab of document.querySelectorAll(".tab")) {
+    // Only session-workspace tabs own a *-panel id. The regression lab uses its
+    // own data-labtab tabs and must not be swept up here.
+    if(!tab.dataset.tab)continue;
     const selected=tab.dataset.tab===name;
     tab.classList.toggle("selected",selected);
     tab.setAttribute("aria-selected",String(selected));
@@ -633,6 +639,60 @@ async function previewLab() {
     out.append(button("Return to selected evidence",()=>{setTab("activity");selectCall(seq);}));
   }catch(e){if(request===testRequest&&file===currentFile)notice($("lab-result"),e.message,"warning");}
 }
+// saveLabCaseToLibrary stores the previewed case beside the recordings, where the
+// library and the CLI both find it. It never overwrites: the server refuses an
+// existing file unless the caller proves it read the current revision.
+async function saveLabCaseToLibrary() {
+  if(!labPreview)return;
+  const out=$("lab-result");
+  let doc;
+  try {
+    doc=JSON.parse(labPreview);
+  } catch(e) {
+    notice(out,"The case preview is not valid JSON. Preview it again.","warning");
+    return;
+  }
+  const post=async replaces=>api("/api/lab/case", {
+    method:"POST",headers: {
+      "Content-Type":"application/json"
+    }
+    ,body:JSON.stringify( {
+      file:"",case:doc,replaces
+    }
+    )
+  }
+  );
+  try {
+    const data=await post("");
+    notice(out,"Saved as "+data.file+" beside your recordings. The Regression lab and "+data.command+" both use it now.","");
+  } catch(e) {
+    if(!/already exists/.test(e.message)) {
+      notice(out,e.message,"warning");
+      return;
+    }
+    notice(out,e.message,"warning");
+    const replace=button("Replace that case",async()=> {
+      try {
+        const list=await api("/api/lab");
+        const existing=(list.cases||[]).find(c=>(c.title||"")===doc.title);
+        if(!existing)throw new Error("That file is no longer in the library. Preview the case again.");
+        const data=await post(existing.revision);
+        notice(out,"Replaced "+data.file+" after reading the current file.","");
+      } catch(err) {
+        notice(out,err.message,"warning");
+      }
+    }
+    ,"primary");
+    const rename=button("Use a different title",()=> {
+      notice(out,"Change the case title and preview again to save it under a different name.","");
+      $("lab-title-input").focus();
+    }
+    );
+    const row=el("div","actions");
+    row.append(replace,rename);
+    out.append(row);
+  }
+}
 async function saveLabCase() {
  if(!labPreview)return;const text=labPreview;
  try {if(window.showSaveFilePicker){const handle=await window.showSaveFilePicker({suggestedName:"tapelog-case.json",types:[{description:"Tapelog regression case",accept:{"application/json":[".json"]}}]});const existing=await handle.getFile();if(existing.size>0)throw new Error("That file already contains data. Choose a new filename to preserve it.");const stream=await handle.createWritable();await stream.write(text);await stream.close();notice($("lab-result"),"Case saved. Recordings were not modified.");} else {const url=URL.createObjectURL(new Blob([text],{type:"application/json"}));const a=el("a");a.href=url;a.download="tapelog-case-"+Date.now()+".json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notice($("lab-result"),"Case downloaded. Put the case alongside the referenced recordings before running it.");}}catch(e){if(e.name!=="AbortError")notice($("lab-result"),e.message,"warning");}
@@ -713,6 +773,7 @@ $("close-help").onclick=()=>$("help-dialog").close();
 $("refresh").onclick=()=> {
   clearError();
   if(!$("behaviour-view").hidden)loadBehaviour();
+  else if(!$("lab-view").hidden)loadLab();
   else if(!$("session-view").hidden) {
     if(currentTab==="events")loadEvents();
     else if(currentTab==="repeats")loadRepeats();
@@ -798,6 +859,7 @@ window.addEventListener("hashchange",()=> {
     const target=hashTarget();
     openSession(target?target.file:decodeURIComponent(location.hash.slice(9)),false);
   } else if(location.hash.startsWith("#behaviour"))showBehaviour(false);
+  else if(location.hash.startsWith("#lab"))showLab(false);
   else if(location.hash.startsWith("#studio")) {
     const parts=location.hash.split("=");
     openStudio(parts.length>1?decodeURIComponent(parts[1]):"");
@@ -2010,6 +2072,553 @@ $("behaviour-to").onchange=()=> {
   loadBehaviour();
 };
 $("run-delta").onclick=runDelta;
+$("lab-save").onclick=saveLabCaseToLibrary;
+$("lab-nav").onclick=()=>showLab();
+$("lab-search").oninput=debounce(()=>{
+  if(labIndex)renderLab(labIndex);
+});
+$("lab-reload").onclick=()=>loadLab();
+for(const tab of document.querySelectorAll("[data-labtab]")) {
+  tab.onclick=()=>setLabTab(tab.dataset.labtab);
+  tab.onkeydown=e=>{
+    if(e.key!=="ArrowRight"&&e.key!=="ArrowLeft")return;
+    const order=["cases","suites","help"];
+    const i=order.indexOf(tab.dataset.labtab);
+    const next=order[(i+(e.key==="ArrowRight"?1:order.length-1))%order.length];
+    setLabTab(next);
+    $(`lab-tab-${next}`).focus();
+  };
+}
+
+/* ------------------------------------------------------------------
+   Regression lab (M8.1).
+
+   The browser never decides an outcome. Every PASS, FAIL and INCONCLUSIVE
+   below comes from /api/lab*, which runs internal/lab — the same code the
+   `tapelog lab` CLI uses. The interface exists to make cases findable, runnable
+   and explainable.
+   ------------------------------------------------------------------ */
+let labIndex=null,labRequest=0,labRunRequest=0,labCaseFile="",labSuiteFile="",labResults={},labTab="cases",pendingLab=null;
+const LAB_STATUS_HINT= {
+  PASS:"The expectation was evaluated and held.",
+  FAIL:"Eligible evidence contradicts the expectation.",
+  INCONCLUSIVE:"The evidence could not decide it. This is not a pass."
+};
+const LAB_CODE_LABELS= {
+  no_calls:"No matching call reached the boundary",
+  no_results:"No recorded result to judge",
+  redacted_content:"Redacted content hides the answer",
+  missing_decision:"A call has no policy decision",
+  no_denials:"No deny decision to test the invariant",
+  short_sequence:"Not enough recorded results for the sequence",
+  incomplete_recording:"The recording has no complete start and end",
+  damaged_recording:"The recording is damaged or ambiguous",
+  revision_changed:"The recording changed since the case was saved",
+  evidence_unreadable:"The recording could not be read",
+  invalid_case:"The case definition could not be used"
+};
+function labStatusClass(status) {
+  return status==="PASS"?"allow":status==="FAIL"?"failed":status==="INCONCLUSIVE"?"confirmation":"";
+}
+function labStatusPill(status) {
+  const n=el("span","badge "+labStatusClass(status),status);
+  n.title=LAB_STATUS_HINT[status]||"";
+  return n;
+}
+function labCodeLabel(code) {
+  return LAB_CODE_LABELS[code]||code;
+}
+function showLab(updateHash=true) {
+  ++labRequest;
+  showView("lab");
+  $("breadcrumb").textContent="Workspace / Regression lab";
+  clearError();
+  if(updateHash)history.replaceState(null,"","#lab");
+  pendingLab=labLink();
+  loadLab();
+}
+// labLink reads #lab&case=<file> or #lab&suite=<file>, so a specific run can be
+// linked to from a review, a ticket or a CI log.
+function labLink() {
+  if(!location.hash.startsWith("#lab"))return null;
+  const cut=location.hash.indexOf("&");
+  if(cut<0)return null;
+  const query=new URLSearchParams(location.hash.slice(cut+1));
+  const c=query.get("case"),s=query.get("suite");
+  if(!c&&!s)return null;
+  return {
+    caseFile:c||"",suiteFile:s||""
+  };
+}
+function setLabTab(name) {
+  labTab=name;
+  for(const tab of document.querySelectorAll("[data-labtab]")) {
+    const on=tab.dataset.labtab===name;
+    tab.classList.toggle("selected",on);
+    tab.setAttribute("aria-selected",String(on));
+    tab.tabIndex=on?0:-1;
+    $(`lab-${tab.dataset.labtab}-panel`).hidden=!on;
+  }
+}
+async function loadLab() {
+  const request=++labRequest;
+  try {
+    const data=await api("/api/lab");
+    if(request!==labRequest)return;
+    labIndex=data;
+    renderLab(data);
+  } catch(e) {
+    if(request!==labRequest)return;
+    const notes=$("lab-notes");
+    notes.replaceChildren();
+    notice(notes,e.message,"warning");
+    $("lab-case-list").replaceChildren();
+    $("lab-suite-list").replaceChildren();
+  }
+}
+function renderLab(index) {
+  const notes=$("lab-notes");
+  notes.replaceChildren();
+  for(const note of index.notes||[])notes.append(el("p","behaviour-note",note));
+  const invalid=(index.cases||[]).filter(c=>c.invalid).length;
+  const missing=(index.suites||[]).reduce((n,s)=>n+(s.missing||[]).length,0);
+  stats($("lab-stats"),[[(index.cases||[]).length,"Saved cases"],[(index.suites||[]).length,"Suites"],[invalid,"Cases needing a fix"],[missing,"Suite entries missing"]]);
+  renderLabCases(index);
+  renderLabSuites(index);
+  renderLabHelp(index);
+  $("lab-case-count").textContent=(index.cases||[]).length+" case(s)";
+  $("lab-suite-count").textContent=(index.suites||[]).length+" suite(s)";
+  if(!labCaseFile)empty($("lab-case-detail"),"Open a case","Select a saved case to read what it asserts, run it against its evidence, and jump to the recorded calls behind it.");
+  if(!labSuiteFile&&!suiteDraft)empty($("lab-suite-detail"),"Open a suite","A suite runs several cases in order and reports one overall result.");
+  if(pendingLab) {
+    const wanted=pendingLab;
+    pendingLab=null;
+    const has=(list,file)=>list.some(x=>x.file===file);
+    if(wanted.suiteFile&&has(index.suites||[],wanted.suiteFile)) {
+      setLabTab("suites");
+      openLabSuite(wanted.suiteFile);
+      runLabSuite(wanted.suiteFile);
+    } else if(wanted.caseFile&&has(index.cases||[],wanted.caseFile)) {
+      setLabTab("cases");
+      openLabCase(wanted.caseFile);
+      runLabCase(wanted.caseFile);
+    } else {
+      notice(notes,"That link names a case or suite that is not in this directory any more.","warning");
+    }
+  }
+}
+function labMatches(text) {
+  const q=$("lab-search").value.trim().toLowerCase();
+  if(!q)return true;
+  return text.toLowerCase().includes(q);
+}
+// labExpectationText restates one expectation in words, so a reader never has to
+// interpret the JSON to know what a case asserts.
+function labExpectationText(x) {
+  const tool=x.tool?"“"+x.tool+"”":"this boundary";
+  switch(x.kind) {
+    case "answered":return tool+" was answered with a recorded result.";
+    case "denied":return tool+" has a recorded deny decision.";
+    case "attempted":return tool+" reached the boundary at least once.";
+    case "no_attempts":return tool+" never reached the boundary.";
+    case "attempt_ceiling":return tool+" reached the boundary at most "+(x.maximum??0)+" time(s).";
+    case "result_contains":return "A recorded result of "+tool+" contains “"+x.text+"”.";
+    case "result_never_contains":return "No recorded result of "+tool+" contains “"+x.text+"”.";
+    case "sequence":return "Recorded results include the sequence "+(x.sequence||[]).map(t=>"“"+t+"”").join(" → ")+".";
+    case "no_deny_bypassed":return "No denied call produced a recorded result.";
+    default:return x.kind;
+  }
+}
+async function openLabCase(file) {
+  labCaseFile=file;
+  renderLabCases(labIndex||{cases:[]});
+  const detail=$("lab-case-detail");
+  detail.replaceChildren(el("p","muted","Opening…"));
+  try {
+    const data=await api("/api/lab/case?"+params( {file}));
+    if(labCaseFile!==file)return;
+    renderLabCaseDetail(data);
+  } catch(e) {
+    if(labCaseFile!==file)return;
+    detail.replaceChildren();
+    notice(detail,e.message,"warning");
+  }
+}
+function renderLabCaseDetail(data) {
+  const detail=$("lab-case-detail");
+  const c=data.case;
+  detail.replaceChildren();
+  detail.append(el("div","eyebrow","SAVED CASE"),el("h2","",c.title||c.file),el("p","mono muted",c.file));
+  if(c.description)detail.append(el("p","",c.description));
+  const evidence=el("p","");
+  evidence.append(el("span","muted","Evidence: "),el("code","",c.evidence||"none named"));
+  if(!data.evidence.present)evidence.append(el("span","badge failed","missing"));
+  else if(data.evidence.matches_saved===false)evidence.append(el("span","badge confirmation","changed since saved"));
+  detail.append(evidence);
+  if(c.reference)detail.append(el("p","muted","Reference recording: "+c.reference));
+  const list=el("ul","lab-expectations");
+  for(const x of c.expectations||[])list.append(el("li","",labExpectationText(x)));
+  detail.append(el("h3","","What this case asserts"),list);
+  if(data.invalid)notice(detail,data.invalid,"warning");
+  const actions=el("div","actions");
+  actions.append(button("Run this case →",()=>runLabCase(c.file),"primary"));
+  if(data.evidence.present)actions.append(button("Open the evidence →",()=>openBehaviourCall(c.evidence,0,0)));
+  actions.append(button("Copy CLI command",()=>labCopy("tapelog lab run --dir . --case "+c.file)));
+  detail.append(actions);
+  const raw=el("details");
+  raw.append(el("summary","","Case definition (JSON)"),el("pre","lab-json",data.json));
+  detail.append(raw);
+}
+async function runLabCase(file,candidate) {
+  const request=++labRunRequest;
+  $("lab-run-target").textContent="Running "+file+"…";
+  const out=$("lab-run");
+  out.replaceChildren(el("p","muted","Running the offline runner. No tool is executed."));
+  try {
+    const data=await api("/api/lab/run", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify( {
+        file,candidate:candidate||""
+      }
+      )
+    }
+    );
+    if(request!==labRunRequest)return;
+    labResults["case:"+file]=data.result;
+    renderCaseResult(data);
+    renderLabCases(labIndex||{cases:[]});
+  } catch(e) {
+    if(request!==labRunRequest)return;
+    $("lab-run-target").textContent="The run did not start.";
+    out.replaceChildren();
+    notice(out,e.message,"warning");
+  }
+}
+function renderCaseResult(data) {
+  const out=$("lab-run"),r=data.result;
+  out.replaceChildren();
+  $("lab-run-target").textContent=r.title+" · "+r.evidence;
+  const head=el("div","lab-result-head");
+  head.append(labStatusPill(r.status),el("strong",""," "+LAB_STATUS_HINT[r.status]||""));
+  out.append(head);
+  const table=el("table","data-table");
+  const thead=el("thead"),tbody=el("tbody"),hr=el("tr");
+  for(const h of ["Expectation","Outcome","Why"])hr.append(el("th","",h));
+  thead.append(hr);table.append(thead);
+  for(const c of r.checks||[]) {
+    const tr=el("tr");
+    const why=el("td");
+    why.append(el("span","",c.detail));
+    if(c.code)why.append(el("span","muted"," ("+labCodeLabel(c.code)+")"));
+    tr.append(el("td","mono",c.kind),el("td","",c.status),why);
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  out.append(table);
+  if(r.status==="INCONCLUSIVE")notice(out,"This is not a pass. The recorded evidence could not decide the expectation, so the case proves nothing yet.","warning");
+  if(r.status==="FAIL")notice(out,"The recorded evidence contradicts the expectation. Open the evidence to see the call that did it.","error");
+  const actions=el("div","actions");
+  if(r.evidence)actions.append(button("Open the evidence →",()=>openBehaviourCall(r.evidence,0,0)));
+  actions.append(button("Copy CLI command",()=>labCopy(data.command||"")));
+  out.append(actions);
+  if(data.comparison_status&&data.comparison_status!=="not_requested")renderComparison(out,data.comparison,data.comparison_status);
+  out.append(el("p","muted",r.note));
+  if(data.command)out.append(el("p","muted mono","Reproduce it: "+data.command));
+}
+
+function renderLabCases(index) {
+  const list=$("lab-case-list");
+  list.replaceChildren();
+  const cases=(index.cases||[]).filter(c=>labMatches([c.file,c.title,c.description,c.evidence,(c.expectations||[]).map(e=>e.kind+" "+(e.tool||"")).join(" ")].join(" ")));
+  if(!cases.length) {
+    empty(list,(index.cases||[]).length?"No case matches that search":"No saved cases yet","Open a recording, select the call you care about, and save a case from the session's Make a test tab. Cases live beside your recordings as plain JSON you can review and commit.");
+    return;
+  }
+  for(const c of cases) {
+    const row=button("",()=>openLabCase(c.file),"lab-row"+(labCaseFile===c.file?" selected":""));
+    const head=el("div","lab-row-head");
+    head.append(el("strong","",c.title||c.file));
+    const last=labResults["case:"+c.file];
+    if(last)head.append(labStatusPill(last.status));
+    row.append(head);
+    if(c.description)row.append(el("p","muted",c.description));
+    const meta=el("div","lab-row-meta");
+    meta.append(el("span","mono",c.evidence||"no evidence named"));
+    if(!c.evidence_present)meta.append(el("span","badge failed","evidence missing"));
+    if(c.invalid)meta.append(el("span","badge failed","needs a fix"));
+    const kinds=(c.expectations||[]).map(e=>e.kind).join(", ");
+    if(kinds)meta.append(el("span","muted",kinds));
+    row.append(meta);
+    if(c.invalid)row.append(el("p","text-warn",c.invalid));
+    list.append(row);
+  }
+}
+// --- comparison --------------------------------------------------------
+// Differences are shown, never scored: a new failure group in the candidate is a
+// prompt to look, not a verdict on the case.
+function renderComparison(parent,comparison,status) {
+  const box=el("div","lab-comparison");
+  box.append(el("h4","","Reference comparison · "+status));
+  if(!comparison) {
+    box.append(el("p","muted","The comparison could not be produced for these recordings."));
+    parent.append(box);
+    return;
+  }
+  const rows=[
+    ["New failure groups",(comparison.new_failures||[]).length],
+    ["Failure groups no longer present",(comparison.resolved_failures||[]).length],
+    ["New denial rules",(comparison.new_denials||[]).length],
+    ["Denial rules no longer present",(comparison.resolved_denials||[]).length],
+    ["New repeat patterns",(comparison.new_repeats||[]).length],
+    ["Repeat patterns no longer present",(comparison.resolved_repeats||[]).length]
+  ];
+  const table=el("table","data-table"),tbody=el("tbody");
+  for(const [label,count] of rows) {
+    const tr=el("tr");
+    tr.append(el("td","",label),el("td","num",count));
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  box.append(table);
+  for(const caveat of comparison.caveats||[])box.append(el("p","muted",caveat));
+  box.append(el("p","muted","A difference is an observation. It never changes the case outcome."));
+  parent.append(box);
+}
+
+// --- suites ------------------------------------------------------------
+let suiteDraft=null;
+function renderLabSuites(index) {
+  const list=$("lab-suite-list");
+  list.replaceChildren();
+  const actions=el("div","actions");
+  actions.append(button("New suite +",()=>newSuiteDraft(),"secondary"));
+  list.append(actions);
+  const suites=(index.suites||[]).filter(s=>labMatches([s.file,s.title,(s.cases||[]).join(" ")].join(" ")));
+  if(!suites.length) {
+    empty(list,(index.suites||[]).length?"No suite matches that search":"No suites yet","A suite runs several cases in order and reports one overall result. Create one, add the cases you trust, and run it after a change.");
+    return;
+  }
+  for(const s of suites) {
+    const row=button("",()=>openLabSuite(s.file),"lab-row"+(labSuiteFile===s.file?" selected":""));
+    const head=el("div","lab-row-head");
+    head.append(el("strong","",s.title||s.file));
+    const last=labResults["suite:"+s.file];
+    if(last)head.append(labStatusPill(last.status));
+    row.append(head);
+    const meta=el("div","lab-row-meta");
+    meta.append(el("span","muted",(s.cases||[]).length+" case(s)"),el("span","mono",s.file));
+    if((s.missing||[]).length)meta.append(el("span","badge failed",(s.missing||[]).length+" missing"));
+    if(s.invalid)meta.append(el("span","badge failed","needs a fix"));
+    row.append(meta);
+    list.append(row);
+  }
+}
+function newSuiteDraft() {
+  suiteDraft= {file:"",title:"",cases:[],revision:"",isNew:true,missing:[]};
+  labSuiteFile="";
+  setLabTab("suites");
+  if(labIndex)renderLabSuites(labIndex);
+  renderSuiteEditor();
+}
+function openLabSuite(file) {
+  labSuiteFile=file;
+  if(labIndex)renderLabSuites(labIndex);
+  const entry=((labIndex&&labIndex.suites)||[]).find(s=>s.file===file);
+  if(!entry) {
+    const detail=$("lab-suite-detail");
+    detail.replaceChildren();
+    notice(detail,"This suite is no longer in the library. Reload it.","warning");
+    return;
+  }
+  suiteDraft= {file:entry.file,title:entry.title,cases:(entry.cases||[]).slice(),revision:entry.revision,isNew:false,missing:entry.missing||[],invalid:entry.invalid||""};
+  renderSuiteEditor();
+}
+function renderSuiteEditor() {
+  const detail=$("lab-suite-detail");
+  const draft=suiteDraft;
+  detail.replaceChildren();
+  if(!draft) {
+    empty(detail,"Choose a suite","Open a suite to see its cases, or create a new one.");
+    return;
+  }
+  detail.append(el("div","eyebrow",draft.isNew?"NEW SUITE":"SAVED SUITE"));
+  const title=el("input","");
+  title.type="text";
+  title.value=draft.title;
+  title.maxLength=200;
+  title.placeholder="e.g. Nightly boundary checks";
+  title.setAttribute("aria-label","Suite title");
+  title.oninput=()=> {
+    draft.title=title.value;
+  };
+  detail.append(el("label","","Suite title"),title);
+  detail.append(el("h3","","Cases in this suite ("+draft.cases.length+")"));
+  const list=el("ul","lab-expectations");
+  if(!draft.cases.length)list.append(el("li","muted","No cases yet. Add at least one."));
+  for(const name of draft.cases) {
+    const li=el("li");
+    const entry=((labIndex&&labIndex.cases)||[]).find(c=>c.file===name);
+    li.append(el("span","mono",name));
+    li.append(el("span","muted","· "+(entry?(entry.title||entry.file):"not in this directory")));
+    li.append(button("Remove",()=> {
+      draft.cases=draft.cases.filter(x=>x!==name);
+      renderSuiteEditor();
+    }
+    ,"secondary"));
+    list.append(li);
+  }
+  detail.append(list);
+  const available=((labIndex&&labIndex.cases)||[]).filter(c=>!draft.cases.includes(c.file)&&!c.invalid);
+  if(available.length) {
+    const select=el("select","");
+    select.id="lab-add-case";
+    select.setAttribute("aria-label","Case to add");
+    for(const c of available)select.add(new Option(c.title||c.file,c.file));
+    detail.append(el("label","","Add a case"),select);
+    detail.append(button("Add to suite",()=> {
+      const chosen=select.value;
+      if(chosen&&!draft.cases.includes(chosen))draft.cases.push(chosen);
+      renderSuiteEditor();
+    }
+    ,"secondary"));
+  }
+  if(draft.invalid)notice(detail,draft.invalid,"warning");
+  if((draft.missing||[]).length)notice(detail,"Referenced but not present: "+draft.missing.join(", ")+". The suite still runs, and each missing case is reported as inconclusive.","warning");
+  const actions=el("div","actions");
+  actions.append(button(draft.isNew?"Save suite":"Save changes",()=>saveSuiteDraft(),"primary"));
+  if(!draft.isNew)actions.append(button("Run this suite →",()=>runLabSuite(draft.file),"primary"));
+  detail.append(actions);
+  if(!draft.isNew)detail.append(el("p","muted mono","tapelog lab suite --dir . --suite "+draft.file));
+}
+async function saveSuiteDraft() {
+  const draft=suiteDraft;
+  if(!draft)return;
+  if(!draft.title.trim()) {
+    notice($("lab-suite-detail"),"Give the suite a title.","warning");
+    return;
+  }
+  if(!draft.cases.length) {
+    notice($("lab-suite-detail"),"Add at least one case before saving.","warning");
+    return;
+  }
+  try {
+    const data=await api("/api/lab/suite", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify( {
+        file:draft.file,replaces:draft.revision,suite: {
+          version:1,title:draft.title.trim(),cases:draft.cases
+        }
+      }
+      )
+    }
+    );
+    await loadLab();
+    openLabSuite(data.file);
+    notice($("lab-suite-detail"),"Saved as "+data.file+".","");
+  } catch(e) {
+    notice($("lab-suite-detail"),e.message,"warning");
+  }
+}
+async function runLabSuite(file) {
+  const request=++labRunRequest;
+  $("lab-run-target").textContent="Running suite "+file+"…";
+  $("lab-run").replaceChildren(el("p","muted","Running every case in order. No tool is executed."));
+  try {
+    const data=await api("/api/lab/suite/run", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify( {
+        file
+      }
+      )
+    }
+    );
+    if(request!==labRunRequest)return;
+    labResults["suite:"+file]=data.suite;
+    renderSuiteResult(data);
+    if(labIndex)renderLabSuites(labIndex);
+  } catch(e) {
+    if(request!==labRunRequest)return;
+    $("lab-run-target").textContent="The suite did not run.";
+    $("lab-run").replaceChildren();
+    notice($("lab-run"),e.message,"warning");
+  }
+}
+function renderSuiteResult(data) {
+  const out=$("lab-run"),s=data.suite;
+  out.replaceChildren();
+  $("lab-run-target").textContent=s.title+" · "+data.file;
+  const head=el("div","lab-result-head");
+  head.append(labStatusPill(s.status),el("strong",""," "+(LAB_STATUS_HINT[s.status]||"")));
+  out.append(head);
+  const counts=el("div","stat-strip");
+  stats(counts,[[s.pass,"Passed"],[s.fail,"Failed"],[s.inconclusive,"Inconclusive"],[s.invalid||0,"Unusable case definitions"]]);
+  out.append(counts);
+  const table=el("table","data-table"),thead=el("thead"),tbody=el("tbody");
+  const hr=el("tr");
+  for(const h of ["Case","Outcome","Evidence","Why"])hr.append(el("th","",h));
+  thead.append(hr);table.append(thead);
+  for(const c of s.cases||[]) {
+    const tr=el("tr");
+    const evidence=el("td");
+    if(c.evidence)evidence.append(button(c.evidence,()=>openBehaviourCall(c.evidence,0,0),"link-button"));
+    else evidence.append(el("span","muted","none"));
+    const why=el("td");
+    for(const ch of c.checks||[])why.append(el("div","",ch.detail+(ch.code?" ("+labCodeLabel(ch.code)+")":"")));
+    tr.append(el("td","",c.title||""),el("td","",c.status),evidence,why);
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  out.append(table);
+  if(s.status==="INCONCLUSIVE")notice(out,"At least one case could not be decided by its evidence. An inconclusive suite is not a passing suite.","warning");
+  if(s.status==="FAIL")notice(out,"At least one case contradicts its expectation.","error");
+  for(const comparison of data.comparisons||[]) {
+    const box=el("div","lab-comparison");
+    box.append(el("h4","",comparison.title+" · "+comparison.reference+" → "+comparison.candidate));
+    renderComparison(box,comparison.comparison,comparison.status);
+    out.append(box);
+  }
+  if(data.comparisons_truncated)out.append(el("p","muted","Only the first "+20+" comparisons are shown."));
+  if(data.command)out.append(el("p","muted mono","Reproduce it: "+data.command));
+}
+function renderLabHelp() {
+  const box=$("lab-help");
+  box.replaceChildren();
+  const rows=[
+    ["A case","One recording plus the expectations you want to keep. It names the recording instead of copying it, so no recorded argument or result is duplicated into the case file."],
+    ["A suite","Several cases run in order with one overall result. The suite reports the worst outcome it saw: FAIL beats INCONCLUSIVE, which beats PASS."],
+    ["PASS","The expectation was evaluated against eligible evidence and held."],
+    ["FAIL","Eligible evidence contradicts the expectation. This is the only outcome that proves the behaviour changed."],
+    ["INCONCLUSIVE","The evidence could not decide it: no matching call, no recorded result, redacted content, a damaged or incomplete recording, or an unusable case definition. It is never a pass."],
+    ["Why so strict","A boundary that answered one call while refusing three others still answered a call. Tapelog distinguishes a claim that needs one witness from a claim that needs every result."],
+    ["What is never done","The runner does not execute tools, contact servers or re-run historical calls. It reads what the recorder wrote."]
+  ];
+  for(const [term,meaning] of rows) {
+    const row=el("div","definition-row");
+    row.append(el("dt","",term),el("dd","",meaning));
+    box.append(row);
+  }
+}
+// labCopy uses the clipboard when the browser allows it, and shows the text when
+// it does not, rather than failing silently.
+async function labCopy(text) {
+  if(!text)return;
+  try {
+    await navigator.clipboard.writeText(text);
+    notice($("lab-run"),"Copied: "+text,"");
+  } catch(e) {
+    notice($("lab-run"),"Copy this command yourself: "+text,"warning");
+  }
+}
+
+
+
+
 
 
 

@@ -1162,6 +1162,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
    inline styles, because the workbench runs under a strict style-src CSP.
    ------------------------------------------------------------------ */
 #behaviour-view .workflow-card { max-width:1100px; }
+#lab-view .workflow-card { max-width:1100px; }
 .behaviour-note {
   margin:0 0 10px;
   padding:10px 14px;
@@ -1342,3 +1343,69 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .lab-card label { display:block; margin-top:16px; }
 .lab-card input { width:100%; }
 .lab-card pre { overflow:auto; max-height:320px; white-space:pre-wrap; overflow-wrap:anywhere; }
+
+
+/* ------------------------------------------------------------------
+   Regression lab (M8.1). Tokens only, so light and dark stay consistent, and
+   no inline styles, because the workbench runs under a strict style-src CSP.
+   ------------------------------------------------------------------ */
+.lab-grid { display:grid; grid-template-columns:minmax(280px,420px) 1fr; gap:18px; align-items:start; }
+.lab-list { display:grid; gap:8px; }
+.lab-row {
+  display:block;
+  width:100%;
+  text-align:left;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:12px 14px;
+  color:var(--text);
+  cursor:pointer;
+}
+.lab-row:hover { background:var(--hover); }
+.lab-row.selected { border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent); }
+.lab-row-head { display:flex; align-items:center; gap:10px; justify-content:space-between; }
+.lab-row-head strong { font-size:15px; }
+.lab-row p { margin:6px 0 0; font-size:13px; }
+.lab-row-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:6px; font-size:12px; }
+.lab-row-meta .badge { margin:0; }
+.lab-detail {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:18px;
+  min-height:220px;
+}
+.lab-detail h2 { margin:4px 0 6px; font-size:22px; }
+.lab-detail h3 { margin:18px 0 6px; font-size:14px; }
+.lab-detail label { display:block; margin:12px 0 4px; font-size:13px; color:var(--muted); }
+.lab-detail input, .lab-detail select { width:100%; }
+.lab-expectations { margin:0; padding-left:18px; display:grid; gap:6px; font-size:13px; }
+.lab-expectations li { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.lab-expectations li button { margin-left:auto; }
+.lab-json {
+  max-height:320px;
+  overflow:auto;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  background:var(--raised);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+  font-size:12px;
+}
+.lab-result-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; font-size:14px; }
+.lab-comparison {
+  margin-top:16px;
+  padding:14px;
+  border:1px solid var(--line);
+  border-left:3px solid var(--blue);
+  border-radius:0 10px 10px 0;
+  background:var(--raised);
+}
+.lab-comparison h4 { margin:0 0 8px; font-size:13px; }
+.lab-comparison p { margin:8px 0 0; font-size:12px; }
+.lab-card input { max-width:520px; }
+@media (max-width:1000px) {
+  .lab-grid { grid-template-columns:1fr; }
+}

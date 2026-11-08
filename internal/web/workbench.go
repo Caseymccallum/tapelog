@@ -523,6 +523,17 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 			expectation.Sequence = check.Sequence
 		case "invariant":
 			expectation.Kind = "no_deny_bypassed"
+		case "error_absent":
+			// The M6 absence assertion is the case whose evidence semantics matter
+			// most: absence can never be proven by an unanswered call. It becomes a
+			// first-class lab expectation, not a rejected rule.
+			if check.ResultNeverContains == nil {
+				apiError(w, 422, fmt.Errorf("this call has no recorded error to assert absent"))
+				return
+			}
+			expectation.Kind = "result_never_contains"
+			expectation.Tool = check.ResultNeverContains.Tool
+			expectation.Text = check.ResultNeverContains.Text
 		default:
 			apiError(w, 422, fmt.Errorf("this rule is not available as a lab case; choose a supported rule"))
 			return

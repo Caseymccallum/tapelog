@@ -42,3 +42,7 @@ examples/trajectory-demo/scenario-tampered.yaml
 /*.txt
 # M5.1 policy-pack regression evidence: fictional sample calls, never recordings
 !docs/reviews/evidence/**/*.jsonl
+
+# M8.1: local regression-lab demo evidence (regenerate with tools/gen-m6-demo)
+/m8-lab-demo/
+/m7-lab-demo/
