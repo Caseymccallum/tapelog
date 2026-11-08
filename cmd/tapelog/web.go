@@ -14,9 +14,10 @@ import (
 // logs: browse sessions, inspect decisions, without a live recording.
 func newWebCmd() *cobra.Command {
 	var (
-		dir    string
-		listen string
-		token  string
+		dir        string
+		listen     string
+		token      string
+		policyPath string
 	)
 	cmd := &cobra.Command{
 		Use:   "web",
@@ -34,7 +35,8 @@ same security posture as --approval-listen: loopback Host pinning, strict
 CSP, optional bearer token. No live approvals in directory mode.
 
   tapelog web --dir ./sessions
-  tapelog web --dir /var/log/tapelog --listen 127.0.0.1:8923 --token sekret`,
+  tapelog web --dir /var/log/tapelog --listen 127.0.0.1:8923 --token sekret
+  tapelog web --dir ./sessions --policy ./tapelog.yaml   # explains the active rules`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dir == "" {
 				return fmt.Errorf("--dir is required")
@@ -46,13 +48,17 @@ CSP, optional bearer token. No live approvals in directory mode.
 			if !info.IsDir() {
 				return fmt.Errorf("--dir %s is not a directory", dir)
 			}
-			srv := &http.Server{Addr: listen, Handler: web.DirHandler(dir, token)}
+			srv := &http.Server{Addr: listen, Handler: web.DirHandlerWithPolicy(dir, policyPath, token)}
 			fmt.Fprintf(os.Stderr, "tapelog: session dashboard on http://%s (%s)\n", listen, dir)
+			if policyPath != "" {
+				fmt.Fprintf(os.Stderr, "tapelog: policy studio explains %s (read-only; nothing is written or activated)\n", policyPath)
+			}
 			return srv.ListenAndServe()
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "directory of session logs (*.jsonl)")
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8923", "listen address (loopback by default)")
 	cmd.Flags().StringVar(&token, "token", "", "require Authorization: Bearer <token>")
+	cmd.Flags().StringVar(&policyPath, "policy", "", "policy YAML to explain in the Policy Studio (read-only; never modified)")
 	return cmd
 }

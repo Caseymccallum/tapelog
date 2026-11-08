@@ -139,6 +139,11 @@ func newMux(s *server) http.Handler {
 	mux.HandleFunc("/api/event", secure(s.token, limited(s.eventAPI)))
 	mux.HandleFunc("/api/compare", secure(s.token, limited(s.compareAPI)))
 	mux.HandleFunc("/api/test", secure(s.token, limited(s.testAPI)))
+	mux.HandleFunc("/api/policy/policies", secure(s.token, limited(s.policiesAPI)))
+	mux.HandleFunc("/api/policy/inspect", secure(s.token, limited(s.inspectAPI)))
+	mux.HandleFunc("/api/policy/from-event", secure(s.token, s.fromEventAPI))
+	mux.HandleFunc("/api/policy/preview", secure(s.token, s.previewAPI))
+	mux.HandleFunc("/api/policy/simulate", secure(s.token, limited(s.simulateAPI)))
 	mux.HandleFunc("/pending", secure(s.token, pending))
 	mux.HandleFunc("/decide", secure(s.token, decide))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

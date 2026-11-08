@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 class Node {
- constructor(tag='div'){this.tagName=tag;this.children=[];this.attributes={};this.value='';this.hidden=false;this.className='';this.classList={add:()=>{},toggle:()=>{}};}
+ constructor(tag='div'){this.tagName=tag;this.children=[];this.attributes={};this.value='';this.hidden=false;this.className='';this.dataset={};this.classList={add:()=>{},toggle:()=>{}};}
  set textContent(value){this.text=String(value);this.children=[];}
  get textContent(){return (this.text||'')+this.children.map(n=>n.textContent||'').join('');}
  set innerHTML(_){throw new Error('Untrusted HTML sink used');}
@@ -93,3 +93,104 @@ test('recorded text extraction remains literal and tolerates non-JSON previews',
  assert.equal(vm.runInContext('readableRecorded(value)',context),'<img src=x onerror=alert(1)>');
  context.value='truncated raw';assert.equal(vm.runInContext('readableRecorded(value)',context),'truncated raw');
 });
+test('policy decisions are stated in plain language, never as raw verdicts',()=>{
+ const {context}=app();
+ assert.equal(vm.runInContext('policyActionLabel("allow")',context),'Allow');
+ assert.equal(vm.runInContext('policyActionLabel("deny")',context),'Block');
+ assert.equal(vm.runInContext('policyActionLabel("confirm")',context),'Require approval');
+ assert.match(vm.runInContext('policyActionMeaning("deny")',context),/not forwarded/);
+ assert.equal(vm.runInContext('transitionText({changed:true,recorded_verdict:"allow",candidate_verdict:"deny"})',context),'Allow → Block');
+ assert.equal(vm.runInContext('transitionText({changed:false,recorded_verdict:"allow",candidate_verdict:"allow"})',context),'No change');
+});
+test('simulation filters select exactly the requested decision changes',()=>{
+ const {context}=app();
+ const simulation={total:5,changed:3,same:2,newly_denied:1,newly_allowed:1,newly_confirm:1,calls:[
+  {order:1,changed:false,candidate_verdict:'allow'},
+  {order:2,changed:true,candidate_verdict:'deny'},
+  {order:3,changed:true,candidate_verdict:'confirm'},
+  {order:4,changed:true,candidate_verdict:'allow'},
+  {order:5,changed:false,candidate_verdict:'deny'}]};
+ context.simulation=simulation;
+ const orders=f=>vm.runInContext(`filterSimulated(simulation,"${f}").map(c=>c.order)`,context);
+ assert.deepEqual(orders('changed'),[2,3,4]);
+ assert.deepEqual(orders('denied'),[2]);
+ assert.deepEqual(orders('allowed'),[4]);
+ assert.deepEqual(orders('confirm'),[3]);
+ assert.deepEqual(orders('all'),[1,2,3,4,5]);
+ assert.deepEqual(orders('same'),[1,5]);
+ assert.equal(JSON.stringify(vm.runInContext('simulationCounts(simulation)',context)),JSON.stringify({total:5,changed:3,same:2,denied:1,allowed:1,confirm:1}));
+});
+test('policy cards render hostile rule text literally and keep raw conditions',()=>{
+ const {context,tags}=app();
+ context.rule={position:1,id:'</script><img src=x onerror=globalThis.pwned=true>',action:'deny',broad:true,
+  broad_why:['the pattern "*" matches every tool name'],tool_summary:'calls to every tool',
+  scope_summary:'any task label',action_effect:'refused',summary:'Block every tool.',
+  conditions:[{expr:'context.args.cmd like "%rm -rf /%"',simplified:false,problem:'This pattern contains % , which Cedar treats as a literal.'}],
+  where_raw:['context.args.cmd like "%rm -rf /%"']};
+ const card=vm.runInContext('ruleCard(rule)',context);
+ assert.match(card.textContent,/<img src=x/);
+ assert.match(card.textContent,/Never reached|Broad permission/);
+ assert.match(card.textContent,/Cannot match as written/);
+ assert.match(card.textContent,/not simplified/);
+ assert.equal(tags.includes('img'),false);assert.equal(tags.includes('script'),false);
+ assert.equal(context.pwned,undefined);
+});
+test('an unsupported condition is never given an invented summary',()=>{
+ const {context}=app();
+ context.cond={expr:'context.args.a like "*x*y*"',simplified:false};
+ assert.match(vm.runInContext('conditionItem(cond).textContent',context),/not simplified/);
+ context.cond={expr:'context.args.path like "/tmp/*"',simplified:true,summary:'argument "path" starts with "/tmp/"',note:'A call without this key does not match.'};
+ const text=vm.runInContext('conditionItem(cond).textContent',context);
+ assert.match(text,/starts with/);assert.match(text,/does not match/);
+});
+test('the candidate save refuses a non-empty file and writes only reviewed text',async()=>{
+ const {context,nodes}=app();
+ vm.runInContext('studioState.candidate={valid:true,candidate:"version: 1\\ndefault: deny\\n"};',context);
+ context.window.showSaveFilePicker=async()=>({getFile:async()=>({size:9}),createWritable:async()=>{context.created=true;}});
+ await vm.runInContext('saveCandidate()',context);
+ assert.equal(context.created,undefined);
+ assert.match(nodes.get('candidate-status').textContent,/already contains data/);
+ context.window.showSaveFilePicker=async()=>({getFile:async()=>({size:0}),createWritable:async()=>({write:async text=>{context.saved=text;},close:async()=>{context.closed=true;}})});
+ await vm.runInContext('saveCandidate()',context);
+ assert.equal(context.saved,'version: 1\ndefault: deny\n');assert.equal(context.closed,true);
+ assert.match(nodes.get('candidate-status').textContent,/not active/);
+});
+test('an invalid candidate can never be saved',async()=>{
+ const {context}=app();
+ vm.runInContext('studioState.candidate={valid:false,candidate:"broken"};',context);
+ context.window.showSaveFilePicker=async()=>{context.opened=true;};
+ await vm.runInContext('saveCandidate()',context);
+ assert.equal(context.opened,undefined);
+});
+test('builder helpers trim lists and convert local time to RFC 3339',()=>{
+ const {context}=app();
+ assert.equal(vm.runInContext('commaList(" a, b ,,c ").join("|")',context),'a|b|c');
+ assert.equal(vm.runInContext('expiresRFC3339("")',context),'');
+ assert.match(vm.runInContext('expiresRFC3339("2026-12-31T23:59")',context),/^2026-12-3\dT\d\d:59:00Z$/);
+ assert.throws(()=>vm.runInContext('expiresRFC3339("not-a-date")',context),/cannot be read/);
+});
+test('session limits are optional, whole numbers, and omitted when blank',()=>{
+ const {context}=app();
+ const field=id=>context.document.getElementById(id);
+ const set=(calls,perMinute,bytes)=>{field('builder-max-calls').value=calls;field('builder-max-per-minute').value=perMinute;field('builder-max-bytes').value=bytes;};
+ set('','','');
+ assert.equal(vm.runInContext('readBuilderLimits()',context),null);
+ set('300','','');
+ assert.equal(JSON.stringify(vm.runInContext('readBuilderLimits()',context)),JSON.stringify({max_calls:300,max_per_minute:0,max_response_bytes:0}));
+ set('1.5','','');
+ assert.throws(()=>vm.runInContext('readBuilderLimits()',context),/whole number/);
+ set('-2','','');
+ assert.throws(()=>vm.runInContext('readBuilderLimits()',context),/whole number/);
+});
+test('the limits fieldset is offered only for a new candidate',()=>{
+ const {context}=app();
+ const field=id=>context.document.getElementById(id);
+ const base=field('builder-base'),fieldset=field('builder-limits-fieldset');
+ base.value='new';
+ vm.runInContext('syncLimitsAvailability()',context);
+ assert.equal(fieldset.disabled,false);
+ base.value='pack:starter';
+ vm.runInContext('syncLimitsAvailability()',context);
+ assert.equal(fieldset.disabled,true);
+});
+

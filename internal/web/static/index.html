@@ -11,7 +11,7 @@
  <aside class="sidebar">
   <a class="brand" href="#"><span class="brandmark" aria-hidden="true">▤</span> tapelog<span class="version">M4</span></a>
   <div class="rail-label">WORKSPACE</div>
-  <nav aria-label="Main navigation"><button id="library-nav" class="nav-item active">▦ <span>Sessions</span></button><button id="approvals-nav" class="nav-item" hidden>◇ <span>Live approvals</span><span id="pending-count" class="count">0</span></button><button id="help-nav" class="nav-item">↗ <span>Getting started</span></button></nav>
+  <nav aria-label="Main navigation"><button id="library-nav" class="nav-item active">▦ <span>Sessions</span></button><button id="studio-nav" class="nav-item">◈ <span>Policy Studio</span></button><button id="approvals-nav" class="nav-item" hidden>◇ <span>Live approvals</span><span id="pending-count" class="count">0</span></button><button id="help-nav" class="nav-item">↗ <span>Getting started</span></button></nav>
   <div class="rail-note"><span class="local-dot" aria-hidden="true"></span> Local workspace<p>Your recordings stay here.<br>No uploads. No account.</p></div>
   <div class="rail-bottom"><button id="theme" class="quiet">◐ Appearance</button><p>AGENT SESSION WORKBENCH</p></div>
  </aside>
@@ -39,6 +39,65 @@
     <div id="events-panel" role="tabpanel" aria-labelledby="tab-events" hidden><p class="muted">File order is authoritative. Selecting an event reveals its recorded contents; order alone does not establish causation.</p><div id="events-list"></div><div id="events-pager" class="pager"></div><div id="event-detail"></div></div>
     <div id="compare-panel" role="tabpanel" aria-labelledby="tab-compare" hidden><div class="workflow-card"><div class="eyebrow">BEFORE / AFTER</div><h2>What changed between runs?</h2><p>Compare recorded attempts, outcomes and policy decisions. Matching uses tool and argument hash; repeated identical calls can be ambiguous.</p><label for="compare-session">Compare this session with</label><select id="compare-session"></select><button id="run-compare" class="primary">Compare recordings →</button><div id="compare-result" aria-live="polite"></div></div></div>
     <div id="test-panel" role="tabpanel" aria-labelledby="tab-test" hidden><div class="workflow-card"><div class="eyebrow">FROM INVESTIGATION TO REGRESSION</div><h2>Keep this behaviour under test.</h2><p>Choose a recorded call and an assertion you want to keep. The test uses your original cassette; it copies no arguments or results.</p><p id="test-selection" class="selection-note">Select a call in Activity first.</p><label for="assertion-kind">What should the test assert?</label><select id="assertion-kind"><option value="">Choose a regression rule…</option><option value="denied">This tool has a recorded deny decision</option><option value="attempted">This tool was observed at the boundary</option><option value="answered">This tool has a recorded result</option><option value="never_answered">This tool has no recorded results</option><option value="no_attempts">This tool has zero boundary attempts</option><option value="sequence">Required answered-tool sequence</option><option value="invariant">No recorded deny was bypassed (invariant)</option><option value="attempt_ceiling">Limit boundary attempts for this tool</option></select><div id="selected-events" class="selected-events" aria-live="polite"></div><button id="choose-events" type="button" class="secondary">Choose calls from activity</button><div id="ceiling-field" hidden><label for="attempt-ceiling">Maximum recorded boundary attempts</label><input id="attempt-ceiling" type="number" min="0" max="100000" value="1"></div><p id="assertion-help" class="selection-note">Choose a rule that reflects the behaviour you want to test.</p><p class="muted">Sequence checks an ordered subsequence of answered tool names. The order below is the requirement; changing it may make this cassette fail. Zero attempts checks this boundary only and will fail against a cassette containing the selected attempt. A specific error cannot currently be asserted absent.</p><label for="fixture-path">Fixture path, relative to where you will save the test</label><input id="fixture-path" type="text" spellcheck="false"><p class="muted">Save beside the recording, or change this path. Assertions apply to the tool across the cassette, not a single request ID.</p><div class="actions"><button id="preview-test" class="primary">Preview test</button><button id="run-test" class="secondary">Run assertion locally</button><button id="save-test" class="secondary" disabled>Save test as…</button></div><div id="test-result" aria-live="polite"></div><pre id="test-yaml" hidden></pre></div></div>
+   </section>
+   <section id="studio-view" hidden>
+    <div class="page-heading"><div><div class="eyebrow">UNDERSTAND. DRAFT. SIMULATE.</div><h1>Policy Studio<span class="accent">.</span></h1><p class="lede">Read what a policy actually does, draft a narrow rule, and see what it would change before you save anything.</p></div><span class="outline-label">READ-ONLY</span></div>
+    <div id="studio-notes"></div>
+    <div class="studio-grid">
+     <aside class="studio-sources" aria-label="Policies"><div class="section-heading"><h2>Policies</h2></div><div id="studio-source-list" role="list"></div><p class="muted" id="studio-source-help">Explanations come from the same engine that decides your calls.</p></aside>
+     <div class="studio-main"><div id="studio-summary" class="stat-strip"></div><div id="studio-status" aria-live="polite"></div><div id="studio-findings"></div><div id="studio-rules"></div><div id="studio-source"></div></div>
+    </div>
+    <section class="workflow-card studio-builder" aria-labelledby="builder-title">
+     <div class="eyebrow">GUIDED BUILDER</div><h2 id="builder-title">Draft one rule.</h2>
+     <p>The builder writes only rules the engine supports. Anything more complex stays in the source view, where it is never rewritten.</p>
+     <div id="builder-context" class="selection-note" hidden></div>
+     <div class="builder-grid">
+      <div><label for="builder-action">What should happen to these calls?</label><select id="builder-action"><option value="deny">Block the call</option><option value="confirm">Require human approval</option><option value="allow">Allow the call</option></select><p id="builder-action-help" class="selection-note"></p></div>
+      <div><label for="builder-tools">Which tools? (comma separated, exact names are safest)</label><input id="builder-tools" type="text" placeholder="files__write" autocomplete="off" spellcheck="false"><p class="selection-note">A <code>*</code> wildcard is supported by the engine but widens the rule. The preview flags broad patterns.</p></div>
+      <div><label for="builder-reason">Why? (recorded with every decision)</label><input id="builder-reason" type="text" placeholder="writes outside /tmp need a human" maxlength="300" autocomplete="off"></div>
+      <div><label for="builder-id">Rule id (optional)</label><input id="builder-id" type="text" placeholder="generated from the tool name" autocomplete="off" spellcheck="false"></div>
+      <div><label for="builder-base">Where should this rule go?</label><select id="builder-base"><option value="new">New candidate file</option></select><p id="builder-base-help" class="selection-note">A new candidate contains only this rule. Extending a policy copies it and inserts the rule first; nothing on disk changes.</p></div>
+      <div><label for="builder-default">Default for a new candidate</label><select id="builder-default"><option value="deny">Block anything not matched (deny)</option><option value="allow">Allow anything not matched (allow)</option></select></div>
+      <div><label for="builder-session">Simulate against recording</label><select id="builder-session"><option value="">No recording selected</option></select><p class="selection-note">Simulation re-evaluates that recording. It never calls a tool.</p></div>
+     </div>
+     <details id="builder-advanced"><summary>Advanced: argument conditions, task scope and expiry</summary>
+      <p class="selection-note">Conditions compare one top-level argument. A call that does not include the argument does not match the rule, because the engine fails closed. Nested or unusual argument names belong in the policy source.</p>
+      <div id="builder-conditions"></div>
+      <div class="actions"><button id="builder-add-condition" class="secondary" type="button">+ Add argument condition</button></div>
+      <div class="builder-grid">
+       <div><label for="builder-tasks">Only for these task labels (comma separated)</label><input id="builder-tasks" type="text" placeholder="release" autocomplete="off"></div>
+       <div><label for="builder-expires">Stop applying after (local time)</label><input id="builder-expires" type="datetime-local"><p class="selection-note">An expiry is skipped once it has passed; the rule is not deleted.</p></div>
+      </div>
+      <fieldset class="builder-limits" id="builder-limits-fieldset"><legend>Session limits for a new candidate</legend>
+       <p class="selection-note">These are the limits the boundary already enforces. Leave a field empty to omit it. Extending an existing policy keeps that policy's own limits unchanged.</p>
+       <div class="builder-grid">
+        <div><label for="builder-max-calls">Max tool-call attempts per session</label><input id="builder-max-calls" type="number" min="0" max="1000000" step="1" placeholder="e.g. 300" inputmode="numeric"></div>
+        <div><label for="builder-max-per-minute">Max attempts per minute</label><input id="builder-max-per-minute" type="number" min="0" max="100000" step="1" placeholder="e.g. 60" inputmode="numeric"></div>
+        <div><label for="builder-max-bytes">Max tool-result bytes</label><input id="builder-max-bytes" type="number" min="0" max="1073741824" step="1" placeholder="e.g. 2097152" inputmode="numeric"></div>
+       </div>
+      </fieldset>
+     </details>
+     <div class="actions"><button id="builder-preview" class="primary" type="button">Preview candidate →</button><button id="builder-clear" class="secondary" type="button">Clear draft</button></div>
+     <p class="muted">Previewing validates the rule with the policy compiler and, when a recording is selected, simulates it against the calls you already recorded. No tool is executed and no file is written.</p>
+    </section>
+    <section id="candidate-panel" class="workflow-card studio-candidate" hidden aria-labelledby="candidate-title">
+     <div class="eyebrow">CANDIDATE — NOT ACTIVE</div><h2 id="candidate-title">Review before you save.</h2>
+     <div id="candidate-summary"></div><div id="candidate-status" aria-live="polite"></div>
+     <div id="candidate-notes"></div><div id="candidate-warnings"></div>
+     <p class="muted">This text is a proposal. The workbench has not written it anywhere and nothing will use it until you point <code>tapelog record --policy</code> at the file you save.</p>
+     <pre id="candidate-yaml" class="candidate-yaml" tabindex="0" aria-label="Candidate policy YAML"></pre>
+     <div class="actions"><button id="candidate-save" class="primary" type="button">Save candidate as…</button><button id="candidate-copy" class="secondary" type="button">Copy YAML</button><button id="candidate-discard" class="secondary" type="button">Discard</button></div>
+     <p id="candidate-digest" class="muted mono"></p>
+     <details><summary>Check it yourself</summary><pre id="candidate-cli" class="candidate-yaml"></pre></details>
+    </section>
+    <section id="simulation-panel" class="workflow-card studio-simulation" hidden aria-labelledby="simulation-title">
+     <div class="eyebrow">VISUAL WHAT-IF</div><h2 id="simulation-title">What would change?</h2>
+     <div id="simulation-status" aria-live="polite"></div>
+     <div id="simulation-summary" class="stat-strip"></div>
+     <div id="simulation-filters" class="sim-filters" role="group" aria-label="Filter simulated calls"></div>
+     <div id="simulation-list" class="sim-list"></div>
+     <div id="simulation-notes"></div>
+    </section>
    </section>
    <section id="approvals-view" hidden><div class="page-heading"><div><div class="eyebrow">HUMAN REVIEW</div><h1>Live approvals<span class="accent">.</span></h1><p class="lede">These decisions affect the currently parked MCP calls.</p></div></div><div id="pending-list"></div></section>
   </main>

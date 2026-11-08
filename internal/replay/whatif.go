@@ -82,18 +82,7 @@ func Reevaluate(tape *Tape, p policy.Evaluator, task string) []Interaction {
 // against the recorded ones, printing each change to out. Returns the
 // number of verdicts that would change.
 func WhatIf(out io.Writer, tape *Tape, p policy.Evaluator, policyPath, task string) int {
-	type call struct {
-		order int
-		it    Interaction
-	}
-	var calls []call
-	for _, it := range tape.Interactions {
-		calls = append(calls, call{it.Order, it})
-	}
-	for _, it := range tape.Unanswered {
-		calls = append(calls, call{it.Order, it})
-	}
-	sort.Slice(calls, func(i, j int) bool { return calls[i].order < calls[j].order })
+	calls := orderedCalls(tape)
 
 	reeval := reevaluateOrders(tape, p, task)
 

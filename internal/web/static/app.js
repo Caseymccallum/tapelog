@@ -156,6 +156,9 @@ async function loadLibrary() {
       } catch(e) {
         error(e);
       }
+    } else if(location.hash.startsWith("#studio")) {
+      const parts=location.hash.split("=");
+      openStudio(parts.length>1?decodeURIComponent(parts[1]):"");
     }
   } catch(e) {
     error(e);
@@ -164,8 +167,9 @@ async function loadLibrary() {
   }
 }
 function showView(which) {
-  for(const name of ["library","session","approvals"])$(name+"-view").hidden=name!==which;
-  $("library-nav").classList.toggle("active",which!=="approvals");
+  for(const name of ["library","session","studio","approvals"])$(name+"-view").hidden=name!==which;
+  $("library-nav").classList.toggle("active",which==="library"||which==="session");
+  $("studio-nav").classList.toggle("active",which==="studio");
   $("approvals-nav").classList.toggle("active",which==="approvals");
 }
 function showLibrary() {
@@ -347,6 +351,7 @@ async function selectCall(seq) {
     dl(parent,[["Policy",a.verdict||"Not recorded"],["Rule",a.rule||"Not recorded"],["Server",a.server],["Source",a.server_source||"Server identity absent"],["Duration",fmtDuration(a.duration_ms)],["Linked by",a.link]]);
     if(a.verdict==="deny")notice(parent,a.result_seq?"A result is also recorded for this denied call. Investigate the decision/result sequence; denial alone is not evidence of non-execution.":"A deny decision is recorded, with no matched result. This evidence alone does not prove whether a request reached the server.",a.result_seq?"error":"warning");
     if(a.parent_seq)parent.append(button("Open recorded parent #"+a.parent_seq,()=>showRawEvent(a.parent_seq)));
+    parent.append(button("Create policy proposal →",()=>createPolicyProposal(),"primary"));
     parent.append(button("Make a regression test →",()=> {
       updateTestSelection();
       setTab("test");
@@ -603,7 +608,7 @@ function help(replay=false) {
     out.append(el("p","","Replay starts a hermetic MCP server and waits for client requests. It serves matching recorded responses; it does not re-run the upstream tool. Denied or unanswered calls are replay misses."),el("pre","","tapelog replay "+shellArg(fullPath())+" --strict"),el("p","","Inspect and verify the original recording:"),el("pre","","tapelog inspect "+shellArg(fullPath())+" --summary\ntapelog verify "+shellArg(fullPath())));
     if(!currentInfo?.chain_ok)notice(out,"This recording has not passed chain verification. Replay refuses altered evidence by default.","warning");
   } else {
-    out.append(el("p","","Use setup to preview a configuration for an existing MCP server, save a new candidate and review it before activation. Generated configs create a fresh recording on each start."),el("pre","","tapelog setup --client roo --config <client.json> --server <name>\ntapelog web --dir <recordings-directory>"),el("p","","Restart the wrapped server in your client, explicitly call one of its MCP tools, then refresh Sessions. Tapelog cannot see the client’s built-in file, terminal or browser operations."),el("p","","Use Activity to investigate policy decisions and failures. All events preserves file order. Compare uses recorded responses. Make a test creates a tool-level assertion without copying payloads."));
+    out.append(el("p","","Use setup to preview a configuration for an existing MCP server, save a new candidate and review it before activation. Generated configs create a fresh recording on each start."),el("pre","","tapelog setup --client roo --config <client.json> --server <name>\ntapelog web --dir <recordings-directory>"),el("p","","Restart the wrapped server in your client, explicitly call one of its MCP tools, then refresh Sessions. Tapelog cannot see the client’s built-in file, terminal or browser operations."),el("p","","Use Activity to investigate policy decisions and failures. All events preserves file order. Compare uses recorded responses. Make a test creates a tool-level assertion without copying payloads."),el("p","","Policy Studio explains the rules you enforce, drafts a narrow rule and simulates it against a recording before you save anything. It never writes or activates a policy."));
   }
   $("help-dialog").showModal();
 }
@@ -742,8 +747,728 @@ $("theme").onclick=()=> {
 window.addEventListener("hashchange",()=> {
   if(location.hash==="#main")return;
   if(location.hash.startsWith("#session="))openSession(decodeURIComponent(location.hash.slice(9)),false);
-  else showLibrary();
+  else if(location.hash.startsWith("#studio")) {
+    const parts=location.hash.split("=");
+    openStudio(parts.length>1?decodeURIComponent(parts[1]):"");
+  } else showLibrary();
 }
 );
 loadLibrary().then(()=>refreshPending());
 setInterval(refreshPending,3000);
+
+/* ------------------------------------------------------------------
+   Policy Studio (M5). Read-only: every decision shown here comes from
+   the server's policy engine, and nothing is written or activated from
+   this page. Recorded text is inserted with textContent only.
+   ------------------------------------------------------------------ */
+const ACTION_MEANINGS= {
+  allow:"The call proceeds without asking anyone. Limits, result scanning, redaction and schema checks still apply.",
+  confirm:"The call is parked until a human chooses allow once, allow for the session, or deny. With no terminal and no auto-confirm the call is denied.",
+  deny:"The call is refused and not forwarded. A recorded result on a denied call is still evidence; denial alone does not prove a tool never ran."
+};
+function policyActionLabel(action) {
+  return {
+    allow:"Allow",confirm:"Require approval",deny:"Block"
+  }
+  [action]||action||"Unknown";
+}
+function policyActionMeaning(action) {
+  return ACTION_MEANINGS[action]||"";
+}
+function ruleChip(action) {
+  return el("span","chip "+action,policyActionLabel(action));
+}
+function transitionText(c) {
+  if(!c||!c.changed)return "No change";
+  return policyActionLabel(c.recorded_verdict)+" → "+policyActionLabel(c.candidate_verdict);
+}
+function simulationCounts(simulation) {
+  const s=simulation||{}
+  ;
+  return {
+    total:s.total??0,changed:s.changed??0,same:s.same??0,denied:s.newly_denied??0,allowed:s.newly_allowed??0,confirm:s.newly_confirm??0
+  };
+}
+function filterSimulated(simulation,filter) {
+  const calls=(simulation&&simulation.calls)||[];
+  switch(filter) {
+    case"all":return calls;
+    case"denied":return calls.filter(c=>c.changed&&c.candidate_verdict==="deny");
+    case"allowed":return calls.filter(c=>c.changed&&c.candidate_verdict==="allow");
+    case"confirm":return calls.filter(c=>c.changed&&c.candidate_verdict==="confirm");
+    case"same":return calls.filter(c=>!c.changed);
+    default:return calls.filter(c=>c.changed);
+  }
+}
+function commaList(value) {
+  return String(value||"").split(",").map(s=>s.trim()).filter(Boolean);
+}
+function expiresRFC3339(value) {
+  if(!value)return "";
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))throw new Error("That expiry date cannot be read. Pick a date and time, or clear the field.");
+  return d.toISOString().replace(/\.\d{3}Z$/,"Z");
+}
+const studioState= {
+  sources:[],selected:"",inspection:null,candidate:null,simulation:null,filter:"changed",request:0,previewRequest:0,simRequest:0,conditionSeq:0,draft:null
+};
+function showStudioStatus(text,kind="") {
+  const box=$("studio-status");
+  box.replaceChildren();
+  if(text)notice(box,text,kind);
+}
+async function openStudio(preselect) {
+  showView("studio");
+  $("breadcrumb").textContent="Workspace / Policy Studio";
+  clearError();
+  if(typeof preselect==="string"&&preselect)studioState.selected=preselect;
+  history.replaceState(null,"",location.pathname+location.search+"#studio"+(studioState.selected?"="+encodeURIComponent(studioState.selected):""));
+  await loadStudioPolicies();
+  loadStudioSessions();
+  if(!$("builder-action-help").textContent)$("builder-action-help").textContent=policyActionMeaning($("builder-action").value);
+}
+async function loadStudioPolicies() {
+  const request=++studioState.request;
+  showStudioStatus("Reading policies…");
+  try {
+    const data=await api("/api/policy/policies");
+    if(request!==studioState.request)return;
+    studioState.sources=(data.active?[data.active]:[]).concat(data.packs||[]);
+    const notes=$("studio-notes");
+    notes.replaceChildren();
+    if(!data.active)notice(notes,"No policy file is configured for this workbench. Start it with tapelog web --policy <file> to explain the rules you enforce. The built-in packs below can still be read and extended.","warning");
+    const base=$("builder-base"),previousBase=base.value;
+    base.replaceChildren(new Option("New candidate file","new"));
+    if(data.active)base.add(new Option("Extend: workspace policy (read-only copy)","active"));
+    for(const p of data.packs||[])base.add(new Option("Extend pack: "+(p.title||p.name),"pack:"+p.name));
+    if([...base.options].some(o=>o.value===previousBase))base.value=previousBase;
+    renderStudioSources();
+    const preferred=studioState.selected||(data.active?"active":((data.packs&&data.packs.length)?"pack:"+data.packs[0].name:""));
+    if(preferred)await selectStudioSource(preferred);
+    else {
+      $("studio-rules").replaceChildren();
+      empty($("studio-summary"),"No policy to show","This workbench was started without --policy, and no built-in pack was found.");
+      showStudioStatus("");
+    }
+  } catch(e) {
+    if(request===studioState.request) {
+      showStudioStatus(e.message,"warning");
+      error(e);
+    }
+  }
+}
+function renderStudioSources() {
+  const list=$("studio-source-list");
+  list.replaceChildren();
+  if(!studioState.sources.length) {
+    list.append(el("p","muted","No policies available."));
+    return;
+  }
+  for(const src of studioState.sources) {
+    const row=el("div","source-row");
+    const pick=button("",()=>selectStudioSource(src.id),"source-item"+(studioState.selected===src.id?" selected":""));
+    pick.setAttribute("aria-pressed",String(studioState.selected===src.id));
+    const title=el("div");
+    title.append(el("strong","",src.kind==="active"?"Workspace policy":(src.title||src.name)),el("small","",src.kind==="active"?(src.path||"active policy"):("built-in pack · "+src.name)));
+    pick.append(title);
+    if(src.error)pick.append(el("span","badge failed","Does not compile"));
+    row.append(pick);
+    const simulate=button("Simulate",()=>simulatePolicySource(src),"quiet source-simulate");
+    simulate.setAttribute("aria-label","Simulate "+src.name+" against the selected recording");
+    row.append(simulate);
+    list.append(row);
+  }
+}
+async function selectStudioSource(id) {
+  const request=++studioState.request;
+  studioState.selected=id;
+  renderStudioSources();
+  showStudioStatus("Reading "+(id==="active"?"the workspace policy":id.replace("pack:",""))+"…");
+  try {
+    const data=await api("/api/policy/inspect?source="+encodeURIComponent(id));
+    if(request!==studioState.request)return;
+    studioState.inspection=data;
+    renderStudioInspection();
+    showStudioStatus("");
+  } catch(e) {
+    if(request===studioState.request) {
+      showStudioStatus(e.message,"warning");
+      error(e);
+    }
+  }
+}
+function renderStudioInspection() {
+  const insp=studioState.inspection;
+  const rules=$("studio-rules"),findings=$("studio-findings"),source=$("studio-source");
+  rules.replaceChildren();
+  findings.replaceChildren();
+  source.replaceChildren();
+  if(!insp)return;
+  const analysis=insp.analysis||null;
+  if(!insp.valid||!analysis) {
+    stats($("studio-summary"),[[0,"Rules"],[0,"Command-flow rules"],[insp.bytes||0,"Bytes"]]);
+    notice(findings,"This policy does not compile: "+String(insp.error||"unknown error")+". It cannot be explained or extended until the file is fixed.","error");
+    addSourceBlock(source,insp);
+    return;
+  }
+  stats($("studio-summary"),[[analysis.rules.length,"Rules"],[analysis.flows.length,"Flow rules"],[analysis.broad_permissions,"Broad permissions"],[(analysis.warnings||[]).length+(analysis.unsupported||[]).length,"Findings"]]);
+  const summary=el("p","lede");
+  summary.textContent="Default when no rule matches: "+analysis.default_label+". "+analysis.default_effect;
+  findings.append(summary);
+  for(const warning of analysis.warnings||[])notice(findings,warning,"warning");
+  if(!(analysis.warnings||[]).length) {
+    notice(findings,"No structural findings: no broad permissions, no unreachable rules, no conditions that cannot match. This describes the rules, not the safety of your agent.");
+  }
+  if((analysis.unsupported||[]).length) {
+    const box=el("details","unsupported");
+    box.append(el("summary","","Fields the engine ignores ("+analysis.unsupported.length+")"));
+    box.append(el("p","muted","These keys are present in the document but are not read by the policy engine. They are reported here rather than dropped."));
+    for(const item of analysis.unsupported)box.append(el("p","mono",item));
+    findings.append(box);
+  }
+  const heading=el("div","section-heading");
+  heading.append(el("h2","","Rules and precedence"),el("span","muted","First match wins, top to bottom"));
+  rules.append(heading);
+  if(!analysis.rules.length) {
+    const box=el("div");
+    empty(box,"No rules","Every call gets the default decision above.");
+    rules.append(box);
+  }
+  for(const rule of analysis.rules)rules.append(ruleCard(rule));
+  if((analysis.flows||[]).length) {
+    const flowHeading=el("div","section-heading");
+    flowHeading.append(el("h2","","Command-flow rules"),el("span","muted","Evaluated before per-call rules"));
+    rules.append(flowHeading);
+    for(const flow of analysis.flows)rules.append(flowCard(flow));
+  }
+  const limits=el("div","section-heading");
+  limits.append(el("h2","","Session limits"));
+  rules.append(limits);
+  const limitsBox=el("div","limits-card");
+  if(!analysis.limits.enabled)limitsBox.append(el("p","muted","No session limits are configured in this policy."));
+  for(const line of analysis.limits.summary||[])limitsBox.append(el("p","","· "+line));
+  limitsBox.append(el("p","muted",analysis.limits.note));
+  limitsBox.append(el("p","muted","Result injection scanning: "+analysis.injection.mode+". "+(analysis.injection.summary||"")));
+  rules.append(limitsBox);
+  addSourceBlock(source,insp);
+}
+function ruleCard(rule) {
+  const card=el("details","rule-card"+(rule.broad?" broad":""));
+  card.open=true;
+  const head=el("summary","rule-head");
+  head.append(el("span","rule-pos","#"+rule.position),ruleChip(rule.action),el("strong","mono",rule.id));
+  card.append(head);
+  card.append(el("p","rule-summary",rule.summary));
+  if(rule.reason)card.append(el("p","muted","Recorded explanation: "+rule.reason));
+  const facts=el("dl","rule-facts");
+  for(const [term,value]of [["Tools",rule.tool_summary],["Scope",rule.scope_summary],["What the boundary does",rule.action_effect]]) {
+    facts.append(el("dt","",term),el("dd","",value));
+  }
+  card.append(facts);
+  if((rule.conditions||[]).length) {
+    card.append(el("h3","","Argument conditions (all must hold)"));
+    const list=el("ul","condition-list");
+    for(const cond of rule.conditions)list.append(conditionItem(cond));
+    card.append(list);
+  }
+  if(rule.broad) {
+    const warn=el("div","rule-warning");
+    warn.append(el("strong","","Broad permission. "));
+    warn.append(el("span","",(rule.broad_why||[]).join("; ")+"."));
+    card.append(warn);
+  }
+  if(rule.unreachable) {
+    const warn=el("div","rule-warning");
+    warn.append(el("strong","","Never reached. "));
+    warn.append(el("span","",rule.unreachable));
+    card.append(warn);
+  }
+  if((rule.where_raw||[]).length) {
+    const raw=el("details","rule-raw");
+    raw.append(el("summary","","Original Cedar condition"+(rule.where_raw.length>1?"s":"")));
+    raw.append(el("p","muted","Shown exactly as the engine reads it. The explanations above never replace this text."));
+    for(const expr of rule.where_raw)raw.append(el("pre","",expr));
+    card.append(raw);
+  }
+  return card;
+}
+function conditionItem(cond) {
+  const item=el("li","condition");
+  if(cond.simplified)item.append(el("span","cond-summary",cond.summary));
+  else item.append(el("span","cond-summary muted","Advanced condition: shown as source below, not simplified."));
+  if(cond.note)item.append(el("span","cond-note",cond.note));
+  if(cond.problem) {
+    const problem=el("span","cond-problem","Cannot match as written: "+cond.problem);
+    item.append(problem);
+  }
+  item.append(el("pre","cond-expr",cond.expr));
+  return item;
+}
+function flowCard(flow) {
+  const card=el("details","rule-card flow");
+  card.open=true;
+  const head=el("summary","rule-head");
+  head.append(el("span","rule-pos","F"+flow.position),ruleChip(flow.action),el("strong","mono",flow.id));
+  card.append(head);
+  card.append(el("p","rule-summary",flow.summary));
+  if(flow.reason)card.append(el("p","muted","Recorded explanation: "+flow.reason));
+  const facts=el("dl","rule-facts");
+  facts.append(el("dt","","Source tools"),el("dd","",(flow.from||[]).join(", ")));
+  facts.append(el("dt","","Sink tools"),el("dd","",(flow.to||[]).join(", ")));
+  facts.append(el("dt","","Mode"),el("dd","",flow.mode==="value"?"value-level taint (experimental)":"session taint (conservative)"));
+  card.append(facts);
+  return card;
+}
+function addSourceBlock(parent,insp) {
+  const box=el("details","policy-source");
+  const summary=el("summary","","Original policy source");
+  box.append(summary);
+  box.append(el("p","muted","This is the file exactly as the engine reads it. It is read-only here: the workbench cannot edit, format or rewrite it."));
+  const meta=el("p","muted mono");
+  meta.textContent=(insp.path||insp.name||"")+" · "+String(insp.bytes||0)+" bytes · sha256 "+String(insp.digest||"").slice(0,16)+"…";
+  box.append(meta);
+  box.append(el("pre","policy-yaml",String(insp.yaml||"")));
+  if(insp.scope)box.append(el("p","muted",insp.scope));
+  parent.append(box);
+}
+async function loadStudioSessions() {
+  const select=$("builder-session");
+  const previous=select.value||currentFile;
+  try {
+    const data=await api("/api/sessions?limit=60");
+    select.replaceChildren(new Option("No recording selected",""));
+    for(const s of data.sessions||[])select.add(new Option(s.name+(s.denies?" · "+s.denies+" deny":""),s.file));
+    if([...select.options].some(o=>o.value===previous))select.value=previous;
+  } catch(e) {
+    select.replaceChildren(new Option("No recording selected",""));
+  }
+}
+function addConditionRow(preset) {
+  const row=el("div","cond-row");
+  row.dataset.cid=String(++studioState.conditionSeq);
+  const arg=el("input","cond-arg");
+  arg.type="text";
+  arg.placeholder="argument name";
+  arg.setAttribute("autocomplete","off");
+  arg.setAttribute("spellcheck","false");
+  arg.setAttribute("aria-label","Argument name");
+  if(preset&&preset.arg)arg.value=preset.arg;
+  const kind=el("select","cond-kind");
+  kind.setAttribute("aria-label","Value type");
+  for(const [value,label]of [["string","text"],["number","number"],["bool","true/false"]])kind.add(new Option(label,value));
+  if(preset&&preset.kind)kind.value=preset.kind;
+  const op=el("select","cond-op");
+  op.setAttribute("aria-label","Comparison");
+  for(const [value,label]of [["equals","equals"],["starts_with","starts with"],["ends_with","ends with"],["contains","contains"]])op.add(new Option(label,value));
+  if(preset&&preset.op)op.value=preset.op;
+  const value=el("input","cond-value");
+  value.type="text";
+  value.placeholder="value";
+  value.setAttribute("autocomplete","off");
+  value.setAttribute("aria-label","Matched value");
+  if(preset&&preset.value)value.value=preset.value;
+  const remove=button("Remove",()=>row.remove(),"quiet");
+  remove.setAttribute("aria-label","Remove this condition");
+  row.append(arg,kind,op,value,remove);
+  row.refs= {
+    arg,kind,op,value
+  };
+  kind.onchange=()=> {
+    const numeric=kind.value!=="string";
+    op.replaceChildren();
+    for(const [v,l]of(numeric?[["equals","equals"]]:[["equals","equals"],["starts_with","starts with"],["ends_with","ends with"],["contains","contains"]]))op.add(new Option(l,v));
+    value.placeholder=numeric?(kind.value==="bool"?"true":"number"):"value";
+  }
+  ;
+  $("builder-conditions").append(row);
+  return row;
+}
+function readBuilderRule() {
+  const tools=commaList($("builder-tools").value);
+  if(!tools.length)throw new Error("Enter at least one tool name.");
+  const conditions=[];
+  for(const child of $("builder-conditions").children) {
+    const refs=child.refs;
+    if(!refs)continue;
+    const arg=refs.arg.value.trim(),value=refs.value.value;
+    if(!arg&&!value&&!refs.value.value.trim())continue;
+    if(!arg)throw new Error("Every argument condition needs an argument name.");
+    if(value==="")throw new Error("Enter a value for the "+arg+" condition.");
+    conditions.push( {
+      arg,kind:refs.kind.value,op:refs.op.value,value
+    }
+    );
+  }
+  return {
+    id:$("builder-id").value.trim(),
+    tools,
+    action:$("builder-action").value,
+    reason:$("builder-reason").value.trim(),
+    tasks:commaList($("builder-tasks").value),
+    expires:expiresRFC3339($("builder-expires").value),
+    conditions
+  };
+}
+function readBuilderLimits() {
+  const read=(id,label)=> {
+    const raw=$(id).value.trim();
+    if(raw==="")return 0;
+    if(!/^[0-9]+$/.test(raw))throw new Error(label+" must be a whole number of zero or more.");
+    return Number(raw);
+  }
+  ;
+  const limits= {
+    max_calls:read("builder-max-calls","Max tool-call attempts"),
+    max_per_minute:read("builder-max-per-minute","Max attempts per minute"),
+    max_response_bytes:read("builder-max-bytes","Max tool-result bytes")
+  };
+  const set=limits.max_calls>0||limits.max_per_minute>0||limits.max_response_bytes>0;
+  return set?limits:null;
+}
+function syncLimitsAvailability() {
+  const isNew=($("builder-base").value||"new")==="new";
+  const fieldset=$("builder-limits-fieldset");
+  fieldset.disabled=!isNew;
+  fieldset.classList.toggle("muted-fieldset",!isNew);
+}
+function clearStudioDraft() {
+  $("builder-tools").value="";
+  $("builder-reason").value="";
+  $("builder-id").value="";
+  $("builder-tasks").value="";
+  $("builder-expires").value="";
+  $("builder-max-calls").value="";
+  $("builder-max-per-minute").value="";
+  $("builder-max-bytes").value="";
+  $("builder-conditions").replaceChildren();
+  studioState.draft=null;
+  $("builder-context").hidden=true;
+  $("builder-context").replaceChildren();
+  $("candidate-panel").hidden=true;
+  $("simulation-panel").hidden=true;
+  studioState.candidate=null;
+  studioState.simulation=null;
+  showStudioStatus("");
+}
+async function previewCandidate() {
+  clearError();
+  $("candidate-panel").hidden=true;
+  $("simulation-panel").hidden=true;
+  let rule,limits;
+  try {
+    rule=readBuilderRule();
+    limits=($("builder-base").value||"new")==="new"?readBuilderLimits():null;
+  } catch(e) {
+    showStudioStatus(e.message,"warning");
+    return;
+  }
+  const body= {
+    base:$("builder-base").value||"new",default:$("builder-default").value,rule,task:""
+  };
+  if(limits)body.limits=limits;
+  const file=$("builder-session").value;
+  if(file) {
+    body.file=file;
+    if(file===currentFile&&currentInfo)body.revision=currentInfo.revision||"";
+  }
+  const request=++studioState.previewRequest;
+  $("builder-preview").disabled=true;
+  showStudioStatus("Validating and simulating…");
+  try {
+    const data=await api("/api/policy/preview", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify(body)
+    }
+    );
+    if(request!==studioState.previewRequest)return;
+    studioState.candidate=data;
+    renderCandidate(data);
+    showStudioStatus("");
+  } catch(e) {
+    if(request===studioState.previewRequest) {
+      showStudioStatus(e.message,"warning");
+      error(e);
+    }
+  } finally {
+    if(request===studioState.previewRequest)$("builder-preview").disabled=false;
+  }
+}
+function renderCandidate(data) {
+  const panel=$("candidate-panel");
+  panel.hidden=false;
+  const summary=$("candidate-summary");
+  summary.replaceChildren();
+  stats(summary,[[data.rule_id||"(generated)","Rule id"],[data.extended?"Inserted":"New document","Placement"],[data.analysis&&data.analysis.rules?data.analysis.rules.length:0,"Rules in candidate"],[data.valid?"Compiles":"Does not compile","Compiler"]]);
+  const status=$("candidate-status");
+  status.replaceChildren();
+  if(!data.valid)notice(status,"The candidate does not compile: "+String((data.validation&&data.validation.error)||"unknown error"),"error");
+  else notice(status,data.extended?"Validated. Review the changes below; saving is a separate, explicit step.":"Validated as a standalone candidate. It does not inherit rules from any other policy.","");
+  const notes=$("candidate-notes");
+  notes.replaceChildren();
+  for(const note of data.notes||[])notes.append(el("p","muted",note));
+  const warnings=$("candidate-warnings");
+  warnings.replaceChildren();
+  for(const warning of data.warnings||[])notice(warnings,warning,"warning");
+  $("candidate-yaml").textContent=String(data.candidate||"");
+  $("candidate-digest").textContent="sha256 "+String(data.digest||"");
+  $("candidate-cli").textContent="tapelog policy test --policy <saved-file>.yaml --calls calls.jsonl\ntapelog policy whatif --policy <saved-file>.yaml <recording>.jsonl\n\ntapelog record --policy <saved-file>.yaml -- <server command>";
+  $("candidate-save").disabled=!data.valid;
+  renderSimulation(data);
+  panel.scrollIntoView( {
+    block:"nearest"
+  }
+  );
+}
+function renderSimulation(data) {
+  const panel=$("simulation-panel");
+  const sim=data&&data.simulation?data.simulation:null;
+  studioState.simulation=sim;
+  const status=$("simulation-status");
+  status.replaceChildren();
+  if(!sim) {
+    panel.hidden=false;
+    stats($("simulation-summary"),[[0,"Calls re-evaluated"]]);
+    $("simulation-filters").replaceChildren();
+    $("simulation-list").replaceChildren();
+    $("simulation-notes").replaceChildren();
+    if(data&&data.simulation_error)notice(status,"Simulation unavailable: "+data.simulation_error+" Choose a completed, verified recording to simulate against.","warning");
+    else notice(status,"Choose a recording above to see what this candidate would change.","");
+    return;
+  }
+  panel.hidden=false;
+  const counts=simulationCounts(sim);
+  notice(status,counts.changed?("Against this recording the candidate changes "+counts.changed+" of "+counts.total+" recorded decisions."):"Against this recording the candidate changes nothing.",counts.denied?"warning":"");
+  stats($("simulation-summary"),[[counts.total,"Calls re-evaluated"],[counts.changed,"Decisions changed"],[counts.denied,"Newly blocked"],[counts.allowed,"Newly allowed"],[counts.confirm,"New approvals"]]);
+  renderSimulationFilters(counts);
+  renderSimulationList();
+  const notes=$("simulation-notes");
+  notes.replaceChildren();
+  for(const warning of(data&&data.warnings)||[])notice(notes,warning,"warning");
+  if(data&&data.simulation_scope)notes.append(el("p","muted",data.simulation_scope));
+  if(data&&data.simulation_limits)notes.append(el("p","muted",data.simulation_limits));
+}
+function renderSimulationFilters(counts) {
+  const filters=$("simulation-filters");
+  filters.replaceChildren();
+  const options=[["changed","Changes only",counts.changed],["denied","Newly blocked",counts.denied],["allowed","Newly allowed",counts.allowed],["confirm","New approvals",counts.confirm],["all","All calls",counts.total]];
+  for(const [value,label,count]of options) {
+    const b=button(label+" ("+count+")",()=>{
+      studioState.filter=value;
+      renderSimulationFilters(counts);
+      renderSimulationList();
+    }
+    ,"filter"+(studioState.filter===value?" selected":""));
+    b.setAttribute("aria-pressed",String(studioState.filter===value));
+    filters.append(b);
+  }
+}
+function renderSimulationList() {
+  const list=$("simulation-list");
+  list.replaceChildren();
+  const sim=studioState.simulation;
+  if(!sim)return;
+  const calls=filterSimulated(sim,studioState.filter);
+  if(!calls.length) {
+    list.append(el("p","muted",studioState.filter==="changed"?"No recorded decision would change under this candidate.":"No calls match this filter."));
+    return;
+  }
+  for(const call of calls.slice(0,100))list.append(simulationRow(call));
+  if(calls.length>100)list.append(el("p","muted","Showing the first 100 calls."));
+}
+function simulationRow(call) {
+  const row=el("div","sim-row"+(call.changed?" changed":""));
+  const head=el("div","sim-head");
+  head.append(el("span","seq","#"+call.order),el("strong","mono",call.tool),el("span","sim-transition",transitionText(call)));
+  row.append(head);
+  const facts=el("dl","rule-facts");
+  facts.append(el("dt","","Recorded"),el("dd","",policyActionLabel(call.recorded_verdict)+(call.recorded_rule?" · rule "+call.recorded_rule:"")));
+  facts.append(el("dt","","Candidate"),el("dd","",policyActionLabel(call.candidate_verdict)+(call.candidate_rule?" · rule "+call.candidate_rule:"")));
+  row.append(facts);
+  if(call.candidate_reason)row.append(el("p","muted",call.candidate_reason));
+  if(!call.answered)row.append(el("p","muted","This call was recorded without a result."));
+  return row;
+}
+async function simulatePolicySource(source) {
+  clearError();
+  const file=$("builder-session").value;
+  if(!file) {
+    showStudioStatus("Choose a recording to simulate against first.","warning");
+    $("builder-session").focus();
+    return;
+  }
+  const request=++studioState.simRequest;
+  showStudioStatus("Simulating "+source.name+" against the recording…");
+  try {
+    const data=await api("/api/policy/simulate", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify( {
+        source:source.id,file
+      }
+      )
+    }
+    );
+    if(request!==studioState.simRequest)return;
+    $("candidate-panel").hidden=true;
+    studioState.candidate=null;
+    renderSimulation(data);
+    showStudioStatus("");
+    $("simulation-panel").scrollIntoView( {
+      block:"nearest"
+    }
+    );
+  } catch(e) {
+    if(request===studioState.simRequest) {
+      showStudioStatus(e.message,"warning");
+      error(e);
+    }
+  }
+}
+async function saveCandidate() {
+  const data=studioState.candidate;
+  if(!data||!data.valid)return;
+  const text=String(data.candidate||"");
+  const status=$("candidate-status");
+  try {
+    if(window.showSaveFilePicker) {
+      const handle=await window.showSaveFilePicker( {
+        suggestedName:"tapelog-candidate.yaml",types:[ {
+          description:"Tapelog policy candidate",accept: {
+            "text/yaml":[".yaml"]
+          }
+        }
+        ]
+      }
+      );
+      const existing=await handle.getFile();
+      if(existing.size>0)throw new Error("That file already contains data. Choose a new filename so the existing policy is preserved.");
+      const stream=await handle.createWritable();
+      await stream.write(text);
+      await stream.close();
+      notice(status,"Saved the candidate. It is not active: point tapelog record --policy at it when you are ready. The recording and any active policy were not modified.","");
+    } else {
+      const url=URL.createObjectURL(new Blob([text], {
+        type:"text/yaml"
+      }
+      ));
+      const link=el("a");
+      link.href=url;
+      link.download="tapelog-candidate.yaml";
+      link.click();
+      URL.revokeObjectURL(url);
+      notice(status,"Downloaded a uniquely named candidate file. It is not active.","");
+    }
+  } catch(e) {
+    if(e&&e.name==="AbortError")return;
+    notice(status,e.message||String(e),"warning");
+  }
+}
+async function copyCandidate() {
+  const data=studioState.candidate;
+  if(!data)return;
+  const status=$("candidate-status");
+  try {
+    await navigator.clipboard.writeText(String(data.candidate||""));
+    notice(status,"Candidate copied to the clipboard. It is still not active.","");
+  } catch(e) {
+    notice(status,"This browser did not allow clipboard access. Select the YAML above and copy it manually.","warning");
+  }
+}
+// createPolicyProposal carries one investigated call into the builder. It only
+// prepares a draft: nothing is validated, simulated or saved until the
+// operator asks for it.
+async function createPolicyProposal() {
+  if(!selectedCall) {
+    showStudioStatus("Select a call in Activity first.","warning");
+    return;
+  }
+  const file=currentFile,seq=selectedCall.seq,revision=currentInfo?currentInfo.revision:"";
+  const wasTab=currentTab;
+  showView("studio");
+  $("breadcrumb").textContent="Workspace / Policy Studio";
+  clearError();
+  clearStudioDraft();
+  await loadStudioPolicies();
+  await loadStudioSessions();
+  const select=$("builder-session");
+  if([...select.options].some(o=>o.value===file))select.value=file;
+  showStudioStatus("Reading the recorded call…");
+  try {
+    const data=await api("/api/policy/from-event", {
+      method:"POST",headers: {
+        "Content-Type":"application/json"
+      }
+      ,body:JSON.stringify( {
+        file,seq,revision
+      }
+      )
+    }
+    );
+    studioState.draft=data;
+    $("builder-tools").value=data.tool;
+    $("builder-action").value=data.suggested_action||"confirm";
+    $("builder-action-help").textContent=policyActionMeaning($("builder-action").value);
+    $("builder-reason").value="recorded call #"+seq+" on "+data.tool;
+    $("builder-id").value="";
+    $("builder-base").value="new";
+    $("builder-conditions").replaceChildren();
+    const context=$("builder-context");
+    context.hidden=false;
+    context.replaceChildren();
+    context.append(el("strong","","From recorded call #"+seq+" · "+data.tool+" · recorded decision: "+(data.recorded_verdict||"not recorded")));
+    for(const note of data.notes||[])context.append(el("p","",note));
+    if((data.arg_keys||[]).length) {
+      const box=el("details","");
+      box.append(el("summary","","Recorded argument names you may match on"));
+      const list=el("ul","arg-keys");
+      for(const key of data.arg_keys) {
+        const item=el("li","");
+        item.append(el("span","mono",key.key),el("span","muted",key.kind+(key.redacted?" · redacted":" · "+(key.value_preview||""))+(key.matchable?"":" · not matchable in the builder")));
+        if(key.matchable) {
+          const use=button("Use",()=>addConditionRow( {
+            arg:key.key,kind:key.kind==="number"?"number":(key.kind==="bool"?"bool":"string"),op:"equals",value:""
+          }
+          ),"quiet");
+          use.setAttribute("aria-label","Match on argument "+key.key);
+          item.append(use);
+        }
+        list.append(item);
+      }
+      box.append(list);
+      box.append(el("p","muted","Values are not copied for you. Type the value you mean: a recorded value may be redacted, and anything you enter is written into the candidate file."));
+      context.append(box);
+    }
+    $("builder-advanced").open=false;
+    showStudioStatus("Draft prepared from the recording. Choose the outcome, then preview."," ");
+  } catch(e) {
+    showStudioStatus(e.message,"warning");
+    error(e);
+    setTab(wasTab);
+  }
+}
+$("studio-nav").onclick=openStudio;
+$("builder-action").onchange=()=> {
+  $("builder-action-help").textContent=policyActionMeaning($("builder-action").value);
+};
+$("builder-add-condition").onclick=()=>addConditionRow(null);
+$("builder-base").onchange=syncLimitsAvailability;
+$("builder-preview").onclick=previewCandidate;
+$("builder-clear").onclick=clearStudioDraft;
+$("candidate-save").onclick=saveCandidate;
+$("candidate-copy").onclick=copyCandidate;
+$("candidate-discard").onclick=clearStudioDraft;
+$("builder-action-help").textContent=policyActionMeaning("deny");
+syncLimitsAvailability();
+$("builder-session").onchange=()=> {
+  if(studioState.candidate)showStudioStatus("The recording choice changed. Preview again to simulate against the new recording.","warning");
+};
+
+
+
+
+
+
+

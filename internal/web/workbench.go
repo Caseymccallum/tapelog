@@ -29,6 +29,15 @@ func getOnly(w http.ResponseWriter, r *http.Request) bool {
 	}
 	return true
 }
+
+// postOnly keeps the Studio's write-free endpoints honest about their verbs.
+func postOnly(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		apiError(w, 405, fmt.Errorf("POST only"))
+		return false
+	}
+	return true
+}
 func pageBounds(r *http.Request, total int) (int, int) {
 	offset := queryInt(r, "offset")
 	limit := queryInt(r, "limit")
