@@ -1,0 +1,24 @@
+Preview: wrap server "fixture" for claude-code with Tapelog record.
+Config: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\client.json
+Log: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl
+Only command/args change; other servers, env and settings are preserved.
+Arguments and credentials are omitted from this preview.
+No policy selected: default allow, with existing boundary protections. Use --policy to retain your chosen enforcement rules.
+Confirm verdicts are not auto-approved. Configure the existing loopback approval queue if your policy requires human review.
+Windows: argv is preserved without shell rewriting. Batch/npx launchers and Roo/Cline quoting require client testing; see docs/FIRST-SESSION.md. No 8.3 names are assumed.
+Saved candidate: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\candidate.json
+Contains the original credentials: keep it private. Review locally; back up C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\client.json before manually activating. Undo by restoring that backup. No client settings were activated.
+Restart the selected server in your client, explicitly call one of its MCP tools, then:
+  tapelog inspect 'C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl' --summary
+  tapelog verify 'C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl'
+  tapelog web --dir 'C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe'
+Replay as an MCP server (waits for client input): tapelog replay 'C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl' --strict
+tapelog: ✓ boundary up — transparent stdio proxy
+tapelog: ✓ policy loaded (observe)
+tapelog: ✓ recording to C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl (audit mode: strict)
+tapelog: session 20261107T231404.300-29b52b1138574008 -> C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl (policy: observe)
+tapelog: WARNING — C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl exists (602 bytes) and will be OVERWRITTEN; copy it first if you want to keep it
+tapelog: ✓ boundary up — transparent stdio proxy
+tapelog: ✓ policy loaded (observe)
+tapelog: ✓ recording to C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl (audit mode: strict)
+tapelog: session 20261107T231404.727-a9d922431a5345a3 -> C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\restart-probe\session.jsonl (policy: observe)

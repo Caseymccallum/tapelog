@@ -1,0 +1,99 @@
+Tapelog first session: scripted MCP activity, not an LLM or live client acceptance test.
+
+> tapelog doctor
+✓ runtime — tapelog 0.4.0, windows/amd64
+! policy — none given — record/mux will run with no policy rules (boundary protections stay active; add --policy to enforce rules)
+! plugins — none configured (optional)
+! os-sandbox — no OS enforcement on this platform (Linux required); policy still enforces
+✓ terminal — interactive approval prompts available
+✓ server-executable — C:\Users\Casey\AppData\Local\Temp\go-build1362339342\b001\exe\first-session.exe (found only; startup and MCP compatibility not tested)
+✓ log-location — . is writable
+✓ node — on PATH (for npx-based MCP servers)
+all required checks passed (preflight only; no MCP server started)
+
+> tapelog setup
+Preview: wrap server "demo" for claude-code with Tapelog record.
+Config: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\client.json
+Recording: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings\<new unique recording per start>
+Only command/args change; other servers, env and settings are preserved.
+Arguments and credentials are omitted from this preview.
+Confirm verdicts are not auto-approved. Configure the existing loopback approval queue if your policy requires human review.
+Windows: argv is preserved without shell rewriting. Batch/npx launchers and Roo/Cline quoting require client testing; see docs/FIRST-SESSION.md. No 8.3 names are assumed.
+Saved candidate: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\candidate.json
+Contains the original credentials: keep it private. Review locally; back up C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\client.json before manually activating. Undo by restoring that backup. No client settings were activated.
+Each client start creates a separate recording in 'C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings'. Run `tapelog inspect <recording>.jsonl --summary`, `tapelog verify <recording>.jsonl`, or `tapelog web --dir 'C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings'`.
+
+> record through generated configuration (one allowed call, one denial)
+tapelog: ✓ boundary up — transparent stdio proxy
+tapelog: ✓ policy loaded (C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\demo-policy.yaml)
+tapelog: ✓ recording to C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings\session-20261108T025328.850566800-bdb3ebedeceee6d64bff639c.jsonl (audit mode: strict)
+tapelog: session 20261108T025328.849-71b96846d10cf915 -> C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings\session-20261108T025328.850566800-bdb3ebedeceee6d64bff639c.jsonl (policy: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\demo-policy.yaml)
+{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"compat-fake-2026-07-28","version":"1.0.0"}},"capabilities":{"tools":{}},"resultType":"complete","supportedVersions":["2026-07-28"]}}
+{"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","tools":[{"description":"Read a file","inputSchema":{"type":"object"},"name":"read_file"},{"description":"Write a file","inputSchema":{"type":"object"},"name":"write_file"},{"description":"Read secrets (canary producer)","inputSchema":{"type":"object"},"name":"read_secrets"},{"description":"Send data to a URL (external sink)","inputSchema":{"type":"object"},"name":"send_http"},{"description":"Delete a file","inputSchema":{"type":"object"},"name":"delete_file"},{"description":"Explode with a JSON-RPC error","inputSchema":{"type":"object"},"name":"boom"},{"description":"Ask the agent for more input (MRTR)","inputSchema":{"type":"object"},"name":"needs_input"}]}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"text":"ok:read_file","type":"text"}],"resultType":"complete"}}
+{"jsonrpc":"2.0","id":4,"error":{"code":-32010,"message":"tool call denied by policy","data":{"code":"tool_denied","rule_id":"demo-no-delete","reason":"deletion is not permitted in this demo","verdict":"deny"}}}
+
+> tapelog inspect
+Session overview: 8 events · 2 mediated calls · 0 failed results · 1 discovery events
+Policy decisions: 1 allow · 0 confirm · 1 deny (not completed-call counts) · 0 drift
+Scope: only traffic crossing Tapelog's MCP boundary; built-in agent tools are unobserved.
+Integrity: not checked by inspect. Run tapelog verify <log>; an intact chain alone does not prove completeness or who wrote it.
+Next: tapelog verify <log>; tapelog replay <log> --strict serves recorded results only and waits for client input. Denied/unanswered calls are replay misses. Browse: tapelog web --dir <log-directory>.
+
+    1  session/start   harness=claude-code policy=C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\demo-policy.yaml
+    2  tools/list      7 tools
+>   3  tools/call      read_file {"path":"fictional.txt"}
++   4  policy/decision allow (default) — no rule matched; policy default is "allow"
+    5  tools/result    ok
+>   6  tools/call      delete_file {"path":"fictional.txt"}
+!   7  policy/decision deny (demo-no-delete) — deletion is not permitted in this demo
+    8  session/end     client disconnect
+
+── denied calls (1) ──
+#6  20261108T025328.849-71b96846d10cf915  delete_file {"path":"fictional.txt"}
+    denied by demo-no-delete — deletion is not permitted in this demo
+    causal story: call #6 → deny (demo-no-delete) → never executed
+
+> tapelog verify
+OK: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings\session-20261108T025328.850566800-bdb3ebedeceee6d64bff639c.jsonl
+  8 events, chain intact
+  chain head: 87cd831d9875cf4944310fe95d8cab9c124053ee7fb9b77c3de6e35b316c30d5
+
+> tapelog policy
+
+2 calls re-evaluated against C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\demo-policy.yaml: 2 same, 0 changed
+
+> tapelog test
+ok	first-session
+
+> replay recorded response, without starting the original MCP server
+tapelog: replaying C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings\session-20261108T025328.850566800-bdb3ebedeceee6d64bff639c.jsonl (session 20261108T025328.849-71b96846d10cf915, 1 interactions, match=exact)
+{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"tapelog-replay","version":"0.4.0"}},"capabilities":{"tools":{}},"resultType":"complete","supportedVersions":["2026-07-28","2025-11-25","2025-03-26","2024-11-05"]}}
+{"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","tools":[{"description":"Read a file","inputSchema":{"type":"object"},"name":"read_file"},{"description":"Write a file","inputSchema":{"type":"object"},"name":"write_file"},{"description":"Read secrets (canary producer)","inputSchema":{"type":"object"},"name":"read_secrets"},{"description":"Send data to a URL (external sink)","inputSchema":{"type":"object"},"name":"send_http"},{"description":"Delete a file","inputSchema":{"type":"object"},"name":"delete_file"},{"description":"Explode with a JSON-RPC error","inputSchema":{"type":"object"},"name":"boom"},{"description":"Ask the agent for more input (MRTR)","inputSchema":{"type":"object"},"name":"needs_input"}]}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"text":"ok:read_file","type":"text"}],"resultType":"complete"}}
+
+tapelog: replay summary: 1 played, 0 missed, 0 unused recordings
+
+> record discovery only, then explain zero mediated calls
+tapelog: ✓ boundary up — transparent stdio proxy
+tapelog: ✓ policy loaded (observe)
+tapelog: ✓ recording to C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\discovery-only.jsonl (audit mode: strict)
+tapelog: session 20261108T025330.409-46c3fe6b60ce8aad -> C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\discovery-only.jsonl (policy: observe)
+{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"compat-fake-2026-07-28","version":"1.0.0"}},"capabilities":{"tools":{}},"resultType":"complete","supportedVersions":["2026-07-28"]}}
+{"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","tools":[{"description":"Read a file","inputSchema":{"type":"object"},"name":"read_file"},{"description":"Write a file","inputSchema":{"type":"object"},"name":"write_file"},{"description":"Read secrets (canary producer)","inputSchema":{"type":"object"},"name":"read_secrets"},{"description":"Send data to a URL (external sink)","inputSchema":{"type":"object"},"name":"send_http"},{"description":"Delete a file","inputSchema":{"type":"object"},"name":"delete_file"},{"description":"Explode with a JSON-RPC error","inputSchema":{"type":"object"},"name":"boom"},{"description":"Ask the agent for more input (MRTR)","inputSchema":{"type":"object"},"name":"needs_input"}]}}
+
+> tapelog inspect
+Session overview: 3 events · 0 mediated calls · 0 failed results · 1 discovery events
+Policy decisions: 0 allow · 0 confirm · 0 deny (not completed-call counts) · 0 drift
+Scope: only traffic crossing Tapelog's MCP boundary; built-in agent tools are unobserved.
+Integrity: not checked by inspect. Run tapelog verify <log>; an intact chain alone does not prove completeness or who wrote it.
+Only tool discovery observed; no mediated tool calls captured. Ask the client to call a named MCP tool. Agent activity outside MCP remains unobserved.
+Next: tapelog verify <log>; tapelog replay <log> --strict serves recorded results only and waits for client input. Denied/unanswered calls are replay misses. Browse: tapelog web --dir <log-directory>.
+
+
+PASS: recorded result replayed identically. Denied calls have no recorded result and are not replayed; repeating one would be a miss.
+Recording: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings\session-20261108T025328.850566800-bdb3ebedeceee6d64bff639c.jsonl
+Artifacts: C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo
+Measured demo runtime: 2.403s (excludes installation and go run compilation; not a five-minute onboarding measurement).
+Open the local dashboard with tapelog web --dir C:\Users\Casey\Documents\Codex\2026-11-07\referenced-chatgpt-conversation-this-is-an-3\work\dx11-final-demo\tapelog-recordings.
+The generated candidate references a temporary demo executable; it is NOT a persistent client configuration.
