@@ -366,18 +366,21 @@ func summarize(path string) SessionInfo {
 
 func listSessions(dir string) []SessionInfo { items, _, _ := catalog(&server{dir: dir}); return items }
 
-func catalog(s *server) ([]SessionInfo, bool, error) {
-	if s.dir == "" {
-		if s.logPath == "" {
-			return []SessionInfo{}, false, nil
-		}
-		rec, err := s.recording("")
-		if err != nil {
-			return nil, false, err
-		}
-		return []SessionInfo{rec.Info}, false, nil
-	}
-	f, err := os.Open(s.dir)
+// libraryFile is one candidate recording in a directory listing. Size and
+// modification time identify the snapshot without reading the file, which is
+// what the behaviour index uses to decide whether its cached analysis is
+// still current.
+type libraryFile struct {
+	name     string
+	size     int64
+	modified time.Time
+}
+
+// listRecordings returns the newest *.jsonl files in dir (bounded by
+// maxCatalogFiles) and whether the listing itself was truncated. Nothing is
+// opened: callers apply their own read budget.
+func listRecordings(dir string) ([]libraryFile, bool, error) {
+	f, err := os.Open(dir)
 	if err != nil {
 		return nil, false, err
 	}
@@ -386,19 +389,14 @@ func catalog(s *server) ([]SessionInfo, bool, error) {
 	if err != nil && err != io.EOF {
 		return nil, false, err
 	}
-	type candidate struct {
-		name     string
-		size     int64
-		modified time.Time
-	}
-	var files []candidate
+	var files []libraryFile
 	for _, e := range entries {
 		if !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), ".jsonl") {
 			continue
 		}
 		st, err := e.Info()
 		if err == nil && st.Mode().IsRegular() {
-			files = append(files, candidate{e.Name(), st.Size(), st.ModTime()})
+			files = append(files, libraryFile{e.Name(), st.Size(), st.ModTime()})
 		}
 	}
 	sort.Slice(files, func(i, j int) bool {
@@ -410,6 +408,24 @@ func catalog(s *server) ([]SessionInfo, bool, error) {
 	capped := len(entries) == 10000 || len(files) > maxCatalogFiles
 	if len(files) > maxCatalogFiles {
 		files = files[:maxCatalogFiles]
+	}
+	return files, capped, nil
+}
+
+func catalog(s *server) ([]SessionInfo, bool, error) {
+	if s.dir == "" {
+		if s.logPath == "" {
+			return []SessionInfo{}, false, nil
+		}
+		rec, err := s.recording("")
+		if err != nil {
+			return nil, false, err
+		}
+		return []SessionInfo{rec.Info}, false, nil
+	}
+	files, capped, err := listRecordings(s.dir)
+	if err != nil {
+		return nil, false, err
 	}
 	out := make([]SessionInfo, 0, len(files))
 	budget := int64(maxCatalogBytes)

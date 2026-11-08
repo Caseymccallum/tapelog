@@ -73,19 +73,21 @@ type ResultSpec struct {
 //	allowed / denied: glob             (verdict assertions, answered + denied)
 //	invariant:     name                (boundary invariant)
 //	max_depth:     N                   (data-dependency chain depth ceiling)
+//	result_never_contains: {tool, text} (no recorded result of that tool contains text)
 type Check struct {
-	Called         *CalledSpec  `yaml:"called,omitempty"`
-	Attempted      *AttemptSpec `yaml:"attempted,omitempty"`
-	NeverCalled    string       `yaml:"never_called,omitempty"`
-	Sequence       []string     `yaml:"sequence,omitempty"`
-	TaintNever     *TaintSpec   `yaml:"taint_never,omitempty"`
-	FlowDenied     *FlowSpec    `yaml:"flow_denied,omitempty"`
-	FlowAttempted  *FlowSpec    `yaml:"flow_attempted,omitempty"`
-	ResultContains *ResultSpec  `yaml:"result_contains,omitempty"`
-	Allowed        string       `yaml:"allowed,omitempty"`
-	Denied         string       `yaml:"denied,omitempty"`
-	Invariant      string       `yaml:"invariant,omitempty"`
-	MaxDepth       *int         `yaml:"max_depth,omitempty"`
+	Called              *CalledSpec  `yaml:"called,omitempty"`
+	Attempted           *AttemptSpec `yaml:"attempted,omitempty"`
+	NeverCalled         string       `yaml:"never_called,omitempty"`
+	Sequence            []string     `yaml:"sequence,omitempty"`
+	TaintNever          *TaintSpec   `yaml:"taint_never,omitempty"`
+	FlowDenied          *FlowSpec    `yaml:"flow_denied,omitempty"`
+	FlowAttempted       *FlowSpec    `yaml:"flow_attempted,omitempty"`
+	ResultContains      *ResultSpec  `yaml:"result_contains,omitempty"`
+	ResultNeverContains *ResultSpec  `yaml:"result_never_contains,omitempty"`
+	Allowed             string       `yaml:"allowed,omitempty"`
+	Denied              string       `yaml:"denied,omitempty"`
+	Invariant           string       `yaml:"invariant,omitempty"`
+	MaxDepth            *int         `yaml:"max_depth,omitempty"`
 }
 
 // Load parses one scenario file and validates it.
@@ -141,6 +143,12 @@ func Load(path string) (*Scenario, error) {
 		}
 		if c.ResultContains != nil {
 			n++
+		}
+		if c.ResultNeverContains != nil {
+			n++
+			if c.ResultNeverContains.Tool == "" || c.ResultNeverContains.Text == "" {
+				return nil, fmt.Errorf("scenario %s: assert[%d]: result_never_contains needs both 'tool' and 'text'", path, i)
+			}
 		}
 		if c.Allowed != "" {
 			n++

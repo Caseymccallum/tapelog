@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Caseymccallum/tapelog/internal/approval"
 )
@@ -19,6 +20,19 @@ type server struct {
 	// workspace enforces. The Policy Studio reads it to explain the rules
 	// that are actually in use; nothing in the workbench writes to it.
 	policyPath string
+
+	// Behaviour index cache (M6). Analysis is the most expensive read the
+	// workbench performs, so a snapshot is reused while the file it came from
+	// keeps the same size and modification time.
+	cacheOnce sync.Once
+	cache     *behaviourCache
+}
+
+// behaviourCache returns this server's analysis cache, creating it on first
+// use so every existing construction of server keeps working.
+func (s *server) behaviourCache() *behaviourCache {
+	s.cacheOnce.Do(func() { s.cache = newBehaviourCache() })
+	return s.cache
 }
 
 // Handler serves the live review dashboard (approval queue + session log).

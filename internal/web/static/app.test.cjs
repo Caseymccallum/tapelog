@@ -193,4 +193,92 @@ test('the limits fieldset is offered only for a new candidate',()=>{
  vm.runInContext('syncLimitsAvailability()',context);
  assert.equal(fieldset.disabled,true);
 });
+/* ------------------- M6: behaviour intelligence ------------------- */
+// A minimal but realistic overview, shaped exactly like /api/behaviour returns.
+function overview(){
+  return {
+    window:{from:"2026-02-01",to:"2026-02-28"},
+    library:{files:8,analysed:8,matched:8,undated:0,cached:8,capped:false,truncated:false,skipped:[],budget_files:120,budget_bytes:50331648},
+    counts:{sessions:8,calls:39,results:34,successes:26,failures:8,denies:4,deny_decisions:4,confirms:1,confirm_decisions:1,unanswered:5,discovery:8,events:135,repeat_findings:3,repeat_attention:2,signature_groups:1},
+    tools:[{tool:"files__read",calls:5,results:5,failures:0,denies:0,sessions:3,error_rate:0}],
+    denied:[{tool:"git__push",rule:"no-force-push",calls:4,sessions:1,last_ts:"2026-02-02T08:00:05Z"}],
+    failures:[{
+      id:"abc123",tool:"db__query",code:"-32000",label:"relation <text> does not exist",
+      fragment:"does not exist",criteria:"same tool; same error code -32000",occurrences:5,sessions:2,
+      first_ts:"2026-02-04T22:00:00Z",last_ts:"2026-02-27T14:00:00Z",files:["02-retry-loop.jsonl"],
+      recent:[{file:"02-retry-loop.jsonl",seq:6,tool:"db__query",index:1}]
+    }],
+    repeats:[
+      {kind:"possible_retry_loop",tool:"db__query",findings:1,occurrences:4,sessions:1,max_count:4,files:["02-retry-loop.jsonl"],sample:{file:"02-retry-loop.jsonl",seq:6,index:1}},
+      {kind:"repeated_activity",tool:"jobs__status",findings:1,occurrences:6,sessions:1,max_count:6,files:["03-polling.jsonl"]},
+      {kind:"insufficient_evidence",tool:"queue__pop",findings:1,occurrences:2,sessions:1,max_count:2,files:["05-alternating.jsonl"]}
+    ],
+    trend:[{file:"01-baseline.jsonl",name:"release 4.2",servers:["git"],calls:5,results:5,failures:0,denies:0,unanswered:0,repeat_findings:0,repeat_attention:0,error_rate:0,denial_rate:0,duration_ms:96000,complete:true,integrity:"verified",chain_ok:true}],
+    recent:[],
+    definitions:[{term:"Tool call",meaning:"One tools/call event."}],
+    notes:["5 calls were never answered."],
+    scope:"Derived only from recorded MCP events."
+  };
+}
+test('a repeat loop is an interpretation and insufficient evidence is never called a finding',()=>{
+  const {context,nodes}=app();
+  context.ov=overview();
+  vm.runInContext('renderBehaviourRepeats(ov)',context);
+  const text=nodes.get('behaviour-repeats').textContent;
+  assert.match(text,/Worth a look \(1\)/);
+  assert.match(text,/Observed, not necessarily wrong \(1\)/);
+  assert.match(text,/Not enough evidence to say \(1\)/);
+  // The polling tool must appear as activity, never as a loop.
+  assert.match(text,/Repeated activity/);
+  assert.equal(text.includes('jobs__statusPossible retry loop'),false);
+});
+test('a failure group states its matching rule and refuses to invent a signature',()=>{
+  const {context,nodes}=app();
+  context.ov=overview();
+  vm.runInContext('renderBehaviourFailures(ov)',context);
+  const text=nodes.get('behaviour-failures').textContent;
+  assert.match(text,/Grouped because: same tool; same error code -32000/);
+  assert.match(text,/does not exist/);
+  context.ov.failures[0].fragment="";
+  vm.runInContext('renderBehaviourFailures(ov)',context);
+  assert.match(nodes.get('behaviour-failures').textContent,/will not invent one for a test/);
+});
+test('a per-minute rate is never rendered as a percentage',()=>{
+  const {context}=app();
+  context.rate={unit:"per_minute"};
+  assert.equal(vm.runInContext('rateValue(rate,14.8)',context),"14.8 calls/min");
+  context.rate={unit:"ratio"};
+  assert.equal(vm.runInContext('rateValue(rate,0.667)',context),"66.7%");
+  assert.equal(vm.runInContext('rateValue(rate,null)',context),"—");
+});
+test('undefined denominators read as undefined, never as zero percent',()=>{
+  const {context}=app();
+  assert.equal(vm.runInContext('rateCell(null,0,"results")',context),"undefined · no results");
+  assert.equal(vm.runInContext('rateCell(0,5,"results")',context),"0% of 5 results");
+});
+test('hostile recorded text in a finding stays literal text',()=>{
+  const {context,nodes,tags}=app();
+  context.ov=overview();
+  context.ov.repeats[0].tool='<img src=x onerror="globalThis.pwned=true">';
+  context.ov.failures[0].label='<script>globalThis.pwned=true</script>';
+  vm.runInContext('renderBehaviourRepeats(ov);renderBehaviourFailures(ov);',context);
+  assert.match(nodes.get('behaviour-repeats').textContent,/<img src=x/);
+  assert.match(nodes.get('behaviour-failures').textContent,/<script>/);
+  assert.equal(tags.includes('script'),false);
+  assert.equal(tags.includes('img'),false);
+  assert.equal(context.pwned,undefined);
+});
+test('the overview renders every section from the API without inventing numbers',()=>{
+  const {context,nodes}=app();
+  context.ov=overview();
+  vm.runInContext('renderBehaviour(ov)',context);
+  assert.match(nodes.get('behaviour-stats').textContent,/39Tool calls/);
+  assert.match(nodes.get('behaviour-coverage').textContent,/Analysed 8 of 8 recordings/);
+  assert.match(nodes.get('behaviour-tools').textContent,/files__read/);
+  assert.match(nodes.get('behaviour-denied').textContent,/no-force-push/);
+  assert.match(nodes.get('behaviour-trend').textContent,/release 4\.2/);
+  assert.match(nodes.get('behaviour-definitions').textContent,/One tools\/call event\./);
+  assert.match(nodes.get('behaviour-notes').textContent,/5 calls were never answered/);
+});
+
 

@@ -1155,3 +1155,186 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
   .rule-facts { grid-template-columns:1fr; }
   .rule-facts dt { margin-top:6px; }
 }
+
+/* ------------------------------------------------------------------
+   M6 behaviour intelligence. Same tokens as the rest of the workbench, so
+   light and dark stay consistent. Bars use fixed width classes rather than
+   inline styles, because the workbench runs under a strict style-src CSP.
+   ------------------------------------------------------------------ */
+#behaviour-view .workflow-card { max-width:1100px; }
+.behaviour-note {
+  margin:0 0 10px;
+  padding:10px 14px;
+  border-left:3px solid var(--line);
+  background:var(--panel);
+  color:var(--muted);
+  border-radius:0 8px 8px 0;
+  font-size:13px;
+}
+.behaviour-columns {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+}
+#behaviour-filters input[type="date"] { min-width:150px; }
+.finding {
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel);
+  margin-bottom:10px;
+  overflow:hidden;
+}
+.finding summary { padding:12px 14px; cursor:pointer; }
+.finding-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.finding-label { font-weight:600; }
+.finding-row .finding-label { flex:1 1 320px; }
+.finding-when { color:var(--muted); font-size:12px; }
+.finding-body { padding:0 14px 14px; display:grid; gap:8px; }
+.finding-body p { margin:0; }
+.criteria { color:var(--muted); font-size:13px; }
+.occurrence-list { list-style:none; margin:6px 0 0; padding:0; display:grid; gap:4px; }
+.occurrence-list li button {
+  background:none;
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:5px 10px;
+  color:var(--text);
+  font-size:12px;
+  text-align:left;
+  width:100%;
+}
+.occurrence-list li button:hover { background:var(--hover); }
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th {
+  text-align:left;
+  font-size:11px;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+  padding:6px 8px;
+  border-bottom:1px solid var(--line);
+  font-weight:600;
+}
+.data-table td { padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+.data-table tr:last-child td { border-bottom:none; }
+.data-table td.num { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.link-button {
+  background:none;
+  border:none;
+  padding:0;
+  color:var(--text);
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+  text-decoration:underline;
+  text-decoration-color:var(--line);
+  text-underline-offset:3px;
+}
+.link-button:hover { color:var(--accent); }
+.bar-track {
+  height:4px;
+  margin-top:5px;
+  border-radius:3px;
+  background:var(--raised);
+  overflow:hidden;
+}
+.bar-fill { height:100%; background:var(--accent); border-radius:3px; }
+.bar-fill.w0 { width:0; }
+.bar-fill.w1 { width:10%; }
+.bar-fill.w2 { width:20%; }
+.bar-fill.w3 { width:30%; }
+.bar-fill.w4 { width:40%; }
+.bar-fill.w5 { width:50%; }
+.bar-fill.w6 { width:60%; }
+.bar-fill.w7 { width:70%; }
+.bar-fill.w8 { width:80%; }
+.bar-fill.w9 { width:90%; }
+.bar-fill.w10 { width:100%; }
+.repeat-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  padding:10px 0;
+  border-bottom:1px solid var(--line);
+}
+.repeat-row:last-child { border-bottom:none; }
+.repeat-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.kind {
+  font-size:11px;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  color:var(--muted);
+  white-space:nowrap;
+}
+.kind.possible_retry_loop,
+.kind.repeated_failure,
+.kind.repeated_denial { color:var(--red); border-color:var(--red); background:var(--red-bg); }
+.kind.alternating_sequence,
+.kind.repeating_block { color:var(--amber); border-color:var(--amber); background:var(--amber-bg); }
+.kind.repeated_activity { color:var(--blue); border-color:var(--blue); }
+.kind.insufficient_evidence { color:var(--soft); }
+.finding-card {
+  border:1px solid var(--line);
+  border-left-width:3px;
+  border-radius:12px;
+  background:var(--panel);
+  padding:14px;
+  margin-bottom:12px;
+  display:grid;
+  gap:8px;
+}
+.finding-card p { margin:0; }
+.finding-card.finding-possible_retry_loop,
+.finding-card.finding-repeated_failure,
+.finding-card.finding-repeated_denial { border-left-color:var(--red); }
+.finding-card.finding-alternating_sequence,
+.finding-card.finding-repeating_block { border-left-color:var(--amber); }
+.finding-card.finding-repeated_activity { border-left-color:var(--blue); }
+.finding-card.finding-insufficient_evidence { border-left-color:var(--soft); }
+.finding-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.explanation { color:var(--muted); font-size:13px; line-height:1.5; }
+.finding-calls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.chip {
+  background:var(--raised);
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:2px 8px;
+  font-size:12px;
+  color:var(--text);
+  font-variant-numeric:tabular-nums;
+}
+.chip:hover { background:var(--hover); }
+.delta-pickers {
+  display:grid;
+  grid-template-columns:1fr 1fr auto;
+  gap:14px;
+  align-items:end;
+  margin-bottom:14px;
+}
+.delta-section { margin-top:12px; }
+.delta-section h3 { font-size:14px; margin:0 0 6px; }
+.delta-list { margin:0; padding-left:18px; display:grid; gap:4px; font-size:13px; }
+.delta-caveats { margin-top:14px; }
+.delta-caveats p { margin:8px 0 0; font-size:12px; }
+.definition-row {
+  display:grid;
+  grid-template-columns:180px 1fr;
+  gap:12px;
+  padding:8px 0;
+  border-bottom:1px solid var(--line);
+  font-size:13px;
+}
+.definition-row:last-child { border-bottom:none; }
+.definition-row dt { font-weight:600; }
+.definition-row dd { margin:0; color:var(--muted); }
+@media (max-width:1000px) {
+  .behaviour-columns { grid-template-columns:1fr; }
+  .delta-pickers { grid-template-columns:1fr; }
+  .definition-row { grid-template-columns:1fr; gap:2px; }
+}
+

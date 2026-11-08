@@ -18,6 +18,7 @@ assert:
   - taint_never: { from: read_secrets, to: "send_*" }
   - flow_denied: { from: read_secrets, to: "send_*", times: 1 }
   - result_contains: { tool: deploy, text: "success" }
+  - result_never_contains: { tool: db_query, text: "does not exist" }  # absence
   - allowed: deploy        # verdict assertions (recorded, or re-evaluated
   - denied: delete_db      # when `policy:` is set — what-if semantics)
   - invariant: no_deny_bypassed
@@ -28,7 +29,10 @@ assert:
   (like `called` but over answered **and** denied calls — "the agent
   tried"), `never_called`, `sequence` (ordered subsequence),
   `taint_never` (no `to` after `from`), `flow_denied`/`flow_attempted`
-  (toxic-flow assertions, below), `result_contains`, `allowed`/`denied`
+  (toxic-flow assertions, below), `result_contains`, `result_never_contains`
+  (the same literal, case-sensitive substring match, negated: it fails when a
+  recorded result of that tool contains the text — see "Absence assertions"),
+  `allowed`/`denied`
   (allow/confirm vs deny verdicts over the full boundary), `invariant`
   (`no_deny_bypassed`: a deny verdict must never produce a result),
   `max_depth` (chain-depth ceiling, below).
@@ -78,6 +82,49 @@ CI integration:
 - The repo's own CI runs a **dogfood job** (`.github/workflows/ci.yml`)
   that runs `tapelog test` against its scenario fixtures and uploads the
   JUnit artifact — copy it as a starting point.
+
+### Absence assertions
+
+`result_never_contains` is the one assertion that states something must **not**
+happen: a tool's recorded results must never carry a known error signature.
+It is the engine half of the workbench's recurring-failure groups, so a
+repeated failure you found in a recording can become a test the engine enforces.
+
+```yaml
+assert:
+  - result_never_contains: { tool: db_query, text: "does not exist" }
+```
+
+Semantics, and the reason each one is what it is:
+
+- **Literal, case-sensitive substring**, exactly like `result_contains`. The
+  same text behaves identically in both directions, and `tapelog test` needs no
+  regex dialect to document.
+- **Recorded results only.** A denied or unanswered call has no result to
+  inspect, so it can neither prove nor break the absence. The check passes on a
+  cassette with no results for that tool — that is a blind spot, documented
+  rather than papered over.
+- **Redaction happens before recording.** The text is matched against the
+  redacted result that is in the cassette, so a signature built from a redacted
+  value (`[REDACTED:token]`) will not match a live run that carries a different
+  value. Build the assertion from a phrase that survives redaction.
+- **The failure is actionable**: it names how many recorded results carried the
+  text and where the first one is, in call order.
+- **A test built from a failure fails on the recording that motivated it.**
+  That is deliberate: it encodes the behaviour you want next time, not a
+  description of what already happened.
+- **Older binaries ignore it.** `yaml.Unmarshal` skips unknown fields, so a
+  `tapelog` older than this assertion silently drops the check instead of
+  rejecting the file. Verify a new test file with the binary that will run it.
+- **Historical files are unaffected**: existing assertions keep their exact
+  previous behaviour, including `result_contains` with an empty `text`.
+
+The workbench generates the text for you from a recorded failure: it takes the
+longest literal run of the message that contains no number, identifier, path,
+URL or quoted value, because those change between runs — and copying a recorded
+value into a test file is not something Tapelog will do. If no run is at least
+twelve characters long it refuses and asks you to type the phrase yourself.
+
 
 ## Boundary fuzzing (`tapelog fuzz`)
 

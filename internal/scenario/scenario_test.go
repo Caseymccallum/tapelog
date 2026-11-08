@@ -128,8 +128,8 @@ func TestCountBounds(t *testing.T) {
 		it(3, "retry_call", `{}`, `{}`, "allow"),
 	}}
 	pass := &Scenario{Version: 1, Assert: []Check{
-		{Called: &CalledSpec{Tool: "retry_call", Max: intPtr(3)}},  // at most 3: exactly 3
-		{Called: &CalledSpec{Tool: "retry_call", Min: intPtr(2)}},  // at least 2
+		{Called: &CalledSpec{Tool: "retry_call", Max: intPtr(3)}}, // at most 3: exactly 3
+		{Called: &CalledSpec{Tool: "retry_call", Min: intPtr(2)}}, // at least 2
 		{Called: &CalledSpec{Tool: "retry_call", Min: intPtr(1), Max: intPtr(5)}},
 		{Called: &CalledSpec{Tool: "retry_call", Max: intPtr(3)}},
 		{Called: &CalledSpec{Tool: "nope", Max: intPtr(3), Min: intPtr(0)}}, // 0 in [0,3]
@@ -280,5 +280,96 @@ func TestDeniedAndAttemptedSeeUnanswered(t *testing.T) {
 	}}
 	if fails := Run(sc3, tape, nil); len(fails) != 1 {
 		t.Fatalf("attempted: with no match must fail, got %+v", fails)
+	}
+}
+
+// TestResultNeverContains pins the M6 engine extension: an assertion that a
+// specific recorded error stops appearing. Semantics under test:
+//
+//   - it inspects recorded results only (an unanswered or denied call has none);
+//   - it is a literal, case-sensitive substring match, exactly like
+//     result_contains, so the same signature text behaves consistently;
+//   - it fails with the count and the first offending call, so a failure is
+//     actionable rather than a bare "assertion failed".
+func TestResultNeverContains(t *testing.T) {
+	tape := &replay.Tape{
+		Interactions: []replay.Interaction{
+			it(1, "db_query", `{"q":"select 1"}`, `{"isError":true,"content":[{"type":"text","text":"relation \"users\" does not exist"}]}`, "allow"),
+			it(2, "db_query", `{"q":"select 2"}`, `{"ok":true}`, "allow"),
+		},
+	}
+	// Absent everywhere the tool produced a result: passes.
+	pass := &Scenario{Version: 1, Assert: []Check{
+		{ResultNeverContains: &ResultSpec{Tool: "db_query", Text: "connection refused by peer"}},
+	}}
+	if fails := Run(pass, tape, nil); len(fails) != 0 {
+		t.Fatalf("absent text must pass, got %+v", fails)
+	}
+	// Present once: fails, and names how many results carried it.
+	fail := &Scenario{Version: 1, Assert: []Check{
+		{ResultNeverContains: &ResultSpec{Tool: "db_query", Text: "does not exist"}},
+	}}
+	fails := Run(fail, tape, nil)
+	if len(fails) != 1 {
+		t.Fatalf("present text must fail, got %+v", fails)
+	}
+	if !strings.Contains(fails[0].Detail, "1 recorded result") || !strings.Contains(fails[0].Detail, "order 1") {
+		t.Errorf("failure detail must be actionable: %q", fails[0].Detail)
+	}
+	if !strings.Contains(fails[0].Check, "result_never_contains") {
+		t.Errorf("check label = %q", fails[0].Check)
+	}
+	// Matching is scoped to the named tool.
+	other := &Scenario{Version: 1, Assert: []Check{
+		{ResultNeverContains: &ResultSpec{Tool: "git_push", Text: "does not exist"}},
+	}}
+	if fails := Run(other, tape, nil); len(fails) != 0 {
+		t.Fatalf("another tool's results must not count, got %+v", fails)
+	}
+	// A denied call has no result, so it can neither satisfy nor violate the
+	// assertion. This is the documented blind spot, not an accident.
+	denied := &replay.Tape{Unanswered: []replay.Interaction{
+		it(1, "db_query", `{}`, ``, "deny"),
+	}}
+	if fails := Run(other, denied, nil); len(fails) != 0 {
+		t.Fatalf("denied calls have no result to inspect, got %+v", fails)
+	}
+	// Case sensitivity matches result_contains.
+	upper := &Scenario{Version: 1, Assert: []Check{
+		{ResultNeverContains: &ResultSpec{Tool: "db_query", Text: "RELATION"}},
+	}}
+	if fails := Run(upper, tape, nil); len(fails) != 0 {
+		t.Fatalf("substring matching is case sensitive, got %+v", fails)
+	}
+}
+
+// TestResultNeverContainsValidation keeps a half-specified assertion from
+// silently passing.
+func TestResultNeverContainsValidation(t *testing.T) {
+	dir := t.TempDir()
+	write := func(body string) string {
+		path := filepath.Join(dir, "scenario.yaml")
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	bad := []string{
+		"version: 1\nfixture: t.jsonl\nassert:\n  - result_never_contains: {tool: db_query}\n",
+		"version: 1\nfixture: t.jsonl\nassert:\n  - result_never_contains: {text: does not exist}\n",
+		"version: 1\nfixture: t.jsonl\nassert:\n  - result_never_contains: {tool: db_query, text: x}\n    allowed: db_query\n",
+	}
+	for _, body := range bad {
+		if _, err := Load(write(body)); err == nil {
+			t.Errorf("expected a validation error for:\n%s", body)
+		}
+	}
+	good := "version: 1\nfixture: t.jsonl\nassert:\n  - result_never_contains: {tool: db_query, text: does not exist}\n"
+	sc, err := Load(write(good))
+	if err != nil {
+		t.Fatalf("a complete assertion must load: %v", err)
+	}
+	if sc.Assert[0].ResultNeverContains.Text != "does not exist" {
+		t.Errorf("round trip lost the text: %+v", sc.Assert[0].ResultNeverContains)
 	}
 }

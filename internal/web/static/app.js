@@ -152,10 +152,13 @@ async function loadLibrary() {
     );
     if(!currentFile&&location.hash.startsWith("#session=")) {
       try {
-        openSession(decodeURIComponent(location.hash.slice(9)),false);
+        const target=hashTarget();
+        openSession(target?target.file:decodeURIComponent(location.hash.slice(9)),false);
       } catch(e) {
         error(e);
       }
+    } else if(location.hash.startsWith("#behaviour")) {
+      showBehaviour(false);
     } else if(location.hash.startsWith("#studio")) {
       const parts=location.hash.split("=");
       openStudio(parts.length>1?decodeURIComponent(parts[1]):"");
@@ -166,9 +169,23 @@ async function loadLibrary() {
     $("connection").className="connection-offline";
   }
 }
+// hashTarget reads a deep link of the form #session=<file>&tab=<tab>. A tab
+// deep link makes an investigation shareable and lets a reviewer open the same
+// view twice.
+function hashTarget() {
+  if(!location.hash.startsWith("#session="))return null;
+  const raw=location.hash.slice(9);
+  const cut=raw.indexOf("&");
+  const file=decodeURIComponent(cut<0?raw:raw.slice(0,cut));
+  const query=new URLSearchParams(cut<0?"":raw.slice(cut+1));
+  return {
+    file,tab:query.get("tab")
+  };
+}
 function showView(which) {
-  for(const name of ["library","session","studio","approvals"])$(name+"-view").hidden=name!==which;
+  for(const name of ["library","behaviour","session","studio","approvals"])$(name+"-view").hidden=name!==which;
   $("library-nav").classList.toggle("active",which==="library"||which==="session");
+  $("behaviour-nav").classList.toggle("active",which==="behaviour");
   $("studio-nav").classList.toggle("active",which==="studio");
   $("approvals-nav").classList.toggle("active",which==="approvals");
 }
@@ -187,6 +204,7 @@ function showLibrary() {
   clearError();
 }
 async function openSession(file,updateHash=true) {
+  const deepLink=hashTarget();
   currentFile=file;
   currentInfo=null;
   selectedCall=null;
@@ -220,6 +238,7 @@ async function openSession(file,updateHash=true) {
   if(updateHash)history.replaceState(null,"","#session="+encodeURIComponent(file));
   setTab("activity");
   await loadActivity();
+  if(deepLink&&deepLink.tab&&deepLink.file===file)setTab(deepLink.tab);
 }
 function showSession(info) {
   const changed=currentInfo&&currentInfo.revision!==info.revision;
@@ -432,6 +451,7 @@ function setTab(name) {
   }
   if(name==="events")loadEvents();
   if(name==="compare")loadCompareChoices();
+  if(name==="repeats")loadRepeats();
   if(name==="test")updateTestSelection();
 }
 async function loadCompareChoices() {
@@ -668,8 +688,10 @@ $("replay-help").onclick=()=>help(true);
 $("close-help").onclick=()=>$("help-dialog").close();
 $("refresh").onclick=()=> {
   clearError();
-  if(!$("session-view").hidden) {
+  if(!$("behaviour-view").hidden)loadBehaviour();
+  else if(!$("session-view").hidden) {
     if(currentTab==="events")loadEvents();
+    else if(currentTab==="repeats")loadRepeats();
     else loadActivity();
   } else if(!$("approvals-view").hidden)refreshPending();
   else loadLibrary();
@@ -746,7 +768,10 @@ $("theme").onclick=()=> {
 };
 window.addEventListener("hashchange",()=> {
   if(location.hash==="#main")return;
-  if(location.hash.startsWith("#session="))openSession(decodeURIComponent(location.hash.slice(9)),false);
+  if(location.hash.startsWith("#session=")) {
+    const target=hashTarget();
+    openSession(target?target.file:decodeURIComponent(location.hash.slice(9)),false);
+  } else if(location.hash.startsWith("#behaviour"))showBehaviour(false);
   else if(location.hash.startsWith("#studio")) {
     const parts=location.hash.split("=");
     openStudio(parts.length>1?decodeURIComponent(parts[1]):"");
@@ -1466,6 +1491,499 @@ $("builder-session").onchange=()=> {
   if(studioState.candidate)showStudioStatus("The recording choice changed. Preview again to simulate against the new recording.","warning");
 };
 
+
+/* ------------------------------------------------------------------
+   Agent behaviour (M6).
+
+   Everything below reads /api/behaviour, which is derived from recorded MCP
+   events only. These functions never execute a tool, never write a file and
+   never guess at agent reasoning: the API states what it observed, and the
+   interpretation text beside each finding says what it cannot know.
+   ------------------------------------------------------------------ */
+let behaviourRequest=0,behaviourData=null,repeatsRequest=0,deltaRequest=0,pendingDelta=null;
+const FINDING_LABELS= {
+  possible_retry_loop:"Possible retry loop",
+  repeated_failure:"Repeated failure",
+  repeated_denial:"Repeated denial",
+  repeated_activity:"Repeated activity",
+  alternating_sequence:"Alternating sequence",
+  repeating_block:"Repeating block",
+  insufficient_evidence:"Insufficient evidence"
+};
+// Kinds that mean more than plain repetition. The API counts them separately and
+// the interface must never merge them back into one number.
+const ATTENTION_KINDS=["possible_retry_loop","repeated_failure","repeated_denial","alternating_sequence","repeating_block"];
+function percent(rate) {
+  if(rate===null||rate===undefined)return "—";
+  const pct=rate*100;
+  return (pct===0||pct===100?pct.toFixed(0):pct.toFixed(1))+"%";
+}
+function rateCell(rate,n,unit) {
+  if(rate===null||rate===undefined)return "undefined · no "+unit;
+  return percent(rate)+" of "+n+" "+unit;
+}
+function barClass(rate) {
+  if(rate===null||rate===undefined)return "bar-fill w0";
+  return "bar-fill w"+Math.max(0,Math.min(10,Math.round(rate*10)));
+}
+// rateValue formats one comparison metric. A proportion is a percentage; a
+// per-minute rate is a plain number, because multiplying it by 100 would be
+// meaningless.
+function rateValue(r,value) {
+  if(value===null||value===undefined)return "—";
+  if(r.unit==="per_minute")return value.toFixed(1)+" calls/min";
+  return percent(value);
+}
+function findingLabel(kind) {
+  return FINDING_LABELS[kind]||kind;
+}
+function showBehaviour(updateHash=true) {
+  ++behaviourRequest;
+  ++repeatsRequest;
+  showView("behaviour");
+  $("breadcrumb").textContent="Workspace / Behaviour";
+  clearError();
+  if(updateHash)history.replaceState(null,"","#behaviour");
+  pendingDelta=behaviourLink();
+  loadBehaviour();
+}
+// behaviourLink reads #behaviour&a=<reference>&b=<recording>, so a comparison
+// can be bookmarked or sent to a colleague without re-picking both recordings.
+function behaviourLink() {
+  if(!location.hash.startsWith("#behaviour"))return null;
+  const cut=location.hash.indexOf("&");
+  if(cut<0)return null;
+  const query=new URLSearchParams(location.hash.slice(cut+1));
+  if(!query.get("a")||!query.get("b"))return null;
+  return {
+    a:query.get("a"),b:query.get("b")
+  };
+}
+async function loadBehaviour() {
+  const request=++behaviourRequest;
+  const days=$("behaviour-window").value;
+  let from=$("behaviour-from").value,to=$("behaviour-to").value;
+  if(days) {
+    const end=new Date(),start=new Date(end.getTime()-(Number(days)-1)*86400000);
+    from=start.toISOString().slice(0,10);
+    to=end.toISOString().slice(0,10);
+    $("behaviour-from").value=from;
+    $("behaviour-to").value=to;
+  }
+  try {
+    const data=await api("/api/behaviour?"+params( {
+      q:$("behaviour-search").value,server:$("behaviour-server").value,from,to
+    }
+    ));
+    if(request!==behaviourRequest)return;
+    behaviourData=data;
+    renderBehaviour(data);
+  } catch(e) {
+    if(request===behaviourRequest)error(e);
+  }
+}
+function renderBehaviour(ov) {
+  const notes=$("behaviour-notes");
+  notes.replaceChildren();
+  if(ov.library.analysed===0) {
+    empty(notes,"No recordings to analyse","Point tapelog web --dir at a directory of session logs, then record a session with an MCP client. Behaviour findings come only from files Tapelog already wrote.");
+  }
+  for(const note of ov.notes||[])notes.append(el("p","behaviour-note",note));
+  const c=ov.counts;
+  stats($("behaviour-stats"),[[c.sessions,"Recordings in view"],[c.calls,"Tool calls"],[c.results,"Recorded results"],[c.failures,"Tool errors"],[c.denies,"Calls denied"],[c.unanswered,"Unanswered"]]);
+  $("behaviour-coverage").textContent=coverageText(ov);
+  renderBehaviourFailures(ov);
+  renderBehaviourRepeats(ov);
+  renderBehaviourTools(ov);
+  renderBehaviourDenied(ov);
+  renderBehaviourTrend(ov);
+  renderBehaviourDefinitions(ov);
+  renderDeltaPickers(ov);
+  if(pendingDelta) {
+    const wanted=pendingDelta;
+    pendingDelta=null;
+    const has=file=>[...$("delta-reference").options].some(o=>o.value===file);
+    if(has(wanted.a)&&has(wanted.b)) {
+      $("delta-reference").value=wanted.a;
+      $("delta-current").value=wanted.b;
+      runDelta().then(()=>$("delta-result").scrollIntoView( {
+        block:"start"
+      }
+      ));
+    } else {
+      notice($("delta-result"),"That comparison link refers to a recording that is not in this library view any more. Choose the two recordings again.","warning");
+    }
+  }
+}
+function coverageText(ov) {
+  const lib=ov.library;
+  const parts=[];
+  parts.push("Analysed "+lib.analysed+" of "+lib.files+" recordings");
+  if(lib.matched!==lib.analysed)parts.push(lib.matched+" matched the current filters");
+  if(lib.cached)parts.push(lib.cached+" reused from the analysis cache");
+  if(lib.undated)parts.push(lib.undated+" have no usable timestamp");
+  if(lib.truncated)parts.push("the "+lib.budget_files+"-recording limit was reached");
+  const window=ov.window.from||ov.window.to?(ov.window.from||"any time")+" to "+(ov.window.to||"now"):"all recorded time";
+  return parts.join(" · ")+". Window: "+window+".";
+}
+function renderBehaviourFailures(ov) {
+  const box=$("behaviour-failures");
+  box.replaceChildren();
+  if(!(ov.failures||[]).length) {
+    box.append(el("p","muted",ov.counts.results?"No recorded tool errors in these recordings.":"No recorded results, so there is nothing to group yet."));
+    return;
+  }
+  const caption=el("div","list-caption");
+  caption.append(el("span","","FAILURE GROUP"),el("span","",ov.counts.signature_groups+" group(s)"));
+  box.append(caption);
+  for(const f of ov.failures.slice(0,25)) {
+    const item=el("details","finding");
+    const summary=el("summary","finding-row");
+    const text=el("div");
+    text.append(el("span","finding-label",f.label),el("span","tool-name",f.tool));
+    summary.append(text,el("span","badge failed",f.occurrences+(f.occurrences===1?" occurrence":" occurrences")),el("span","finding-when",f.sessions+(f.sessions===1?" session":" sessions")));
+    item.append(summary);
+    const body=el("div","finding-body");
+    body.append(el("p","criteria","Grouped because: "+f.criteria+"."));
+    if(f.code)body.append(el("p","muted","Recorded error code: "+f.code));
+    body.append(el("p","muted","First "+when(f.first_ts)+" · most recent "+when(f.last_ts)));
+    if(f.fragment) {
+      const p=el("p","muted","Stable phrase available for a regression test: ");
+      p.append(el("code","",f.fragment));
+      body.append(p);
+      body.append(button("Draft a regression test for this error →",()=>draftAbsenceTest(f.recent[0])));
+    } else {
+      body.append(el("p","muted","This message has no phrase that stays the same between runs, so Tapelog will not invent one for a test."));
+    }
+    const list=el("ul","occurrence-list");
+    for(const o of f.recent)list.append(occurrenceItem(o));
+    body.append(list);
+    if(f.occurrences>f.recent.length) {
+      body.append(button("Show every occurrence ("+f.occurrences+") →",()=>loadSignature(f,body)));
+    }
+    item.append(body);
+    box.append(item);
+  }
+  if(ov.failures.length>25)box.append(el("p","muted","Showing the 25 most frequent groups of "+ov.failures.length+"."));
+}
+function occurrenceItem(o) {
+  const li=el("li");
+  li.append(button(o.file+" · event #"+o.seq+(o.ts?" · "+when(o.ts):" · time not recorded"),()=>openBehaviourCall(o.file,o.seq,o.index)));
+  return li;
+}
+// draftAbsenceTest is the Phase 7 loop: a recurring failure becomes a real
+// engine assertion in three clicks, using the recording as the fixture.
+async function draftAbsenceTest(o) {
+  await openBehaviourCall(o.file,o.seq,o.index);
+  if(!selectedCall) {
+    error(new Error("Open one of the calls from this group, then choose the regression rule there."));
+    return;
+  }
+  $("assertion-kind").value="error_absent";
+  $("ceiling-field").hidden=true;
+  clearTest();
+  $("fixture-path").value=currentFile;
+  setTab("test");
+  $("tab-test").focus();
+  await generateTest(false);
+}
+
+async function loadSignature(group,body) {
+  try {
+    const data=await api("/api/behaviour/signature?id="+encodeURIComponent(group.id)+"&q="+encodeURIComponent($("behaviour-search").value)+"&server="+encodeURIComponent($("behaviour-server").value));
+    const list=el("ul","occurrence-list");
+    for(const o of data.occurrences)list.append(occurrenceItem(o));
+    if(data.truncated)list.append(el("li","muted","Showing the first "+data.occurrences.length+" of "+data.total+"."));
+    body.append(list);
+    body.append(el("p","muted","Across "+data.sessions.length+" recordings. Matching rule: "+data.signature.criteria+"."));
+  } catch(e) {
+    body.append(el("p","text-warn",e.message));
+  }
+}
+function renderBehaviourRepeats(ov) {
+  const box=$("behaviour-repeats");
+  box.replaceChildren();
+  const repeats=ov.repeats||[];
+  if(!repeats.length) {
+    box.append(el("p","muted",ov.counts.calls<3?"Not enough calls in these recordings to look for a pattern.":"No repeated activity found. Tapelog looks for three or more identical calls, three or more repetitions of a short sequence, or three or more identical denials inside one recording."));
+    return;
+  }
+  const attention=repeats.filter(r=>ATTENTION_KINDS.indexOf(r.kind)>=0);
+  const insufficient=repeats.filter(r=>r.kind==="insufficient_evidence");
+  const observed=repeats.filter(r=>ATTENTION_KINDS.indexOf(r.kind)<0&&r.kind!=="insufficient_evidence");
+  if(attention.length) {
+    box.append(el("h3","","Worth a look ("+attention.length+")"));
+    for(const r of attention)box.append(repeatRow(r));
+  }
+  if(observed.length) {
+    box.append(el("h3","","Observed, not necessarily wrong ("+observed.length+")"));
+    for(const r of observed)box.append(repeatRow(r));
+  }
+  if(insufficient.length) {
+    box.append(el("h3","","Not enough evidence to say ("+insufficient.length+")"));
+    for(const r of insufficient)box.append(repeatRow(r));
+  }
+  box.append(el("p","muted","Repeat findings are observations about one recording. Tapelog does not know whether a repeat was necessary — open the recording to read the calls."));
+}
+function repeatRow(r) {
+  const row=el("div","repeat-row");
+  const head=el("div","repeat-head");
+  head.append(el("span","kind "+r.kind,findingLabel(r.kind)));
+  if(r.tool)head.append(el("span","tool-name",r.tool));
+  head.append(el("span","badge",r.findings+(r.findings===1?" finding":" findings")));
+  head.append(el("span","muted",r.occurrences+" calls · "+r.sessions+(r.sessions===1?" recording":" recordings")));
+  row.append(head);
+  if(r.sample)row.append(button("Open the first call →",()=>openBehaviourCall(r.sample.file,r.sample.seq,r.sample.index)));
+  return row;
+}
+function renderBehaviourTools(ov) {
+  const box=$("behaviour-tools");
+  box.replaceChildren();
+  if(!(ov.tools||[]).length) {
+    box.append(el("p","muted","No tool calls recorded."));
+    return;
+  }
+  const table=el("table","data-table"),thead=el("thead"),tbody=el("tbody");
+  const hr=el("tr");
+  for(const h of ["Tool","Calls","Results","Errors","Denied"])hr.append(el("th","",h));
+  thead.append(hr);table.append(thead);
+  for(const t of ov.tools.slice(0,12)) {
+    const tr=el("tr");
+    tr.append(el("td","",t.tool),el("td","num",t.calls),el("td","num",t.results),el("td","num",t.failures),el("td","num",t.denies));
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  box.append(table);
+  if(ov.tools.length>12)box.append(el("p","muted","Showing the 12 most used tools of "+ov.tools.length+"."));
+}
+function renderBehaviourDenied(ov) {
+  const box=$("behaviour-denied");
+  box.replaceChildren();
+  if(!(ov.denied||[]).length) {
+    box.append(el("p","muted","No deny decisions in these recordings."));
+    return;
+  }
+  const table=el("table","data-table"),thead=el("thead"),tbody=el("tbody");
+  const hr=el("tr");
+  for(const h of ["Tool","Rule","Calls","Recordings"])hr.append(el("th","",h));
+  thead.append(hr);table.append(thead);
+  for(const d of ov.denied.slice(0,12)) {
+    const tr=el("tr");
+    tr.append(el("td","",d.tool),el("td","mono",d.rule||"rule not recorded"),el("td","num",d.calls),el("td","num",d.sessions));
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  box.append(table);
+  box.append(el("p","muted","A deny is a policy decision. One call can carry several decisions, so this column is not a call count."));
+}
+function renderBehaviourTrend(ov) {
+  const box=$("behaviour-trend");
+  box.replaceChildren();
+  if(!(ov.trend||[]).length) {
+    box.append(el("p","muted","Nothing to trend yet."));
+    return;
+  }
+  const table=el("table","data-table trend-table"),thead=el("thead"),tbody=el("tbody");
+  const hr=el("tr");
+  for(const h of ["Recording","Calls","Results","Error rate","Deny rate","Repeats","Duration"])hr.append(el("th","",h));
+  thead.append(hr);table.append(thead);
+  const maxCalls=Math.max.apply(null,ov.trend.map(r=>r.calls).concat([1]));
+  for(const r of ov.trend) {
+    const tr=el("tr");
+    const name=el("td");
+    name.append(button(r.name||r.file,()=>openBehaviourCall(r.file,0,0),"link-button"));
+    name.append(el("div","muted",when(r.first_ts)));
+    const calls=el("td","num");
+    calls.append(el("span","",r.calls));
+    const bar=el("div","bar-track"),fill=el("div",barClass(r.calls/maxCalls));
+    bar.append(fill);calls.append(bar);
+    tr.append(name,calls,el("td","num",r.results),el("td","",rateCell(r.error_rate,r.results,"results")),el("td","",rateCell(r.denial_rate,r.calls,"calls")),el("td","num",r.repeat_findings?r.repeat_attention+" of "+r.repeat_findings:"none"),el("td","",fmtDuration(r.duration_ms)));
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  box.append(table);
+  box.append(el("p","muted","A recording with no recorded result has an undefined error rate, not a zero one. Call bars are scaled to the busiest recording in view ("+maxCalls+" calls), so they compare recordings, not time."));
+}
+function renderBehaviourDefinitions(ov) {
+  const box=$("behaviour-definitions");
+  box.replaceChildren();
+  for(const d of ov.definitions||[]) {
+    const row=el("div","definition-row");
+    row.append(el("dt","",d.term),el("dd","",d.meaning));
+    box.append(row);
+  }
+}
+function renderDeltaPickers(ov) {
+  const reference=$("delta-reference"),current=$("delta-current");
+  const previous=[reference.value,current.value];
+  reference.replaceChildren(new Option("Choose a reference recording",""));
+  current.replaceChildren(new Option("Choose the recording to examine",""));
+  for(const r of ov.trend||[]) {
+    const label=(r.name||r.file)+" · "+r.calls+" calls · "+when(r.first_ts);
+    reference.add(new Option(label,r.file));
+    current.add(new Option(label,r.file));
+  }
+  if([...reference.options].some(o=>o.value===previous[0]))reference.value=previous[0];
+  if([...current.options].some(o=>o.value===previous[1]))current.value=previous[1];
+  $("run-delta").disabled=!(ov.trend||[]).length;
+}
+async function runDelta() {
+  const reference=$("delta-reference").value,current=$("delta-current").value;
+  const out=$("delta-result");
+  out.replaceChildren();
+  if(!reference||!current) {
+    out.append(el("p","text-warn","Choose both a reference and a recording to examine."));
+    return;
+  }
+  if(reference===current) {
+    out.append(el("p","text-warn","Choose two different recordings."));
+    return;
+  }
+  const request=++deltaRequest;
+  $("run-delta").disabled=true;
+  try {
+    const data=await api("/api/behaviour/delta?"+params( {a:reference,b:current}));
+    if(request!==deltaRequest)return;
+    renderDelta(out,data);
+  } catch(e) {
+    if(request===deltaRequest)out.append(el("p","text-warn",e.message));
+  } finally {
+    if(request===deltaRequest)$("run-delta").disabled=false;
+  }
+}
+function renderDelta(out,d) {
+  out.append(el("p","",d.reference.name+" (reference) → "+d.current.name));
+  const counts=el("div","stat-strip");
+  stats(counts,[[d.current.calls,"Calls in this recording"],[d.new_failures.length,"New failure groups"],[d.new_denials.length,"New denial rules"],[d.new_repeats.length,"New repeat patterns"]]);
+  out.append(counts);
+  const sections=[
+    ["New failure groups",d.new_failures,f=>f.label+" · "+f.tool+" · "+f.current+" in this recording"],
+    ["Failure groups only in the reference",d.resolved_failures,f=>f.label+" · "+f.tool+" · "+f.reference+" in the reference"],
+    ["Denials only in this recording",d.new_denials,f=>f.tool+" · rule "+(f.rule||"not recorded")+" · "+f.calls+" call(s)"],
+    ["Denials only in the reference",d.resolved_denials,f=>f.tool+" · rule "+(f.rule||"not recorded")+" · "+f.calls+" call(s)"],
+    ["Repeat patterns only in this recording",d.new_repeats,f=>findingLabel(f.kind)+" · "+(f.tool||"")+" · "+f.current+" finding(s)"],
+    ["Repeat patterns only in the reference",d.resolved_repeats,f=>findingLabel(f.kind)+" · "+(f.tool||"")+" · "+f.reference+" finding(s)"]
+  ];
+  for(const [title,items,describe] of sections) {
+    const box=el("div","delta-section");
+    box.append(el("h3","",title+" ("+items.length+")"));
+    if(!items.length)box.append(el("p","muted","None."));
+    else {
+      const list=el("ul","delta-list");
+      for(const item of items)list.append(el("li","",describe(item)));
+      box.append(list);
+    }
+    out.append(box);
+  }
+  const rateTable=el("table","data-table"),thead=el("thead"),tbody=el("tbody");
+  const hr=el("tr");
+  for(const h of ["Metric","Reference","This recording","Basis"])hr.append(el("th","",h));
+  thead.append(hr);rateTable.append(thead);
+  for(const r of d.rates) {
+    const tr=el("tr");
+    const basis="Denominators: "+(r.reference_n||0)+" / "+(r.current_n||0);
+    tr.append(el("td","",r.metric),el("td","num",rateValue(r,r.reference)),el("td","num",rateValue(r,r.current)),el("td","muted",r.note?r.note+" "+basis:basis));
+    tbody.append(tr);
+  }
+  rateTable.append(tbody);
+  out.append(rateTable);
+  const caveats=el("details","delta-caveats");
+  caveats.append(el("summary","","What this comparison does not tell you"));
+  for(const c of d.caveats)caveats.append(el("p","muted",c));
+  caveats.append(el("p","muted",d.scope));
+  out.append(caveats);
+  out.append(button("Open this recording →",()=>openBehaviourCall(d.current.file,0,0)));
+}
+async function openBehaviourCall(file,seq,index) {
+  await openSession(file,true);
+  if(!seq)return;
+  $("activity-search").value="";
+  $("activity-status").value="";
+  $("activity-server").value="";
+  if(typeof index==="number"&&index>=0)callOffset=Math.floor(index/50)*50;
+  setTab("activity");
+  await loadActivity();
+  await selectCall(seq);
+  $("inspector").scrollIntoView( {
+    block:"nearest"
+  }
+  );
+}
+
+/* --- Session-level repeat findings ---------------------------------- */
+async function loadRepeats() {
+  const request=++repeatsRequest,file=currentFile;
+  const status=$("repeats-status"),list=$("repeats-list");
+  status.textContent="Running the detectors…";
+  list.replaceChildren();
+  try {
+    const data=await api("/api/behaviour/repeats?"+params( {file}));
+    if(request!==repeatsRequest||file!==currentFile)return;
+    status.textContent="";
+    if(!data.findings.length)empty(list,"No repetition found","Tapelog reports three or more identical calls, three or more repetitions of a short sequence, or three or more identical denials inside one recording. This recording has none of those shapes.");
+    else for(const f of data.findings)list.append(findingCard(f,data));
+    $("repeats-scope").textContent=data.scope;
+    for(const note of data.notes||[])notice(list,note,"warning");
+  } catch(e) {
+    if(request===repeatsRequest&&file===currentFile)status.textContent=e.message;
+  }
+}
+function findingCard(f,data) {
+  const card=el("div","finding-card finding-"+f.kind);
+  const head=el("div","finding-head");
+  head.append(el("span","kind "+f.kind,findingLabel(f.kind)));
+  if(f.tool)head.append(el("span","tool-name",f.tool));
+  head.append(el("span","badge",f.count+(f.count===1?" call":" calls")));
+  if(f.confidence==="possible")head.append(el("span","badge confirmation","interpretation"));
+  if(f.confidence==="insufficient")head.append(el("span","badge unanswered","insufficient evidence"));
+  card.append(head);
+  card.append(el("p","",f.evidence));
+  card.append(el("p","explanation",f.interpretation));
+  if(f.identical_results)card.append(el("p","muted","Every recorded result for these calls is byte-identical."));
+  if(f.median_gap_ms!==null&&f.median_gap_ms!==undefined)card.append(el("p","muted","Median gap between these calls: "+fmtDuration(f.median_gap_ms)+"."));
+  else card.append(el("p","muted","Timestamps are missing for these calls, so their cadence cannot be assessed."));
+  if(f.signature&&data.signatures&&data.signatures[f.signature])card.append(el("p","muted","Recorded error: "+data.signatures[f.signature]));
+  const calls=el("div","finding-calls");
+  calls.append(el("span","muted","Calls: "));
+  for(const seq of f.seqs.slice(0,12))calls.append(button("#"+seq,()=>jumpToRepeatCall(f,seq),"chip"));
+  if(f.seqs.length>12)calls.append(el("span","muted","+"+(f.seqs.length-12)+" more"));
+  card.append(calls);
+  if(singleToolName(f.tool))card.append(button("Make a test for this tool →",()=> {
+    $("fixture-path").value=currentFile;
+    setTab("test");
+    $("tab-test").focus();
+  }
+  ));
+  return card;
+}
+function singleToolName(tool) {
+  return !!tool&&tool.indexOf("→")<0;
+}
+function jumpToRepeatCall(f,seq) {
+  $("activity-search").value="";
+  $("activity-status").value="";
+  $("activity-server").value="";
+  callOffset=Math.max(0,Math.floor((f.first_index||0)/50)*50);
+  setTab("activity");
+  return loadActivity().then(()=>selectCall(seq));
+}
+$("behaviour-nav").onclick=()=>showBehaviour();
+$("behaviour-filters").onsubmit=e=> {
+  e.preventDefault();
+  loadBehaviour();
+};
+$("behaviour-search").oninput=debounce(()=>loadBehaviour());
+$("behaviour-server").onchange=()=>loadBehaviour();
+$("behaviour-window").onchange=()=>loadBehaviour();
+$("behaviour-from").onchange=()=> {
+  $("behaviour-window").value="";
+  loadBehaviour();
+};
+$("behaviour-to").onchange=()=> {
+  $("behaviour-window").value="";
+  loadBehaviour();
+};
+$("run-delta").onclick=runDelta;
 
 
 

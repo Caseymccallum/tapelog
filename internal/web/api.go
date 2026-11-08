@@ -138,6 +138,11 @@ func newMux(s *server) http.Handler {
 	mux.HandleFunc("/api/events", secure(s.token, limited(s.eventsAPI)))
 	mux.HandleFunc("/api/event", secure(s.token, limited(s.eventAPI)))
 	mux.HandleFunc("/api/compare", secure(s.token, limited(s.compareAPI)))
+	mux.HandleFunc("/api/behaviour", secure(s.token, limited(s.behaviourAPI)))
+	mux.HandleFunc("/api/behaviour/repeats", secure(s.token, limited(s.repeatsAPI)))
+	mux.HandleFunc("/api/behaviour/signature", secure(s.token, limited(s.signatureAPI)))
+	mux.HandleFunc("/api/behaviour/delta", secure(s.token, limited(s.deltaAPI)))
+
 	mux.HandleFunc("/api/test", secure(s.token, limited(s.testAPI)))
 	mux.HandleFunc("/api/policy/policies", secure(s.token, limited(s.policiesAPI)))
 	mux.HandleFunc("/api/policy/inspect", secure(s.token, limited(s.inspectAPI)))

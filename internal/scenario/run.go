@@ -130,6 +130,24 @@ func Run(sc *Scenario, tape *replay.Tape, evaluator policy.Evaluator) []Failure 
 					"no matching recorded result contains the text",
 				})
 			}
+		case c.ResultNeverContains != nil:
+			// The absence assertion reads only recorded results. A denied or
+			// unanswered call has no result to inspect, so it can neither prove
+			// nor disprove that the text is gone: this check is scoped to what
+			// the cassette actually recorded.
+			var hits []replay.Interaction
+			for _, it := range matching(inter, c.ResultNeverContains.Tool) {
+				if strings.Contains(string(it.Result), c.ResultNeverContains.Text) {
+					hits = append(hits, it)
+				}
+			}
+			if len(hits) > 0 {
+				fails = append(fails, Failure{
+					fmt.Sprintf("result_never_contains %s %q", c.ResultNeverContains.Tool, c.ResultNeverContains.Text),
+					fmt.Sprintf("the text appears in %d recorded result(s); first at order %d (%s)",
+						len(hits), hits[0].Order, hits[0].Tool),
+				})
+			}
 		case c.Allowed != "":
 			if !anyVerdict(all, c.Allowed, "allow", "confirm") {
 				fails = append(fails, Failure{

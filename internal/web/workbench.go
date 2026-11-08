@@ -410,10 +410,43 @@ func buildScenario(rec *recording, seq uint64, kind, fixture string, seqs ...uin
 			}
 		}
 		check.NeverCalled = selected.Tool
+	case "error_absent":
+		// The engine's assertion is a literal substring match, so the text has to
+		// come from the recorded result itself and be free of values that change
+		// between runs.
+		if selected.Status != "failed" || selected.ResultSeq == 0 {
+			return nil, fmt.Errorf("this call has no recorded tool error to assert absent")
+		}
+		fragment := signatureFragment(errorMessage(recordedResult(rec, selected.ResultSeq)))
+		if fragment == "" {
+			return nil, fmt.Errorf("the recorded error has no stable literal phrase to assert absent; use result_never_contains with your own text")
+		}
+		check.ResultNeverContains = &scenario.ResultSpec{Tool: selected.Tool, Text: fragment}
 	default:
 		return nil, fmt.Errorf("choose denied, attempted, answered or never_answered")
 	}
 	return &scenario.Scenario{Version: 1, Name: "Recorded boundary regression", Fixture: fixture, Assert: []scenario.Check{check}}, nil
+}
+
+// recordedResult returns the recorded result body of one call, so an assertion
+// can be built from the same bytes the engine will inspect.
+func recordedResult(rec *recording, seq uint64) json.RawMessage {
+	for _, e := range rec.Events {
+		if e.Seq != seq || e.Type != session.EventToolResult {
+			continue
+		}
+		var p session.ToolResultPayload
+		if json.Unmarshal(e.Payload, &p) == nil {
+			return p.Result
+		}
+	}
+	return nil
+}
+
+// errorMessage returns the message component of a recorded error body.
+func errorMessage(body json.RawMessage) string {
+	_, message := errorParts(body)
+	return message
 }
 
 func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
@@ -472,7 +505,7 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 500, err)
 		return
 	}
-	resp := map[string]any{"yaml": string(data), "scope": "Assertions apply to tool names across the cassette, not a request ID. Zero attempts checks only this recorded boundary; never_called checks answered calls only. Sequence is an ordered subsequence of answered tools. The invariant checks recorded denials and results. Attempt ceiling counts boundary attempts, including unanswered calls. The engine cannot assert that a specific error does not recur. No arguments or results are copied, no live tool runs, and no file is written by the server."}
+	resp := map[string]any{"yaml": string(data), "scope": "Assertions apply to tool names across the cassette, not a request ID. Zero attempts checks only this recorded boundary; never_called checks answered calls only. Sequence is an ordered subsequence of answered tools. The invariant checks recorded denials and results. Attempt ceiling counts boundary attempts, including unanswered calls. result_never_contains inspects recorded results only, so a denied or unanswered call can neither prove nor break the absence of an error. No arguments or results are copied, no live tool runs, and no file is written by the server."}
 	if req.Run {
 		fails := scenario.Run(sc, tape, nil)
 		resp["passed"] = len(fails) == 0
