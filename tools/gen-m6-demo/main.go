@@ -45,15 +45,23 @@ func main() {
 	if len(os.Args) > 1 {
 		dir = os.Args[1]
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := generate(dir); err != nil {
 		fail(err)
+	}
+}
+
+func generate(dir string) error {
+	// Refuse existing directories so fictional examples never overwrite recordings.
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return err
 	}
 	for _, r := range library() {
 		if err := write(dir, r); err != nil {
-			fail(err)
+			return err
 		}
 		fmt.Printf("wrote %s (%d calls)\n", filepath.Join(dir, r.file), len(r.calls))
 	}
+	return nil
 }
 
 func fail(err error) {

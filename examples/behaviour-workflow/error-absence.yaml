@@ -1,0 +1,6 @@
+version: 1
+scenario: Fictional database error should not recur
+fixture: ../../m7-demo-sessions/02-retry-loop.jsonl
+assert:
+  - called: {tool: db__query}
+  - result_never_contains: {tool: db__query, text: "does not exist"}
