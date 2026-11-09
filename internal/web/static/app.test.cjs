@@ -601,6 +601,15 @@ test('conversation summaries replace the native marker with an explicit chevron'
  assert.ok(chevron&&/content:/.test(chevron[1]),'an explicit chevron must replace the marker');
  assert.match(css,/details\[open\][^{]*summary[^{]*::before\s*\{[^}]*content:/,'the chevron must show the open state');
 });
+test('the six behaviour metrics form a 3x2 block with flush row starts',()=>{
+ const css=fs.readFileSync(__dirname+'/app.css','utf8');
+ const start=css.indexOf('@media (min-width: 861px)');
+ const block=css.slice(start,css.indexOf('/* ------------------------------------------------------------- controls */',start));
+ assert.ok(start>0,'the behaviour strip needs its own desktop layout rule');
+ assert.match(block,/#behaviour-stats\s*\{[^}]*repeat\(3/,'six metrics belong in three columns, not an orphaned pair');
+ assert.match(block,/nth-child\(3n \+ 1\)\s*\{[^}]*padding-left:\s*0[^}]*border-left:\s*0/,'a row-start cell must align with the strip edge');
+ assert.match(block,/nth-child\(n \+ 4\)\s*\{[^}]*border-top/,'the second row needs a divider');
+});
 test('the saved-suite editor reads as a composed list, not glued inline text',()=>{
  const {context,nodes}=app();
  context.index={cases:[

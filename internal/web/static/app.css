@@ -631,6 +631,21 @@ main > * {
   font-size: var(--fs-12);
   line-height: 1.4;
 }
+/* Six metrics fit a 3x2 block. At four per row the second row held two cells,
+   and its row-start cell kept the divider's left border and padding, so its
+   number and label sat 21px right of the strip's edge and of the metrics above. */
+@media (min-width: 861px) {
+  #behaviour-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  #behaviour-stats .stat:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+  #behaviour-stats .stat:nth-child(n + 4) {
+    border-top: 1px solid var(--line-soft);
+  }
+}
 
 /* ------------------------------------------------------------- controls */
 button,

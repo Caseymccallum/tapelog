@@ -27,6 +27,16 @@ source of truth for the version.
   executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
 ## [Unreleased]
 
+- **The Behaviour summary keeps its six metrics in a 3x2 block (design)** — the strip is a four-column
+  grid, so six metrics wrapped into a row of four and an orphaned pair. The second row's first cell
+  kept the divider's left border and 20px padding that every non-first cell carries, so its number
+  and label sat 21px inside the strip edge while the metrics above started flush — the "box and text
+  don't line up" defect. Above 861px `#behaviour-stats` now lays out three columns (activity volume
+  on the first row, exceptions on the second) and its row-start cells drop the divider border and
+  padding; the second row gets its own top rule. Measured at 1440/1200/1000/900/861 (three flush
+  row starts at the strip edge) and 860/768/684/390/320 (two columns, unchanged). Other strips keep
+  four columns and the phone layout is untouched. Frontend suite 68 -> 69 tests.
+
 - **The saved-suite editor is a workspace now, not a stack of glued fields (design)** — the suite
   detail column was 452px wide at 1440 and the whole editor was inline text: the title input shrank
   to 173px, each case rendered `filename · title` as unflexed spans with its `Remove` button wrapping
