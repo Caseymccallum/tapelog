@@ -15,7 +15,9 @@ out="${1:-$root/dist-m15}"
 # stale string copied into a script. buildinfo is the single source of truth.
 version="${TAPELOG_VERSION:-$(sed -n 's/^var Version = "\(.*\)"$/\1/p' internal/buildinfo/buildinfo.go)}"
 [ -n "$version" ] || { echo "could not read Version from internal/buildinfo/buildinfo.go" >&2; exit 1; }
-commit="$(cd "$root" && git rev-parse --short HEAD)"
+# Full commit: the stamp is the only provenance a downloader can check, and a
+# short SHA can collide where CI stamps the full one.
+commit="$(cd "$root" && git rev-parse HEAD)"
 dirty=""
 if [ -n "$(cd "$root" && git status --porcelain)" ]; then
   dirty="-dirty"
