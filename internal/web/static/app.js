@@ -92,7 +92,7 @@ async function api(path,opts) {
     throw new Error("The local workbench returned an unreadable response.");
   }
   if(!res.ok)throw new Error(data.error||("Request failed ("+res.status+")"));
-  $("connection").textContent="● Local connection";
+  $("connection").textContent="● Connected";
   $("connection").className="";
   return data;
 }

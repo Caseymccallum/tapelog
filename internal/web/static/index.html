@@ -23,8 +23,8 @@
    <button id="approvals-nav" class="nav-item" hidden><span class="nav-icon" aria-hidden="true">◇</span> <span>Live approvals</span><span id="pending-count" class="count">0</span></button>
    <button id="help-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">↗</span> <span>Getting started</span></button>
   </nav>
-  <div class="rail-note"><span class="local-dot" aria-hidden="true"></span> Local workspace<p>Your recordings stay here.<br>No uploads. No account.</p></div>
-  <div class="rail-bottom"><button id="theme" class="quiet">◐ Appearance</button><p>LOCAL DEVELOPER WORKSPACE</p></div>
+  <div class="rail-note"><span class="local-dot" aria-hidden="true"></span> On this machine<p>Your recordings stay here.<br>No uploads. No account.</p></div>
+  <div class="rail-bottom"><button id="theme" class="quiet">◐ Appearance</button><p>DEVELOPER WORKSPACE</p></div>
  </aside>
  <div class="workspace">
   <header class="topbar"><div id="breadcrumb">Workspace <span>/</span> Sessions</div><div class="top-actions"><span id="connection" role="status">Connecting…</span><button id="refresh" class="quiet">↻ Refresh</button></div></header>
@@ -32,7 +32,7 @@
   <div id="error" class="banner error" role="alert" hidden></div>
   <main id="main" tabindex="-1">
    <section id="library-view">
-    <div class="page-heading"><div><div class="eyebrow">OBSERVE. UNDERSTAND. IMPROVE.</div><h1>Your agent sessions<span class="accent">.</span></h1><p class="lede">Find the moment that matters. Turn what you learn into a regression test.</p></div><span class="outline-label">LOCAL RECORDINGS</span></div>
+    <div class="page-heading"><div><div class="eyebrow">OBSERVE. UNDERSTAND. IMPROVE.</div><h1>Your agent sessions<span class="accent">.</span></h1><p class="lede">Find the moment that matters. Turn what you learn into a regression test.</p></div><span class="outline-label">RECORDINGS</span></div>
     <div id="library-stats" class="stat-strip"></div>
     <div class="section-heading"><h2>Session library <span id="library-count" class="count">0</span></h2><span class="muted">Original recordings are never edited</span></div>
     <form id="library-filters" class="filterbar" role="search"><label class="search"><span aria-hidden="true">⌕</span><input id="session-search" type="search" placeholder="Search sessions, servers or harnesses…" aria-label="Search sessions"></label><label class="sr-only" for="session-status">Session status</label><select id="session-status"><option value="">All sessions</option><option value="denied">With denials</option><option value="failed">With tool errors</option><option value="incomplete">No recorded end</option><option value="integrity">Integrity needs review</option></select><label class="sr-only" for="session-sort">Sort sessions</label><select id="session-sort"><option value="">Newest first</option><option value="oldest">Oldest first</option><option value="activity">Most activity</option><option value="status">Most issues</option></select></form>

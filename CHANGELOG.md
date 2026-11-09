@@ -27,6 +27,13 @@ source of truth for the version.
   executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
 ## [Unreleased]
 
+- **The sidebar says "local" once, not three times (design)** — the brand badge, the rail note
+  ("Local workspace") and the footer ("LOCAL DEVELOPER WORKSPACE") each claimed the same thing, and
+  the Sessions outline repeated it a fourth time. The badge keeps `LOCAL`; the rail note now reads
+  "On this machine" with the same two lines beneath it, the footer reads `DEVELOPER WORKSPACE`, the
+  Sessions outline reads `RECORDINGS`, and the topbar connection pill reads `● Connected` instead of
+  `● Local connection`. One visible occurrence on the Sessions screen, at 1440 and 684.
+
 - **Release blockers found by the independent review, fixed before publication** — `tapelog checkpoint`
   submits to Rekor **by default**, and three documents described it as opt-in; the notes, GETTING_STARTED
   and SECURITY.md now say the default and name `--witness none` as the way to keep a checkpoint local,
