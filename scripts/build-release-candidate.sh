@@ -88,7 +88,7 @@ for target in "${targets[@]}"; do
   mkdir -p "$stage/docs/adr"
   cp docs/*.md "$stage/docs/"
   cp docs/adr/*.md "$stage/docs/adr/" 2>/dev/null || true
-  cp SECURITY.md ARCHITECTURE.md CONTRIBUTING.md "$stage/"
+  cp SECURITY.md ARCHITECTURE.md CONTRIBUTING.md GOVERNANCE.md CODE_OF_CONDUCT.md RESEARCH.md STACK.md "$stage/"
   # The Getting Started walkthrough ends with the fictional Regression Lab suite. A
   # download-only user has no source checkout, so the suite travels with the archive.
   mkdir -p "$stage/examples/regression-demo"

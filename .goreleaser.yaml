@@ -49,6 +49,10 @@ archives:
       - SECURITY.md
       - ARCHITECTURE.md
       - CONTRIBUTING.md
+      - GOVERNANCE.md
+      - CODE_OF_CONDUCT.md
+      - RESEARCH.md
+      - STACK.md
       - docs/**/*.md
       - examples/regression-demo/*.json
       - examples/regression-demo/*.jsonl
