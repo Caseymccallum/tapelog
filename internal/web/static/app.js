@@ -2931,6 +2931,10 @@ function renderSuiteEditor() {
     const copy=button("Copy",async()=> {
       try {
         await navigator.clipboard.writeText(command);
+        // A previous failed attempt may have left a "copy it yourself" banner.
+        for(const child of [...detail.children]) {
+          if(child.className==="banner warning"&&/^Copy this command yourself/.test(child.textContent))child.remove();
+        }
         copy.textContent="Copied";
         setTimeout(()=> {
           copy.textContent="Copy";

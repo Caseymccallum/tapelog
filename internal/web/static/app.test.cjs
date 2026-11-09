@@ -10,11 +10,12 @@ class Node {
  get textContent(){return (this.text||'')+this.children.map(n=>n.textContent||'').join('');}
  set innerHTML(_){throw new Error('Untrusted HTML sink used');}
  set outerHTML(_){throw new Error('Untrusted HTML sink used');}
- append(...nodes){this.children.push(...nodes);}
+ append(...nodes){for(const n of nodes)if(n)n.parent=this;this.children.push(...nodes);}
+ remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);}
  prepend(...nodes){this.children.unshift(...nodes);}
  focus(){}
  scrollIntoView(){}
- replaceChildren(...nodes){this.text='';this.children=nodes;if(this.tagName==='select')this.value='';}
+ replaceChildren(...nodes){this.text='';for(const n of nodes)if(n)n.parent=this;this.children=nodes;if(this.tagName==='select')this.value='';}
  add(node){if(!this.children.length)this.value=node.value;this.append(node);}
  get options(){return this.children;}
  setAttribute(k,v){this.attributes[k]=v;}
@@ -649,6 +650,19 @@ test('a suite that cannot be saved explains why in an alert',async()=>{
  assert.ok(banner,'the failure must be visible, not silent');
  assert.equal(banner.getAttribute('role'),'alert');
  assert.match(banner.textContent,/title/);
+});
+test('a successful copy clears the earlier copy-it-yourself warning',async()=>{
+ const {context,nodes}=app();
+ vm.runInContext('labIndex={cases:[{file:"01-allowed-read.json",title:"T",description:"d",evidence:"e"}],suites:[]};suiteDraft={file:"suite.json",title:"S",cases:["01-allowed-read.json"],revision:"r",isNew:false,dirty:false};renderSuiteEditor()',context);
+ const all=n=>[n,...n.children.flatMap(all)];
+ const copy=all(nodes.get('lab-suite-detail')).find(n=>n.className==='quiet suite-cli-copy');
+ context.navigator={clipboard:{writeText:async()=>{throw new Error('denied');}}};
+ await copy.onclick();
+ assert.match(nodes.get('lab-suite-detail').textContent,/Copy this command yourself/,'a blocked clipboard must offer the command');
+ context.navigator={clipboard:{writeText:async()=>{}}};
+ await copy.onclick();
+ assert.doesNotMatch(nodes.get('lab-suite-detail').textContent,/Copy this command yourself/,'the stale warning must go once the copy works');
+ assert.equal(copy.textContent,'Copied');
 });
 test('activity rows expose their visible label rather than an incompatible override',async()=>{
  const {context,nodes}=app();context.response={session:{calls:1},total:1,findings:[],activities:[{seq:3,tool:'read_file',status:'success',verdict:'allow',server:'fictional',ts:'2026-01-01T00:00:00Z',duration_ms:1}]};
