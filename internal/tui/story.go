@@ -34,6 +34,10 @@ type DeniedBlock struct {
 	CallSeq    uint64 // the tools/call event #
 	DecSeq     uint64 // the policy/decision event #
 	SessionID  string
+	// ConversationID is the client-declared attribution carried by the
+	// request (empty when the client declared none). Correlation only —
+	// never a session boundary.
+	ConversationID string
 	Tool       string
 	Args       string // compact single-line args
 	RuleID     string
@@ -61,6 +65,13 @@ type callRef struct {
 	resultSeq uint64
 }
 
+// callKey scopes a request id to its session. Two sessions in one file may
+// reuse the same JSON-RPC id; without the scope the later call overwrites the
+// earlier one and the causal story names the wrong event.
+func callKey(sessionID string, id json.RawMessage) string {
+	return sessionID + "\x00" + string(id)
+}
+
 // buildStory correlates a session's events into the causal story. Two
 // passes: first index calls/results, then build deny blocks — so a result
 // recorded AFTER its deny (an invariant break) is still flagged.
@@ -84,13 +95,13 @@ func buildStory(events []session.Event) Story {
 			if json.Unmarshal(e.Payload, &p) != nil {
 				continue
 			}
-			byID[string(p.ID)] = &callRef{seq: e.Seq, tool: p.Tool, args: compact(p.Args)}
+			byID[callKey(e.SessionID, p.ID)] = &callRef{seq: e.Seq, tool: p.Tool, args: compact(p.Args)}
 		case session.EventToolResult:
 			var p session.ToolResultPayload
 			if json.Unmarshal(e.Payload, &p) != nil {
 				continue
 			}
-			if ref := byID[string(p.ID)]; ref != nil {
+			if ref := byID[callKey(e.SessionID, p.ID)]; ref != nil {
 				ref.resultSeq = e.Seq
 			}
 		case session.EventPolicyDecision:
@@ -112,9 +123,10 @@ func deniedBlock(events []session.Event, i int, e session.Event,
 	p session.PolicyDecisionPayload, byID map[string]*callRef) DeniedBlock {
 	block := DeniedBlock{
 		DecSeq: e.Seq, SessionID: e.SessionID,
-		RuleID: p.RuleID, Reason: p.Reason,
+		ConversationID: p.ConversationID,
+		RuleID:         p.RuleID, Reason: p.Reason,
 	}
-	if ref := byID[string(p.ID)]; ref != nil {
+	if ref := byID[callKey(e.SessionID, p.ID)]; ref != nil {
 		block.CallSeq = ref.seq
 		block.Tool = ref.tool
 		block.Args = ref.args
@@ -229,7 +241,11 @@ func renderDenied(st Story) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n── denied calls (%d) ──\n", len(st.Denied))
 	for _, d := range st.Denied {
-		fmt.Fprintf(&b, "#%d  %s  %s %s\n", d.CallSeq, d.SessionID, d.Tool, d.Args)
+		if d.ConversationID != "" {
+			fmt.Fprintf(&b, "#%d  %s  [conversation %s]  %s %s\n", d.CallSeq, d.SessionID, d.ConversationID, d.Tool, d.Args)
+		} else {
+			fmt.Fprintf(&b, "#%d  %s  %s %s\n", d.CallSeq, d.SessionID, d.Tool, d.Args)
+		}
 		fmt.Fprintf(&b, "    denied by %s — %s\n", d.RuleID, cleanReason(d.Reason))
 		for _, pv := range d.Provenance {
 			where := fmt.Sprintf("call #%d", pv.CallSeq)

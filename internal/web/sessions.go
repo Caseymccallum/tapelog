@@ -49,6 +49,16 @@ type SessionInfo struct {
 	EndReason   string   `json:"end_reason,omitempty"`
 	Revision    string   `json:"revision,omitempty"`
 	Ambiguous   bool     `json:"ambiguous"`
+	// Structure is "valid", "invalid" or "unreadable": whether the file is one
+	// session log (one identity, one start first, any end last). It says
+	// nothing about the hash chain, and Complete is derived from it.
+	Structure  string   `json:"structure"`
+	SessionIDs []string `json:"session_ids,omitempty"`
+	// StructureProblems names the shared checker's own defect codes
+	// ("no_events", "mixed_identity at seq 9", …). The verdict word alone cannot
+	// tell an empty file from a two-session one, and the CLI text and API must
+	// agree on which problem was found.
+	StructureProblems []string `json:"structure_problems,omitempty"`
 }
 
 type activity struct {
@@ -139,6 +149,26 @@ func decodeRecording(data []byte, name string) *recording {
 			rec.Info.ChainOK = true
 		}
 	}
+	// Structure is independent of the chain: a correctly hashed file can still
+	// be two sessions, or have no start, or no end.
+	structure, serr := session.InspectStructure(bytes.NewReader(data))
+	if serr != nil {
+		rec.Info.Structure = "unreadable"
+	} else {
+		rec.Info.SessionIDs = structure.SessionIDs
+		for _, p := range structure.Problems {
+			rec.Info.StructureProblems = append(rec.Info.StructureProblems, p.Describe())
+		}
+		rec.Info.Complete = structure.Complete()
+		switch {
+		case !structure.Valid():
+			rec.Info.Structure = "invalid"
+		case !structure.Complete():
+			rec.Info.Structure = "incomplete"
+		default:
+			rec.Info.Structure = "valid"
+		}
+	}
 	deriveRecording(rec)
 	return rec
 }
@@ -218,7 +248,6 @@ func deriveRecording(rec *recording) {
 				info.Name = p.Harness + " session"
 			}
 		case session.EventSessionEnd:
-			info.Complete = true
 			info.EndReason = p.Reason
 		case session.EventToolsList:
 			info.Discovery++
@@ -354,12 +383,12 @@ func (s *server) recording(name string, budget ...int64) (*recording, error) {
 func summarize(path string) SessionInfo {
 	f, err := os.Open(path)
 	if err != nil {
-		return SessionInfo{File: filepath.Base(path), Integrity: "unavailable", Problem: "Recording cannot be opened"}
+		return SessionInfo{File: filepath.Base(path), Integrity: "unavailable", Structure: "unreadable", Problem: "Recording cannot be opened"}
 	}
 	defer f.Close()
 	rec, err := boundedRecording(f, filepath.Base(path))
 	if err != nil {
-		return SessionInfo{File: filepath.Base(path), Integrity: "limited", Problem: err.Error()}
+		return SessionInfo{File: filepath.Base(path), Integrity: "limited", Structure: "unreadable", Problem: err.Error()}
 	}
 	return rec.Info
 }
@@ -431,12 +460,12 @@ func catalog(s *server) ([]SessionInfo, bool, error) {
 	budget := int64(maxCatalogBytes)
 	for _, file := range files {
 		if file.size > budget {
-			out = append(out, SessionInfo{File: file.name, Name: strings.TrimSuffix(file.name, ".jsonl"), Integrity: "not_checked", Problem: "Library scan budget reached; open this session to inspect it."})
+			out = append(out, SessionInfo{File: file.name, Name: strings.TrimSuffix(file.name, ".jsonl"), Integrity: "not_checked", Structure: "unreadable", Problem: "Library scan budget reached; open this session to inspect it."})
 			continue
 		}
 		rec, err := s.recording(file.name, budget)
 		if err != nil {
-			out = append(out, SessionInfo{File: file.name, Name: file.name, Integrity: "unavailable", Problem: err.Error()})
+			out = append(out, SessionInfo{File: file.name, Name: file.name, Integrity: "unavailable", Structure: "unreadable", Problem: err.Error()})
 		} else {
 			budget -= int64(len(rec.Data))
 			out = append(out, rec.Info)

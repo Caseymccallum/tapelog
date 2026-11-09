@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Caseymccallum/tapelog/internal/behaviour"
 	"github.com/Caseymccallum/tapelog/internal/replay"
 	"github.com/Caseymccallum/tapelog/internal/scenario"
 	"github.com/Caseymccallum/tapelog/internal/session"
@@ -33,15 +34,20 @@ type Expectation struct {
 	Maximum  *int     `json:"maximum,omitempty"`
 }
 type Case struct {
-	Version        int           `json:"version"`
-	Eligibility    string        `json:"eligibility,omitempty"`
-	Title          string        `json:"title"`
-	Description    string        `json:"description,omitempty"`
-	Evidence       string        `json:"evidence"`
-	EvidenceSHA256 string        `json:"evidence_sha256,omitempty"`
-	Reference      string        `json:"reference,omitempty"`
-	EvidenceSeqs   []uint64      `json:"evidence_seqs,omitempty"`
-	Expectations   []Expectation `json:"expectations"`
+	Version        int      `json:"version"`
+	Eligibility    string   `json:"eligibility,omitempty"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description,omitempty"`
+	Evidence       string   `json:"evidence"`
+	EvidenceSHA256 string   `json:"evidence_sha256,omitempty"`
+	Reference      string   `json:"reference,omitempty"`
+	EvidenceSeqs   []uint64 `json:"evidence_seqs,omitempty"`
+	// Conversation, when set, scopes every expectation to the calls that
+	// declared this client-declared conversation id. It is correlation, not a
+	// session boundary and not an identity; see conversation_scope.go for the
+	// eligibility rules that keep a scope from concluding too much.
+	Conversation string        `json:"conversation,omitempty"`
+	Expectations []Expectation `json:"expectations"`
 }
 type Suite struct {
 	Version int      `json:"version"`
@@ -89,10 +95,15 @@ const (
 	CodeNoDenials       = "no_denials"
 	CodeShortSequence   = "short_sequence"
 	CodeIncomplete      = "incomplete_recording"
-	CodeDamaged         = "damaged_recording"
-	CodeRevision        = "revision_changed"
-	CodeUnreadable      = "evidence_unreadable"
-	CodeInvalidCase     = "invalid_case"
+	CodeStructure       = "structure_invalid"
+	// CodeAmbiguous: the assertion needs the result-to-call pairing, but the
+	// recording shared a request id between outstanding calls, so which call
+	// a result answers is unknowable. Never upgraded to PASS.
+	CodeAmbiguous   = "ambiguous_correlation"
+	CodeDamaged     = "damaged_recording"
+	CodeRevision    = "revision_changed"
+	CodeUnreadable  = "evidence_unreadable"
+	CodeInvalidCase = "invalid_case"
 )
 
 // EvidenceError says a recording cannot support an evaluation, and why in a way
@@ -134,6 +145,9 @@ func (c Case) Validate() error {
 	}
 	if !leaf(c.Evidence, ".jsonl") || c.Reference != "" && !leaf(c.Reference, ".jsonl") {
 		return fmt.Errorf("evidence and reference must be plain recording filenames")
+	}
+	if c.Conversation != "" && !behaviour.ValidConversationID(c.Conversation) {
+		return fmt.Errorf("conversation must be a client-declared id of 1-128 characters from A-Za-z0-9._:-, not the unattributed remainder")
 	}
 	if c.EvidenceSHA256 != "" {
 		v, e := hex.DecodeString(c.EvidenceSHA256)
@@ -273,15 +287,30 @@ func inspect(data []byte) (*replay.Tape, error) {
 	if v.Events > 10000 {
 		return nil, fail(CodeDamaged, "the recording exceeds the 10,000-event lab limit")
 	}
+	structure, err := session.InspectStructure(bytes.NewReader(data))
+	if err != nil {
+		return nil, fail(CodeDamaged, "the recording cannot be read: "+err.Error())
+	}
+	if !structure.Valid() {
+		p := structure.FirstProblem()
+		if p == nil {
+			return nil, fail(CodeStructure, "the recording is not one valid session log")
+		}
+		return nil, fail(CodeStructure, "the recording is not one valid session log ("+p.Describe()+")")
+	}
+	if !structure.Complete() {
+		return nil, fail(CodeIncomplete, "the recording has no complete session/start and session/end")
+	}
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 65536), MaxRecording+1)
 	ids := map[string]uint64{}
 	seqIDs := map[uint64]string{}
 	results := map[string]bool{}
-	var first, last session.EventType
-	count := 0
-	starts, ends := 0, 0
-	sessionID := ""
+	// Repeated request ids are not damage: the transport allows a client to
+	// reuse an id, and pairing simply becomes unknowable for those calls.
+	// They are recorded as ambiguous and decided per claim below, instead of
+	// rejecting the whole recording.
+	ambiguousIDs := map[string]bool{}
 	for sc.Scan() {
 		if len(bytes.TrimSpace(sc.Bytes())) == 0 {
 			continue
@@ -290,25 +319,6 @@ func inspect(data []byte) (*replay.Tape, error) {
 		if json.Unmarshal(sc.Bytes(), &e) != nil {
 			return nil, fail(CodeDamaged, "the recording contains an unreadable event")
 		}
-		if count == 0 {
-			first = e.Type
-		}
-		last = e.Type
-		if e.Type == session.EventSessionStart {
-			starts++
-		}
-		if e.Type == session.EventSessionEnd {
-			ends++
-		}
-		if e.SessionID == "" {
-			return nil, fail(CodeDamaged, "the recording has no session identity")
-		}
-		if sessionID == "" {
-			sessionID = e.SessionID
-		} else if sessionID != e.SessionID {
-			return nil, fail(CodeDamaged, "the recording mixes more than one session identity")
-		}
-		count++
 		switch e.Type {
 		case session.EventToolCall:
 			var p session.ToolCallPayload
@@ -317,9 +327,10 @@ func inspect(data []byte) (*replay.Tape, error) {
 			}
 			key := string(p.ID)
 			if _, exists := ids[key]; exists {
-				return nil, fail(CodeDamaged, "a call identity repeats, so calls cannot be paired unambiguously")
+				ambiguousIDs[key] = true
+			} else {
+				ids[key] = e.Seq
 			}
-			ids[key] = e.Seq
 			seqIDs[e.Seq] = key
 		case session.EventPolicyDecision, session.EventToolResult:
 			var p struct {
@@ -334,7 +345,7 @@ func inspect(data []byte) (*replay.Tape, error) {
 			if !ok {
 				return nil, fail(CodeDamaged, "a decision or result has no preceding call")
 			}
-			if p.Parent != nil && (seq != *p.Parent || seqIDs[*p.Parent] != key) {
+			if p.Parent != nil && !ambiguousIDs[key] && (seq != *p.Parent || seqIDs[*p.Parent] != key) {
 				return nil, fail(CodeDamaged, "a parent event and call identity disagree")
 			}
 			if e.Type == session.EventPolicyDecision {
@@ -348,7 +359,7 @@ func inspect(data []byte) (*replay.Tape, error) {
 				if json.Unmarshal(e.Payload, &result) != nil || len(result.Result) == 0 {
 					return nil, fail(CodeDamaged, "a recorded result is empty or malformed")
 				}
-				if results[key] {
+				if results[key] && !ambiguousIDs[key] {
 					return nil, fail(CodeDamaged, "a call has more than one recorded result")
 				}
 				results[key] = true
@@ -357,9 +368,6 @@ func inspect(data []byte) (*replay.Tape, error) {
 	}
 	if sc.Err() != nil {
 		return nil, fail(CodeDamaged, "the recording cannot be read")
-	}
-	if starts != 1 || ends != 1 || first != session.EventSessionStart || last != session.EventSessionEnd {
-		return nil, fail(CodeIncomplete, "the recording has no complete session/start and session/end")
 	}
 	tape, err := replay.LoadInline(bytes.NewReader(data))
 	if err != nil {
@@ -427,6 +435,11 @@ func eligibility(x Expectation, t *replay.Tape) (code, reason string) {
 		case denyVerdicts == 0:
 			return CodeNoDenials, "no deny decision was recorded, so the invariant cannot be demonstrated"
 		}
+		for _, it := range all {
+			if it.Ambiguous {
+				return CodeAmbiguous, "a request id was shared by more than one outstanding call, so a result cannot be tied to the denied call"
+			}
+		}
 		return "", ""
 	}
 	// A sequence names several tools, so it is also decided before tool filtering.
@@ -437,13 +450,19 @@ func eligibility(x Expectation, t *replay.Tape) (code, reason string) {
 		return "", ""
 	}
 	var answered []replay.Interaction
-	calls, unanswered, missingDecision := 0, 0, 0
+	calls, unanswered, missingDecision, ambiguousAnswered, ambiguousUnanswered, ambiguousNoVerdict := 0, 0, 0, 0, 0, 0
 	for _, it := range t.Interactions {
 		if it.Tool != x.Tool {
 			continue
 		}
 		calls++
 		answered = append(answered, it)
+		if it.Ambiguous {
+			ambiguousAnswered++
+			if it.Verdict == "" {
+				ambiguousNoVerdict++
+			}
+		}
 	}
 	for _, it := range t.Unanswered {
 		if it.Tool != x.Tool {
@@ -451,6 +470,12 @@ func eligibility(x Expectation, t *replay.Tape) (code, reason string) {
 		}
 		calls++
 		unanswered++
+		if it.Ambiguous {
+			ambiguousUnanswered++
+			if it.Verdict == "" {
+				ambiguousNoVerdict++
+			}
+		}
 		if it.Verdict == "" {
 			missingDecision++
 		}
@@ -465,8 +490,11 @@ func eligibility(x Expectation, t *replay.Tape) (code, reason string) {
 		}
 		return "", ""
 	case "answered":
-		if len(answered) > 0 {
+		if len(answered) > ambiguousAnswered {
 			return "", ""
+		}
+		if ambiguousAnswered > 0 {
+			return CodeAmbiguous, "every recorded result from " + x.Tool + " sits under a request id shared by more than one outstanding call"
 		}
 		if calls > 0 {
 			return CodeNoResults, "every recorded call to " + x.Tool + " has no recorded result"
@@ -475,6 +503,9 @@ func eligibility(x Expectation, t *replay.Tape) (code, reason string) {
 	case "denied":
 		if calls == 0 {
 			return CodeNoCalls, "no call to " + x.Tool + " reached the boundary"
+		}
+		if ambiguousNoVerdict > 0 {
+			return CodeAmbiguous, "a request id used by " + x.Tool + " was shared by more than one outstanding call, and a decision could not be tied to the call it decided"
 		}
 		if missingDecision > 0 {
 			return CodeMissingDecision, "a call to " + x.Tool + " has no recorded policy decision"
@@ -485,9 +516,15 @@ func eligibility(x Expectation, t *replay.Tape) (code, reason string) {
 			return CodeNoResults, "no recorded result from " + x.Tool + " can be searched"
 		}
 		for _, it := range answered {
+			if it.Ambiguous {
+				continue // could belong to a different call under the same id
+			}
 			if strings.Contains(string(it.Result), x.Text) {
 				return "", "" // one witness is enough, whatever else happened
 			}
+		}
+		if ambiguousAnswered > 0 {
+			return CodeAmbiguous, "the matching result(s) from " + x.Tool + " cannot be tied to the call that asked for them"
 		}
 		for _, it := range answered {
 			if redacted(it) {
@@ -498,6 +535,9 @@ func eligibility(x Expectation, t *replay.Tape) (code, reason string) {
 	case "result_never_contains":
 		if len(answered) == 0 {
 			return CodeNoResults, "no recorded result from " + x.Tool + " can prove the text is absent"
+		}
+		if ambiguousAnswered > 0 {
+			return CodeAmbiguous, "a result from " + x.Tool + " cannot be tied to its call, so absence cannot be proven"
 		}
 		if unanswered > 0 {
 			return CodeNoResults, "a call to " + x.Tool + " has no recorded result, so absence cannot be proven"
@@ -537,9 +577,23 @@ func Evaluate(c Case, data []byte, candidate string) Result {
 	}
 	for _, x := range c.Expectations {
 		check := CheckResult{Kind: x.Kind, Status: "PASS", Detail: "Expectation satisfied by eligible recorded evidence."}
-		code, reason := eligibility(x, tape)
+		// A conversation scope narrows the evidence before any claim is
+		// decided. It can only remove evidence, never create a witness, and it
+		// is applied before the eligibility rules so they keep their meaning.
+		scoped, scopeCode, scopeReason := scopeCase(c, tape, x.Kind)
+		if scopeCode != "" {
+			check.Status = "INCONCLUSIVE"
+			check.Detail = scopeReason
+			check.Code = scopeCode
+			r.Checks = append(r.Checks, check)
+			if r.Status != "FAIL" {
+				r.Status = "INCONCLUSIVE"
+			}
+			continue
+		}
+		code, reason := eligibility(x, scoped)
 		if c.Eligibility == "complete-boundary" {
-			code, reason = completeBoundaryEligibility(x, tape)
+			code, reason = completeBoundaryEligibility(x, scoped)
 		}
 		if code != "" {
 			check.Status = "INCONCLUSIVE"
@@ -553,7 +607,7 @@ func Evaluate(c Case, data []byte, candidate string) Result {
 				zero := 0
 				assertion.Attempted.Min = &zero
 			}
-			failures := scenario.Run(&scenario.Scenario{Version: 1, Assert: []scenario.Check{assertion}}, tape, nil)
+			failures := scenario.Run(&scenario.Scenario{Version: 1, Assert: []scenario.Check{assertion}}, scoped, nil)
 			if len(failures) > 0 {
 				check.Status = "FAIL"
 				check.Detail = failures[0].Detail
@@ -591,9 +645,13 @@ func completeBoundaryEligibility(x Expectation, t *replay.Tape) (string, string)
 			}
 		}
 	}
+	ambiguousResults := 0
 	for _, it := range t.Interactions {
 		if it.Tool == x.Tool {
 			results = append(results, it)
+			if it.Ambiguous {
+				ambiguousResults++
+			}
 		}
 	}
 	missingResults = calls - len(results)
@@ -601,8 +659,11 @@ func completeBoundaryEligibility(x Expectation, t *replay.Tape) (string, string)
 	case "attempted", "no_attempts", "attempt_ceiling", "sequence":
 		return "", ""
 	case "answered":
-		if calls == 0 || len(results) > 0 {
+		if calls == 0 || len(results) > ambiguousResults {
 			return "", ""
+		}
+		if ambiguousResults > 0 {
+			return CodeAmbiguous, "matching results sit under a request id shared by more than one outstanding call, so the pairing is unknown"
 		}
 		return CodeNoResults, "matching calls have no recorded result; whether they were answered cannot be established"
 	case "denied":
@@ -614,9 +675,15 @@ func completeBoundaryEligibility(x Expectation, t *replay.Tape) (string, string)
 		// A recorded witness/counterexample decides the explicit text claim even
 		// when another matching call has no result. The engine checks it again.
 		for _, it := range results {
+			if it.Ambiguous {
+				continue // a witness must be a result we can tie to this call
+			}
 			if strings.Contains(string(it.Result), x.Text) {
 				return "", ""
 			}
+		}
+		if ambiguousResults > 0 {
+			return CodeAmbiguous, "the result(s) that could decide this claim cannot be tied to the call, so the text is unknowable"
 		}
 		if x.Kind == "result_contains" && calls == 0 {
 			return "", ""

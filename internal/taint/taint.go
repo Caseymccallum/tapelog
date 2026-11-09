@@ -17,6 +17,12 @@ import (
 	"sync"
 )
 
+// UnknownSource marks values whose producing tool could not be recorded — the
+// source-tracking capacity was exhausted. It is deliberately not a tool name:
+// policy treats it as "could have come from any source", so a value-flow rule
+// whose `from` list is non-empty fires rather than assuming the value is clean.
+const UnknownSource = "<unknown-source>"
+
 // Store holds tainted string values per source tool. Bounded: value
 // length and per-source count caps keep memory and scan cost flat.
 type Store struct {
@@ -25,6 +31,12 @@ type Store struct {
 	maxLen    int // per value
 	minLen    int // shorter values are too collision-prone to taint with
 	values    map[string][]string
+	// unknown records that SOME value in this session came from a source we
+	// could not name. It is a fact about the session, not a value in the
+	// store: value buckets are capped and evict oldest-first, so a sentinel
+	// stored as values would eventually be flushed and the fail-closed
+	// guarantee would silently disappear under pressure.
+	unknown bool
 }
 
 // New creates a Store. Negative/zero fields get sane defaults:
@@ -63,6 +75,14 @@ func (s *Store) Mark(source string, result json.RawMessage) {
 	s.values[source] = kept
 }
 
+// MarkUnknown records that a value has an unknowable source. It is sticky for
+// the life of the store and cannot be evicted.
+func (s *Store) MarkUnknown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unknown = true
+}
+
 // ContaminatedBy returns the source tools whose recorded values appear in
 // args (substring match), deduplicated. Argument strings are matched in
 // full — only *stored* values are length-capped (storage bounds are what
@@ -71,11 +91,17 @@ func (s *Store) ContaminatedBy(args json.RawMessage) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.values) == 0 {
+		if s.unknown {
+			return []string{UnknownSource}
+		}
 		return nil
 	}
 	var needles []string
 	collectStrings(args, &needles, 0) // 0 = no cap on scanned strings
 	if len(needles) == 0 {
+		if s.unknown {
+			return []string{UnknownSource}
+		}
 		return nil
 	}
 	var out []string
@@ -95,6 +121,11 @@ func (s *Store) ContaminatedBy(args json.RawMessage) []string {
 		if hit {
 			out = append(out, source)
 		}
+	}
+	if s.unknown {
+		// The session has at least one value from an unnameable source. Any
+		// sink could be carrying it, so the answer is never "clean".
+		out = append(out, UnknownSource)
 	}
 	return out
 }

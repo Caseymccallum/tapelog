@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "title": "The recording proves read_file was NOT denied",
+  "description": "This is the expected FAIL case: the evidence is complete and unambiguous, and it establishes the opposite of the assertion. A FAIL here is a correct result — it is the same verdict a real regression would produce.",
+  "evidence": "session-two-conversations.jsonl",
+  "expectations": [
+    { "kind": "denied", "tool": "read_file" }
+  ]
+}

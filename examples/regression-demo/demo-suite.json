@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "title": "Tapelog replay and regression demo (fictional)",
+  "cases": [
+    "01-allowed-read.json",
+    "02-denied-read-fails.json",
+    "03-interrupted-inconclusive.json",
+    "04-scoped-conversation.json",
+    "05-absent-conversation.json"
+  ]
+}

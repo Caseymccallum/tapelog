@@ -33,6 +33,10 @@ type Item struct {
 	Kind    Kind
 	Payload string   // pretty-printed JSON payload
 	Extra   []string // causal provenance lines (deny events)
+	// Attribution is the client-declared conversation id for this event
+	// (empty when none was declared). It is a claim, not a fact, and the
+	// viewer labels it as such.
+	Attribution string
 }
 
 // Summary aggregates a session at a glance.
@@ -47,22 +51,61 @@ type Summary struct {
 	Discovery int
 	Started   bool
 	Ended     bool
+	// Integrity is "verified", "invalid" or "unreadable" (hash chain).
+	// Structure is "valid", "invalid", "incomplete" or "unreadable" (one
+	// session log, boundary observed). Both are reported, never fatal.
+	Integrity string
+	Structure string
+	// StructureProblems carries the shared checker's own defect codes, so the
+	// rendered verdict names the same problem `verify` and the workbench API name
+	// instead of a canned sentence that can be false (an empty file is not a
+	// "mixed session ids" file).
+	StructureProblems []string
+	ChainEvents       int
+	ChainHead         string
 }
 
 // Load parses a session log into renderable items, summary, and the
 // causal story (denied calls with provenance).
 func Load(path string) ([]Item, Summary, Story, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, Summary{}, Story{}, err
 	}
-	defer f.Close()
 
 	var events []session.Event
 	var items []Item
 	var sum Summary
 	blobs := session.NewBlobStore(session.DefaultBlobDir(path))
-	sc := bufio.NewScanner(f)
+
+	// Integrity and structure are reported, never fatal: inspect is a forensic
+	// viewer and must open tampered or structurally invalid evidence.
+	if vr, verr := session.Verify(bytes.NewReader(data)); verr != nil {
+		sum.Integrity = "unreadable"
+	} else if vr != nil && vr.OK() {
+		sum.Integrity = "verified"
+		sum.ChainEvents = vr.Events
+		sum.ChainHead = vr.LastHash
+	} else {
+		sum.Integrity = "invalid"
+	}
+	if sr, serr := session.InspectStructure(bytes.NewReader(data)); serr != nil {
+		sum.Structure = "unreadable"
+	} else {
+		for _, p := range sr.Problems {
+			sum.StructureProblems = append(sum.StructureProblems, p.Describe())
+		}
+		switch {
+		case !sr.Valid():
+			sum.Structure = "invalid"
+		case !sr.Complete():
+			sum.Structure = "incomplete"
+		default:
+			sum.Structure = "valid"
+		}
+	}
+
+	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	lineNumber := 0
 	for sc.Scan() {
@@ -73,7 +116,7 @@ func Load(path string) ([]Item, Summary, Story, error) {
 		}
 		var e session.Event
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			return nil, Summary{}, Story{}, fmt.Errorf("invalid session JSON at line %d; run tapelog verify on this file", lineNumber)
+			return nil, Summary{}, Story{}, fmt.Errorf("cannot render %s: invalid session JSON at line %d; run tapelog verify on this file", path, lineNumber)
 		}
 		if e.Seq == 0 || e.Type == "" {
 			return nil, Summary{}, Story{}, fmt.Errorf("invalid session event at line %d; expected a sequence and event type", lineNumber)
@@ -164,6 +207,12 @@ func itemFromEvent(e session.Event) Item {
 		_ = json.Unmarshal(e.Payload, &p)
 		item.Kind = KindCall
 		item.Label = fmt.Sprintf("%s %s", p.Tool, compact(p.Args))
+		if p.ConversationID != "" {
+			// Client-declared attribution: shown as correlation, never as
+			// a session boundary.
+			item.Attribution = p.ConversationID
+			item.Label += fmt.Sprintf(" [conversation %s]", p.ConversationID)
+		}
 		if p.DescriptorDrift {
 			item.Label += " [DRIFT]"
 		}
@@ -221,6 +270,15 @@ func compact(raw json.RawMessage) string {
 func Plain(items []Item, sum Summary, story Story) string {
 	var b strings.Builder
 	b.WriteString(Overview(sum))
+	attributed := 0
+	for _, it := range items {
+		if it.Attribution != "" {
+			attributed++
+		}
+	}
+	if attributed > 0 {
+		b.WriteString("Attribution: client-declared conversation ids (a claim, not authenticated; not a session boundary)\n")
+	}
 	for _, it := range items {
 		marker := " "
 		switch it.Kind {
@@ -246,7 +304,10 @@ func Overview(sum Summary) string {
 	fmt.Fprintf(&b, "Session overview: %d events · %d mediated calls · %d failed results · %d discovery events\n", sum.Events, sum.Calls, sum.Failed, sum.Discovery)
 	fmt.Fprintf(&b, "Policy decisions: %d allow · %d confirm · %d deny (not completed-call counts) · %d drift\n", sum.Allowed, sum.Confirmed, sum.Denied, sum.Drift)
 	b.WriteString("Scope: only traffic crossing Tapelog's MCP boundary; built-in agent tools are unobserved.\n")
-	b.WriteString("Integrity: not checked by inspect. Run tapelog verify <log>; an intact chain alone does not prove completeness or who wrote it.\n")
+	fmt.Fprintf(&b, "Integrity: %s\n", integrityVerdict(sum))
+	fmt.Fprintf(&b, "Structure: %s\n", structureVerdict(sum))
+	fmt.Fprintf(&b, "Completeness: %s\n", completenessVerdict(sum))
+	b.WriteString("Eligibility: not checked by inspect; run tapelog lab.\n")
 	if sum.Events == 0 {
 		b.WriteString("No session events found. Check the selected log and whether recording started.\n")
 	} else if sum.Calls == 0 && sum.Discovery > 0 {
@@ -259,4 +320,58 @@ func Overview(sum Summary) string {
 	}
 	b.WriteString("Next: tapelog verify <log>; tapelog replay <log> --strict serves recorded results only and waits for client input. Denied/unanswered calls are replay misses. Browse: tapelog web --dir <log-directory>.\n\n")
 	return b.String()
+}
+
+// integrityVerdict renders the hash-chain verdict for the overview. An empty
+// file has no chain, so it is reported as EMPTY rather than VERIFIED — the
+// same verdict the web API and the lab give it.
+func integrityVerdict(sum Summary) string {
+	switch sum.Integrity {
+	case "verified":
+		if sum.ChainEvents == 0 {
+			return "EMPTY (no events; there is no chain)"
+		}
+		return fmt.Sprintf("VERIFIED (%d events, chain intact)", sum.ChainEvents)
+	case "invalid":
+		return "INVALID (hash chain broken — run tapelog verify <log>)"
+	default:
+		return "UNREADABLE"
+	}
+}
+
+// structureVerdict renders the structural verdict for the overview. A file
+// that is not one session log is INVALID; a file that is one but has no end is
+// INCOMPLETE, never invalid.
+func structureVerdict(sum Summary) string {
+	switch sum.Structure {
+	case "valid":
+		return "VALID (one session id, session/start first, session/end last)"
+	case "invalid":
+		return fmt.Sprintf("INVALID (not one session log — %s)", structureDetail(sum, "mixed session ids, missing or repeated boundary"))
+	case "incomplete":
+		return fmt.Sprintf("INCOMPLETE (no session/end recorded — %s)", structureDetail(sum, "no_end"))
+	default:
+		return "UNREADABLE"
+	}
+}
+
+// structureDetail renders the actual defect codes the shared checker reported.
+// The fallback is only reachable for a verdict with no attached problem, which
+// the checker does not currently produce.
+func structureDetail(sum Summary, fallback string) string {
+	if len(sum.StructureProblems) == 0 {
+		return fallback
+	}
+	return strings.Join(sum.StructureProblems, ", ")
+}
+
+// completenessVerdict renders whether the recording's own boundary was seen.
+func completenessVerdict(sum Summary) string {
+	if sum.Structure == "valid" {
+		return "closed (session/start … session/end)"
+	}
+	if sum.Events > 0 && !sum.Ended {
+		return "open (no session/end recorded)"
+	}
+	return "unknown"
 }

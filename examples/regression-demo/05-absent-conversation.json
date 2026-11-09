@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "title": "A conversation that never appears cannot be declared quiet",
+  "description": "Scoped to an id no call declared. The expected result is INCONCLUSIVE with code conversation_absent: an absent conversation is not an observed empty one, so a scoped absence claim can never PASS on evidence that does not mention it.",
+  "evidence": "session-two-conversations.jsonl",
+  "conversation": "demo-never-appeared",
+  "expectations": [
+    { "kind": "no_attempts", "tool": "read_file" }
+  ]
+}

@@ -12,11 +12,24 @@ const (
 )
 
 type CallRecord struct {
-	Seq        uint64   `json:"seq"`
-	TS         string   `json:"ts,omitempty"`
-	EpochMS    int64    `json:"-"` // parsed TS; 0 when absent or unparseable
-	Tool       string   `json:"tool"`
-	Server     string   `json:"server,omitempty"`
+	Seq uint64 `json:"seq"`
+	// File is the recording this call came from. It is not evidence of its own;
+	// it is what makes a timeline entry openable back in the workspace.
+	File    string `json:"file,omitempty"`
+	TS      string `json:"ts,omitempty"`
+	EpochMS int64  `json:"-"` // parsed TS; 0 when absent or unparseable
+	Tool    string `json:"tool"`
+	Server  string `json:"server,omitempty"`
+	// Index is the call's ordinal within its own recording. It exists so a
+	// timeline link can open the right page of the activity table.
+	Index int `json:"index,omitempty"`
+	// LibrarySeq is the call's 1-based position in the library-wide call list
+	// (every analysed recording, in library order, then sequence within the
+	// recording). It is assigned by the overview when it folds recordings
+	// together, and it is the only sound ordering key across recordings —
+	// Seq restarts in every file. Zero means "not assigned" (a caller working
+	// on a single hand-built list), never a legal position.
+	LibrarySeq uint64   `json:"-"`
 	ArgsKey    string   `json:"-"`
 	ResultKey  string   `json:"-"`
 	Status     string   `json:"status"`
@@ -26,6 +39,13 @@ type CallRecord struct {
 	DurationMS *float64 `json:"duration_ms"`
 	Signature  string   `json:"signature,omitempty"`
 	ResultSeq  uint64   `json:"result_seq,omitempty"`
+	// ConversationID is the CLIENT-DECLARED conversation this call was
+	// attributed to (empty when the client declared none). Correlation only:
+	// it is not a session boundary and not proof of anything.
+	ConversationID string `json:"conversation_id,omitempty"`
+	// CorrelationAmbiguous marks a call whose result could not be tied to it
+	// (a request id shared by more than one outstanding call).
+	CorrelationAmbiguous bool `json:"correlation_ambiguous,omitempty"`
 }
 
 // Repeat findings use a fixed vocabulary so the interface never has to invent a
@@ -286,19 +306,20 @@ func detectBlocks(calls []CallRecord) ([]RepeatFinding, map[int]bool) {
 				if !ok {
 					break
 				}
+				if repeats == 1 && !twoDistinct(calls, i, k) {
+					// The block holds ONE distinct operation, so it is a
+					// single-call run that the group detector owns: this k is
+					// discarded whatever the run length is. Stopping here rather
+					// than scanning to the end is what removes the O(n^2): a
+					// polling tool repeating one call 8 000 times used to take
+					// 800 ms, because every starting index re-scanned the rest
+					// of the recording. Output is unchanged: the old code also
+					// reached `continue` for this k, just far more slowly.
+					break
+				}
 				repeats++
 			}
 			if repeats < MinRepeatCount {
-				continue
-			}
-			// A block of identical calls is a single-call run, which the group
-			// detector owns. Requiring two distinct calls keeps a polling tool
-			// from being reported as an "alternating sequence".
-			distinct := map[string]bool{}
-			for j := 0; j < k; j++ {
-				distinct[calls[i+j].Tool+"\x00"+calls[i+j].ArgsKey] = true
-			}
-			if len(distinct) < 2 {
 				continue
 			}
 			end := i + repeats*k
@@ -331,6 +352,18 @@ func detectBlocks(calls []CallRecord) ([]RepeatFinding, map[int]bool) {
 		}
 	}
 	return out, covered
+}
+
+// twoDistinct reports whether calls[i..i+k) holds more than one distinct
+// (tool, arguments) pair - the same question as len(Distinct) >= 2, answered
+// without allocating a map per candidate.
+func twoDistinct(calls []CallRecord, i, k int) bool {
+	for j := 1; j < k; j++ {
+		if calls[i+j].Tool != calls[i].Tool || calls[i+j].ArgsKey != calls[i].ArgsKey {
+			return true
+		}
+	}
+	return false
 }
 
 // sortFindings orders observations by how much attention they deserve, then by

@@ -21,6 +21,22 @@ const DefaultProtocolVersion = "2026-07-28"
 // has no recording to play — the fail-loud contract (VCR semantics).
 const CodeNoMatchingRecording = -32011
 
+// Caching hints for replay's cacheable responses (server/discover, tools/list).
+//
+// MCP 2026-07-28 requires them on any result carrying `resultType: "complete"`,
+// and this server advertises that revision. The values are the most
+// conservative the schema allows: `ttlMs: 0` is immediately stale (a client must
+// not serve it from cache) and `cacheScope: "private"` is never shared. A served
+// cassette has no caching contract to offer, and inventing a positive TTL would
+// let a client reuse a tool catalog past the point the recording can justify.
+// Omitting them entirely was a real defect: strict clients rejected the whole
+// `tools/list` result, so replay looked connected but presented zero usable
+// tools.
+const (
+	replayTTLMs      = 0
+	replayCacheScope = "private"
+)
+
 // Server is a hermetic MCP server that answers tool traffic from a tapelog.
 type Server struct {
 	Player   *Player
@@ -88,6 +104,12 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 				"resultType":        "complete",
 				"supportedVersions": append([]string{protocol}, transport.LegacyVersions...),
 				"capabilities":      map[string]any{"tools": map[string]any{}},
+				// 2026-07-28 makes caching hints mandatory on cacheable results.
+				// Replay advertises the modern era, and the two values are the
+				// most conservative the schema allows (immediately stale, never
+				// shared): a served cassette has no caching contract to offer.
+				"ttlMs":      replayTTLMs,
+				"cacheScope": replayCacheScope,
 				"_meta": map[string]any{
 					"io.modelcontextprotocol/serverInfo": map[string]any{"name": "tapelog-replay", "version": version},
 				},
@@ -111,7 +133,12 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			if tools == nil {
 				tools = []json.RawMessage{}
 			}
-			if err := result(msg.ID, map[string]any{"tools": tools}); err != nil {
+			if err := result(msg.ID, map[string]any{
+				"tools": tools,
+				// Mandatory on a 2026-07-28 cacheable result; see server/discover.
+				"ttlMs":      replayTTLMs,
+				"cacheScope": replayCacheScope,
+			}); err != nil {
 				return err
 			}
 		case "tools/call":

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 
@@ -49,11 +50,18 @@ CSP, optional bearer token. No live approvals in directory mode.
 				return fmt.Errorf("--dir %s is not a directory", dir)
 			}
 			srv := &http.Server{Addr: listen, Handler: web.DirHandlerWithPolicy(dir, policyPath, token)}
-			fmt.Fprintf(os.Stderr, "tapelog: session dashboard on http://%s (%s)\n", listen, dir)
+			// Bind before announcing: a busy port used to print the dashboard URL
+			// first and then fail, so the line a script greps for described a
+			// server that was never running.
+			ln, err := net.Listen("tcp", listen)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "tapelog: session dashboard on http://%s (%s)\n", ln.Addr().String(), dir)
 			if policyPath != "" {
 				fmt.Fprintf(os.Stderr, "tapelog: policy studio explains %s (read-only; nothing is written or activated)\n", policyPath)
 			}
-			return srv.ListenAndServe()
+			return srv.Serve(ln)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "directory of session logs (*.jsonl)")

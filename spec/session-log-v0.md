@@ -115,6 +115,19 @@ tamper-proofing: an attacker who can rewrite the entire file can forge a
 consistent chain. Anchor trust externally when that matters (publishing
 the head hash, signing, a collector).
 
+### 5.1 Reader-side session validity
+
+A file is one valid session log only when all of the following hold:
+
+- it contains at least one event;
+- every event carries the same non-empty `session_id`;
+- exactly one `session/start` is present, and it is the first event;
+- at most one `session/end` is present and, if present, it is the last event.
+
+A file that fails any of the first three, or that has a non-last end, is **structurally invalid**. A file that meets them but has no `session/end` is **incomplete**, not invalid. The hash chain (§5) is independent of all of this: a correctly chained file can still be two sessions, or have no start, or no end.
+
+Readers that assert behaviour — `tapelog behaviour`, `inspect`, `replay` and `lab` — enforce this. `tapelog verify` reports the verdict separately from the chain verdict, because the chain alone cannot see it.
+
 ## 6. Event types (v0)
 
 | `type` | `payload` | Notes |
@@ -146,9 +159,69 @@ absent; they are additive and were introduced while `v: 0`):
   (MCP `_meta` passthrough). Correlation only — NOT integrity-protected
   beyond the hash chain (it is inside the hashed payload).
 
-Neither field changes the canonical form rules (§4): they are ordinary
-payload keys hashed with the rest. A future `v: 0` async event type can
-attach to an existing call via `parent_seq` without a schema break.
+### 6.3 Conversation attribution (optional, additive, M11)
+
+`tools/call`, `policy/decision` and `tools/result` payloads MAY also carry
+`conversation_id`, `tool_call_id` and `subagent_id` (strings). They are
+copied from the request's `_meta` under a namespaced key — canonical
+`io.tapelog/conversationId`, `io.tapelog/toolCallId`,
+`io.tapelog/subagentId`, with `io.hermes.agent/...` accepted as a
+first-party harness alias (canonical wins when both are present).
+
+These fields exist because one MCP connection (one `session_id`) can serve
+many agent conversations. They are **CLIENT-DECLARED correlation** and
+readers MUST treat them as such:
+
+- They are a **claim**, not an authenticated fact. A client can send any
+  value; nothing verifies it.
+- They are **not** a session boundary. A change of `conversation_id`
+  MUST NOT create, split or close a `session_id`, and MUST NOT produce a
+  `session/start` or `session/end`.
+- They are **not** completeness. No `conversation/end` event exists, so a
+  conversation is never reported as finished.
+- They MUST NOT affect `verify`, structural validity, or `lab`
+  eligibility.
+- Absent means unattributed. Readers MUST NOT invent an identifier,
+  substitute a default, or group unattributed events together as though a
+  conversation had been declared.
+
+Validation on write: the value MUST be 1–`128` bytes matching
+`^[A-Za-z0-9._:-]+$`. A value that fails validation is **not recorded**
+(it is never truncated — a truncated identifier is a different
+identifier); the writer MAY emit one diagnostic per session on stderr.
+Absent or invalid attribution does not fail a recording.
+
+Because the boundary is a transparent proxy, these keys reach the upstream
+server exactly as the client sent them. Tapelog does not strip them: doing
+so would silently rewrite the client's request. Clients that consider the
+identifier sensitive must choose what they send.
+
+#### Ambiguous request ids
+
+A JSON-RPC request id is only a correlation token while it is unique among
+*outstanding* requests. If a second `tools/call` arrives under an id whose
+previous call has not been answered, nothing in the transport says which
+response belongs to which call. Writers MUST NOT invent a pairing in that
+case:
+
+- every `tools/result` under such an id MUST carry `attribution_ambiguous:
+  true` and MUST NOT carry `parent_seq`, `conversation_id`, `tool_call_id`,
+  `subagent_id` or `traceparent`;
+- the ambiguity is sticky for that id for the rest of the session: the first
+  response may have belonged to either call, so a later response is no more
+  knowable than the first;
+- `policy/decision` events still carry their own call's link, because a
+  decision is produced synchronously by the call it answers.
+
+`attribution_ambiguous` distinguishes "the recorder could not know" from
+"the client declared nothing" — those must not share a representation.
+Sequential reuse (the previous call answered before the next begins) is
+unambiguous and MUST NOT be flagged.
+
+Neither the §6.1 fields nor the §6.3 attribution fields change the canonical
+form rules (§4): they are ordinary payload keys hashed with the rest. A
+future `v: 0` async event type can attach to an existing call via
+`parent_seq` without a schema break.
 
 ### 6.2 Large payloads: blob references (optional conformance class: **BlobStore**)
 

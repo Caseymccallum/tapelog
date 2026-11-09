@@ -27,6 +27,8 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 		SilenceErrors: true,
 	}
 
+	root.AddCommand(newDemoCmd())
+	root.AddCommand(newDemoServeCmd())
 	root.AddCommand(newRecordCmd())
 	root.AddCommand(newMuxCmd())
 	root.AddCommand(newQueueCmd())
@@ -50,6 +52,12 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 		Use:   "version",
 		Short: "Print the tapelog version",
 		Run: func(cmd *cobra.Command, args []string) {
+			// Print the commit when the build carried one: the version string alone
+			// cannot distinguish two source builds of the same line.
+			if buildinfo.Commit != "" {
+				fmt.Println("tapelog", version, "("+buildinfo.Commit+")")
+				return
+			}
 			fmt.Println("tapelog", version)
 		},
 	})
@@ -58,6 +66,17 @@ allow/deny/confirm policy before side effects occur, and verifies logs.`,
 		fmt.Fprintln(os.Stderr, "error:", err)
 		if errors.Is(err, errIncompleteBehaviour) || errors.Is(err, errLabInconclusive) {
 			os.Exit(2)
+		}
+		// Structure verdicts: 3 = --require-structure / integrity check failed,
+		// 4 = structure invalid, 5 = incomplete (boundary not observed).
+		if errors.Is(err, errIntegrityFailed) || errors.Is(err, errStructureRequired) {
+			os.Exit(3)
+		}
+		if errors.Is(err, errStructureFailed) {
+			os.Exit(4)
+		}
+		if errors.Is(err, errIncompleteStructure) {
+			os.Exit(5)
 		}
 		os.Exit(1)
 	}

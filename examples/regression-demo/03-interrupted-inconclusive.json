@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "title": "An interrupted recording cannot decide the claim",
+  "description": "The recording's chain is intact but its session never ended, so it is incomplete. Tapelog refuses to upgrade an incomplete recording to a verdict: the expected result is INCONCLUSIVE with code incomplete_recording, not PASS and not FAIL.",
+  "evidence": "session-interrupted.jsonl",
+  "expectations": [
+    { "kind": "attempted", "tool": "read_file" }
+  ]
+}

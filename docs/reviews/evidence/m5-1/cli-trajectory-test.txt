@@ -1,3 +1,0 @@
-﻿### tapelog test (trajectory assertions) still pass
-Ô£ô canonical-trajectory-demo (9 assertions)
-

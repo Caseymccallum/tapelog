@@ -1,0 +1,20 @@
+{
+  "origin": "M14.1 live gateway recording (immutable source kept outside the public tree)",
+  "source": {
+    "closed_head": "da4d0c04b8058d9122278bce07c8a97ecb2b5b0a37c6709f4a08723146e39e2a",
+    "open_head": "7eda1b89ff2418c8ba411232ee1af2ddcf918ffbc9d9fe3ee1ea2f8ecf30122b",
+    "events": 17
+  },
+  "derived": {
+    "closed_head": "ef6befe478f8660c5fa5b112f1f3c16832d6069e0a3bd11c0453aea7e8ef8a0e",
+    "open_head": "4a87cd5491c7894f37e83938a4bcf666617710ad4727c3867326ccd5141361ea",
+    "events": 17,
+    "policy_id": "policy.yaml",
+    "open_is_prefix_of_closed": true
+  },
+  "changes": [
+    "session/start.policy_id replaced with the neutral name \"policy.yaml\"",
+    "every other field is byte-identical",
+    "both files re-chained, so these are DERIVED artefacts with their own heads"
+  ]
+}

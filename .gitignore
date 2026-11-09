@@ -9,6 +9,11 @@ dist/
 !examples/calls.jsonl
 !examples/trajectory-demo/agent.jsonl
 !test-fixtures/queue-session.jsonl
+!test-fixtures/m14.1-gateway/*.jsonl
+# The fictional demo recordings ARE part of the product: the Getting Started walkthrough
+# ends with `lab suite --dir examples/regression-demo`, and a clone without them cannot
+# run its own documentation. (Found while exporting the public tree, which uses git.)
+!examples/regression-demo/*.jsonl
 !spec/test-vectors/*.jsonl
 
 # checkpoint artifacts are user data too (tapelog checkpoint output)
@@ -46,3 +51,12 @@ examples/trajectory-demo/scenario-tampered.yaml
 # M8.1: local regression-lab demo evidence (regenerate with tools/gen-m6-demo)
 /m8-lab-demo/
 /m7-lab-demo/
+
+# M15 local scratch (release-engineering output, never committed)
+.m15/
+
+# M15 release-candidate output (local only)
+dist-m15/
+
+# public tree export (build artifact, never committed)
+dist-public/

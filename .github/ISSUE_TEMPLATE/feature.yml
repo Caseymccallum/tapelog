@@ -2,6 +2,13 @@ name: Feature request
 description: An idea, a missing capability, or a policy pack request
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste secrets, unredacted recordings, tokens or private client data.**
+        A recording can contain tool arguments and results. Share the `tapelog demo`
+        recording, or a recording made against disposable data, and say which it is.
+
   - type: textarea
     id: problem
     attributes:

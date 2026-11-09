@@ -113,7 +113,7 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 
 	// toolIDs tracks in-flight tools/call request ids to pair results.
 	var idMu sync.Mutex
-	toolIDs := map[string]bool{}
+	toolIDs := map[string]int{}
 
 	idKey := func(id json.RawMessage) string { return string(id) }
 
@@ -192,17 +192,23 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 				}
 				if call != nil {
 					idMu.Lock()
-					toolIDs[idKey(msg.ID)] = true
+					toolIDs[idKey(msg.ID)]++
 					idMu.Unlock()
 					if hooks.OnToolCall != nil {
 						decision, denyData := hooks.OnToolCall(msg.ID, call)
 						if decision == DecisionDeny {
-							// The synthesized deny response below IS the
-							// response: no upstream reply will come, so
-							// forget the id now (denied requests must not
-							// accumulate in toolIDs).
+							// The synthesized deny response IS this call's
+							// response: no upstream reply will come, so one
+							// outstanding entry is settled. DECREMENT rather
+							// than delete — another call may still be in
+							// flight under the same id, and deleting would
+							// hide its response from the recorder.
 							idMu.Lock()
-							delete(toolIDs, idKey(msg.ID))
+							if n := toolIDs[idKey(msg.ID)]; n > 1 {
+								toolIDs[idKey(msg.ID)] = n - 1
+							} else {
+								delete(toolIDs, idKey(msg.ID))
+							}
 							idMu.Unlock()
 							resp := jsonrpc.DenyResponse(msg.ID, denyData)
 							out, _ := jsonrpc.Marshal(resp)
@@ -255,9 +261,15 @@ func Run(ctx context.Context, clientIn io.Reader, clientOut io.Writer, serverIn 
 			msg, err := jsonrpc.Parse(line)
 			if err == nil && msg.IsResponse() {
 				idMu.Lock()
-				isTool := toolIDs[idKey(msg.ID)]
+				isTool := toolIDs[idKey(msg.ID)] > 0
 				if isTool {
-					delete(toolIDs, idKey(msg.ID))
+					// one response per outstanding call: a reused id must not
+					// hide the second result from the recorder
+					if n := toolIDs[idKey(msg.ID)]; n > 1 {
+						toolIDs[idKey(msg.ID)] = n - 1
+					} else {
+						delete(toolIDs, idKey(msg.ID))
+					}
 				}
 				idMu.Unlock()
 				if isTool && hooks.OnToolResult != nil {

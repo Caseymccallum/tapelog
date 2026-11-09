@@ -48,7 +48,7 @@ We do not try to detect malicious *reasoning*; we constrain *actions*.
   the sink — never to a silent pass.
 - **Semantic correctness.** We record and constrain; we don't judge whether an action is *wise*, only whether policy permits it.
 - **Toxic flows (value level).** Flow rules track taint per session (conservative). Tracking specific values *through the model* (CaMeL-style capabilities) is out of scope — the model's internal data flow is opaque to the boundary.
-- **Log confidentiality.** Redaction is best-effort pattern matching. Treat logs as sensitive.
+- **Log confidentiality.** Redaction is best-effort pattern matching plus key-based masking. Treat logs as sensitive. A JSON document returned as result *text* is now parsed and key-masked within bounds (256 KiB, 24 nested string layers, one well-formed document), and `--omit-result-text` stores no payload at all. What remains: a secret with no recognisable shape in prose or under an innocuous key is stored as recorded, and nothing is detected inside a document past the bounds. See `docs/SECURITY-AND-LIMITATIONS.md` for the operator-facing statement and the bounds.
 - **Multi-agent / A2A delegation.**
 - **Kernel-level enforcement** (compromised tapelog process itself). v0 is userland.
 

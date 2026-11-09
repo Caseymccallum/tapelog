@@ -2,6 +2,13 @@ name: Bug report
 description: Something is broken or behaving unexpectedly
 labels: ["bug"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste secrets, unredacted recordings, tokens or private client data.**
+        A recording can contain tool arguments and results. Share the `tapelog demo`
+        recording, or a recording made against disposable data, and say which it is.
+
   - type: textarea
     id: what
     attributes:

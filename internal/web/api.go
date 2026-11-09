@@ -142,6 +142,8 @@ func newMux(s *server) http.Handler {
 	mux.HandleFunc("/api/behaviour/repeats", secure(s.token, limited(s.repeatsAPI)))
 	mux.HandleFunc("/api/behaviour/signature", secure(s.token, limited(s.signatureAPI)))
 	mux.HandleFunc("/api/behaviour/delta", secure(s.token, limited(s.deltaAPI)))
+	mux.HandleFunc("/api/behaviour/conversation", secure(s.token, limited(s.conversationAPI)))
+	mux.HandleFunc("/api/behaviour/compare-conversations", secure(s.token, limited(s.compareConversationsAPI)))
 	mux.HandleFunc("/api/lab", secure(s.token, limited(s.labIndexAPI)))
 	mux.HandleFunc("/api/lab/case", secure(s.token, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {

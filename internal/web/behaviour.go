@@ -31,6 +31,7 @@ import (
 
 	"github.com/Caseymccallum/tapelog/internal/behaviour"
 	"github.com/Caseymccallum/tapelog/internal/session"
+	"github.com/Caseymccallum/tapelog/internal/taint"
 )
 
 const (
@@ -83,7 +84,23 @@ type sessionAnalysis struct {
 	Calls   []callRecord
 	Sigs    map[string]*failureSignature
 	Repeats []repeatFinding
-	Notes   []string
+	// Attributed is true when any call carried a valid conversation id, in
+	// which case repeats are measured per conversation rather than per session.
+	Attributed bool
+	// UnpairedResults counts recorded tools/result events that no recorded
+	// call claims. Such a result cannot be attributed to a conversation at
+	// all, so a view that reports "no ambiguity" while holding one is wrong:
+	// the recording is incomplete in a way the counts must show.
+	UnpairedResults int
+	// UnpairedAmbiguous counts unpaired results that were themselves marked
+	// ambiguous (their request id was shared).
+	UnpairedAmbiguous int
+	// UnknownSourceDecisions counts recorded policy decisions whose reason
+	// names an unknown value source (taint.UnknownSource). It is what the
+	// recording can say about sticky provenance uncertainty: the decisions
+	// that were made, not the state of a live policy engine.
+	UnknownSourceDecisions int
+	Notes                  []string
 }
 
 // analysed is one recording as the index saw it, with the bookkeeping needed to
@@ -134,35 +151,62 @@ func analyseRecording(rec *recording) *sessionAnalysis {
 	}
 	args := make(map[uint64]json.RawMessage, len(rec.Activities))
 	results := make(map[uint64]json.RawMessage, len(rec.Activities))
+	// Client-declared conversation per call, and results whose pairing was
+	// ambiguous. Both are facts read straight from the recording.
+	convs := make(map[uint64]string, len(rec.Activities))
+	ambiguous := make(map[uint64]bool, len(rec.Activities))
+	// A result can be ambiguous even when it could not be paired to a call at
+	// all (the shared-id case leaves ResultSeq 0), so ambiguity is tracked by
+	// REQUEST ID as well as by result seq.
+	ambiguousIDs := map[string]bool{}
+	callIDs := make(map[uint64]string, len(rec.Activities))
 	for _, e := range rec.Events {
 		switch e.Type {
 		case session.EventToolCall:
 			var p session.ToolCallPayload
 			if json.Unmarshal(e.Payload, &p) == nil {
 				args[e.Seq] = p.Args
+				convs[e.Seq] = p.ConversationID
+				callIDs[e.Seq] = string(p.ID)
+			}
+		case session.EventPolicyDecision:
+			// Unknown provenance is a recorded fact when a decision's reason
+			// names it. The policy engine keeps that uncertainty sticky for
+			// the rest of the session, so a later decision may rest on a call
+			// this recording does not show; the count is evidence, not proof
+			// that anything was contaminated.
+			var p session.PolicyDecisionPayload
+			if json.Unmarshal(e.Payload, &p) == nil && strings.Contains(p.Reason, taint.UnknownSource) {
+				a.UnknownSourceDecisions++
 			}
 		case session.EventToolResult:
 			var p session.ToolResultPayload
 			if json.Unmarshal(e.Payload, &p) == nil {
 				results[e.Seq] = p.Result
+				if p.AttributionAmbiguous {
+					ambiguous[e.Seq] = true
+					ambiguousIDs[string(p.ID)] = true
+				}
 			}
 		}
 	}
 	a.Calls = make([]callRecord, 0, len(rec.Activities))
 	for _, act := range rec.Activities {
 		c := callRecord{
-			Seq:        act.Seq,
-			TS:         act.TS,
-			EpochMS:    epochMillis(act.TS),
-			Tool:       act.Tool,
-			Server:     act.Server,
-			ArgsKey:    argsKey(args[act.Seq]),
-			Status:     act.Status,
-			Verdict:    act.Verdict,
-			Rule:       act.Rule,
-			DurationMS: act.DurationMS,
-			ResultSeq:  act.ResultSeq,
-			IsError:    act.Status == "failed",
+			Seq:                  act.Seq,
+			TS:                   act.TS,
+			EpochMS:              epochMillis(act.TS),
+			Tool:                 act.Tool,
+			Server:               act.Server,
+			ArgsKey:              argsKey(args[act.Seq]),
+			Status:               act.Status,
+			Verdict:              act.Verdict,
+			Rule:                 act.Rule,
+			DurationMS:           act.DurationMS,
+			ResultSeq:            act.ResultSeq,
+			IsError:              act.Status == "failed",
+			ConversationID:       convs[act.Seq],
+			CorrelationAmbiguous: ambiguous[act.ResultSeq] || ambiguousIDs[callIDs[act.Seq]],
 		}
 		if act.ResultSeq != 0 {
 			body := results[act.ResultSeq]
@@ -177,7 +221,34 @@ func analyseRecording(rec *recording) *sessionAnalysis {
 		}
 		a.Calls = append(a.Calls, c)
 	}
-	a.Repeats = detectRepeats(a.Calls)
+	a.Attributed = behaviour.HasAttribution(a.Calls)
+	// A result no call claims. It cannot belong to a conversation, and it must
+	// not read as "nothing ambiguous here".
+	claimed := make(map[uint64]bool, len(rec.Activities))
+	for _, act := range rec.Activities {
+		if act.ResultSeq != 0 {
+			claimed[act.ResultSeq] = true
+		}
+	}
+	for seq := range results {
+		if claimed[seq] {
+			continue
+		}
+		a.UnpairedResults++
+		if ambiguous[seq] {
+			a.UnpairedAmbiguous++
+		}
+	}
+	if a.Attributed {
+		// A call repeated in four conversations is four small groups, not one
+		// large loop: measure repetition within each conversation.
+		a.Repeats = nil
+		for _, g := range behaviour.GroupConversations(a.Calls) {
+			a.Repeats = append(a.Repeats, g.Repeats...)
+		}
+	} else {
+		a.Repeats = detectRepeats(a.Calls)
+	}
 	return a
 }
 
@@ -550,6 +621,8 @@ func sessionHaystack(a *sessionAnalysis) string {
 // adding them together would misreport what Tapelog observed.
 type behaviourCounts struct {
 	Sessions         int `json:"sessions"`
+	Identities       int `json:"identities"`
+	Conversations    int `json:"conversations"`
 	Calls            int `json:"calls"`
 	Results          int `json:"results"`
 	Successes        int `json:"successes"`
@@ -559,11 +632,21 @@ type behaviourCounts struct {
 	Confirms         int `json:"confirms"`
 	ConfirmDecisions int `json:"confirm_decisions"`
 	Unanswered       int `json:"unanswered"`
-	Discovery        int `json:"discovery"`
-	Events           int `json:"events"`
-	RepeatFindings   int `json:"repeat_findings"`
-	RepeatAttention  int `json:"repeat_attention"`
-	SignatureGroups  int `json:"signature_groups"`
+	// AmbiguousCalls counts calls whose result pairing is unknown (a shared
+	// request id). Unknown, never zero.
+	AmbiguousCalls int `json:"ambiguous_calls"`
+	// UnpairedResults counts recorded results that no call claims: evidence
+	// the analysis can neither attribute nor rule out.
+	UnpairedResults int `json:"unpaired_results"`
+	// UnknownSourceDecisions counts recorded policy decisions whose reason
+	// names an unknown value source. Provenance uncertainty is sticky at
+	// decision time, so this is a fact about the recording, not a score.
+	UnknownSourceDecisions int `json:"unknown_source_decisions"`
+	Discovery              int `json:"discovery"`
+	Events                 int `json:"events"`
+	RepeatFindings         int `json:"repeat_findings"`
+	RepeatAttention        int `json:"repeat_attention"`
+	SignatureGroups        int `json:"signature_groups"`
 }
 
 // toolStat is per-tool activity across the analysed recordings.
@@ -620,33 +703,42 @@ type signatureStat struct {
 
 // repeatStat aggregates one repeat finding across recordings.
 type repeatStat struct {
-	Confidence  string      `json:"confidence"`
-	Kind        string      `json:"kind"`
-	Tool        string      `json:"tool,omitempty"`
-	Tools       []string    `json:"tools,omitempty"`
-	Findings    int         `json:"findings"`
-	Occurrences int         `json:"occurrences"`
-	Sessions    int         `json:"sessions"`
-	MaxCount    int         `json:"max_count"`
-	Files       []string    `json:"files"`
-	Sample      *occurrence `json:"sample,omitempty"`
+	Confidence  string   `json:"confidence"`
+	Kind        string   `json:"kind"`
+	Tool        string   `json:"tool,omitempty"`
+	Tools       []string `json:"tools,omitempty"`
+	Findings    int      `json:"findings"`
+	Occurrences int      `json:"occurrences"`
+	Sessions    int      `json:"sessions"`
+	// Scope says whether occurrences were counted within one conversation or
+	// across the whole session: "conversation" or "session".
+	Scope    string      `json:"scope,omitempty"`
+	MaxCount int         `json:"max_count"`
+	Files    []string    `json:"files"`
+	Sample   *occurrence `json:"sample,omitempty"`
 }
 
 // sessionRow is one recording's behaviour, used for the trend table and the
 // reference comparison. Rates are nullable so a reader can see when a
 // percentage is undefined rather than zero.
 type sessionRow struct {
-	File            string   `json:"file"`
-	Name            string   `json:"name"`
-	Harness         string   `json:"harness,omitempty"`
-	Servers         []string `json:"servers"`
-	FirstTS         string   `json:"first_ts,omitempty"`
-	LastTS          string   `json:"last_ts,omitempty"`
-	Calls           int      `json:"calls"`
-	Results         int      `json:"results"`
-	Failures        int      `json:"failures"`
-	Denies          int      `json:"denies"`
-	Unanswered      int      `json:"unanswered"`
+	File           string   `json:"file"`
+	Name           string   `json:"name"`
+	Harness        string   `json:"harness,omitempty"`
+	Servers        []string `json:"servers"`
+	FirstTS        string   `json:"first_ts,omitempty"`
+	LastTS         string   `json:"last_ts,omitempty"`
+	Calls          int      `json:"calls"`
+	Results        int      `json:"results"`
+	Failures       int      `json:"failures"`
+	Denies         int      `json:"denies"`
+	Unanswered     int      `json:"unanswered"`
+	AmbiguousCalls int      `json:"ambiguous_calls"`
+	// Unpaired is the number of recorded results in this file that no call
+	// claims, and UnknownSource the number of policy decisions whose reason
+	// named an unknown value source. Both are recorded facts, not estimates.
+	Unpaired        int      `json:"unpaired_results"`
+	UnknownSource   int      `json:"unknown_source_decisions"`
 	RepeatFindings  int      `json:"repeat_findings"`
 	RepeatAttention int      `json:"repeat_attention"`
 	ErrorRate       *float64 `json:"error_rate"`
@@ -655,22 +747,34 @@ type sessionRow struct {
 	Complete        bool     `json:"complete"`
 	Integrity       string   `json:"integrity"`
 	ChainOK         bool     `json:"chain_ok"`
+	SessionID       string   `json:"session_id,omitempty"`
+	Structure       string   `json:"structure"`
 }
 
 // behaviourOverview is the whole cross-session answer in one response.
 type behaviourOverview struct {
-	Window      behaviourWindow  `json:"window"`
-	Library     behaviourLibrary `json:"library"`
-	Counts      behaviourCounts  `json:"counts"`
-	Tools       []toolStat       `json:"tools"`
-	Denied      []deniedStat     `json:"denied"`
-	Failures    []signatureStat  `json:"failures"`
-	Repeats     []repeatStat     `json:"repeats"`
-	Trend       []sessionRow     `json:"trend"`
-	Recent      []sessionRow     `json:"recent"`
-	Definitions []definition     `json:"definitions"`
-	Notes       []string         `json:"notes"`
-	Scope       string           `json:"scope"`
+	Window   behaviourWindow  `json:"window"`
+	Library  behaviourLibrary `json:"library"`
+	Counts   behaviourCounts  `json:"counts"`
+	Tools    []toolStat       `json:"tools"`
+	Denied   []deniedStat     `json:"denied"`
+	Failures []signatureStat  `json:"failures"`
+	Repeats  []repeatStat     `json:"repeats"`
+	// Conversations groups calls by CLIENT-DECLARED conversation id. The
+	// unattributed remainder is reported last and never merged.
+	Conversations []behaviour.ConversationSummary `json:"conversations"`
+	// ConversationOrder says what ordered that list: "library" when every
+	// group had a library-wide position (recordings in library order, then
+	// sequence within each), "per-recording" when only a recording's own
+	// sequence number was available. It exists so a per-recording order is
+	// never read as a chronology.
+	ConversationOrder string                 `json:"conversation_order"`
+	Recurrence        []behaviour.Recurrence `json:"recurrence"`
+	Trend             []sessionRow           `json:"trend"`
+	Recent            []sessionRow           `json:"recent"`
+	Definitions       []definition           `json:"definitions"`
+	Notes             []string               `json:"notes"`
+	Scope             string                 `json:"scope"`
 }
 
 type behaviourWindow struct {
@@ -742,8 +846,18 @@ func aggregateOverview(idx *behaviourIndex) *behaviourOverview {
 	denied := map[string]*deniedStat{}
 	sigs := map[string]*signatureStat{}
 	repeats := map[string]*repeatStat{}
+	identities := map[string]bool{}
+	var allCalls []behaviour.CallRecord
 	for _, a := range idx.Sessions {
 		row := rowFor(a)
+		for _, id := range a.Info.SessionIDs {
+			if id != "" {
+				identities[id] = true
+			}
+		}
+		if len(a.Info.SessionIDs) == 0 && a.Info.SessionID != "" {
+			identities[a.Info.SessionID] = true
+		}
 		sessionTools := map[string]bool{}
 		for i, c := range a.Calls {
 			t := tools[c.Tool]
@@ -813,6 +927,11 @@ func aggregateOverview(idx *behaviourIndex) *behaviourOverview {
 				repeats[bucket] = r
 			}
 			r.Findings++
+			if a.Attributed {
+				r.Scope = "conversation"
+			} else {
+				r.Scope = "session"
+			}
 			r.Occurrences += f.Count
 			if f.Count > r.MaxCount {
 				r.MaxCount = f.Count
@@ -833,6 +952,9 @@ func aggregateOverview(idx *behaviourIndex) *behaviourOverview {
 		ov.Counts.Failures += row.Failures
 		ov.Counts.Denies += row.Denies
 		ov.Counts.Unanswered += row.Unanswered
+		ov.Counts.AmbiguousCalls += row.AmbiguousCalls
+		ov.Counts.UnpairedResults += row.Unpaired
+		ov.Counts.UnknownSourceDecisions += row.UnknownSource
 		ov.Counts.DenyDecisions += a.Info.Denies
 		ov.Counts.ConfirmDecisions += a.Info.Confirms
 		ov.Counts.Discovery += a.Info.Discovery
@@ -841,6 +963,22 @@ func aggregateOverview(idx *behaviourIndex) *behaviourOverview {
 	}
 
 	ov.Counts.Successes = ov.Counts.Results - ov.Counts.Failures
+	ov.Counts.Identities = len(identities)
+	allCalls = libraryCalls(idx)
+	ov.Conversations = behaviour.GroupConversations(allCalls)
+	ov.Recurrence = behaviour.DetectRecurrence(allCalls)
+	ov.ConversationOrder = "library"
+	for _, g := range ov.Conversations {
+		if g.Attributed {
+			ov.Counts.Conversations++
+		}
+		if g.FirstLibrarySeq == 0 && len(allCalls) > 0 {
+			// A group with no library position means the order fell back to a
+			// per-recording sequence number; say so rather than implying one
+			// library-wide chronology.
+			ov.ConversationOrder = "per-recording"
+		}
+	}
 	ov.Counts.SignatureGroups = len(sigs)
 	ov.Failures = rankSignatures(sigs)
 	ov.Tools = rankTools(tools)
@@ -853,6 +991,31 @@ func aggregateOverview(idx *behaviourIndex) *behaviourOverview {
 	ov.Notes = behaviourNotes(idx, ov)
 	ov.Scope = "Derived only from recorded tools/call, policy/decision and tools/result events. A call is not a decision and a decision is not a result; denials are decision verdicts. Repeated activity is reported as an observation with its evidence, not as proof of a loop or of wasted work."
 	return ov
+}
+
+// libraryCalls flattens the analysed recordings into one call list in library
+// order: recordings in the order the index read them, then sequence within each
+// file. Each call is a COPY stamped with its file, its ordinal within that file
+// and its library-wide position — the cached analysis is shared between
+// requests and must never be written to (that was a confirmed data race).
+//
+// It is the single definition of "the calls the library holds", so the overview,
+// the conversation view and the comparison cannot disagree about which calls
+// exist or what order they are in.
+func libraryCalls(idx *behaviourIndex) []behaviour.CallRecord {
+	var out []behaviour.CallRecord
+	position := 0
+	for _, a := range idx.Sessions {
+		for i := range a.Calls {
+			c := a.Calls[i]
+			c.File = a.Info.File
+			c.Index = i
+			position++
+			c.LibrarySeq = uint64(position)
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func contains(list []string, want string) bool {
@@ -873,7 +1036,9 @@ func rowFor(a *sessionAnalysis) sessionRow {
 		Servers: a.Info.Servers, FirstTS: a.Info.FirstTS, LastTS: a.Info.LastTS,
 		DurationMS: a.Info.DurationMS, Complete: a.Info.Complete,
 		Integrity: a.Info.Integrity, ChainOK: a.Info.ChainOK,
+		SessionID: a.Info.SessionID, Structure: a.Info.Structure,
 		RepeatFindings: len(a.Repeats),
+		Unpaired:       a.UnpairedResults, UnknownSource: a.UnknownSourceDecisions,
 	}
 	if row.Servers == nil {
 		row.Servers = []string{}
@@ -887,6 +1052,9 @@ func rowFor(a *sessionAnalysis) sessionRow {
 			}
 		} else {
 			row.Unanswered++
+		}
+		if c.CorrelationAmbiguous {
+			row.AmbiguousCalls++
 		}
 		if c.Verdict == "deny" {
 			row.Denies++
@@ -1013,20 +1181,51 @@ func behaviourNotes(idx *behaviourIndex, ov *behaviourOverview) []string {
 		notes = append(notes, "The library holds more files than the workbench lists; only the newest recordings were considered.")
 	}
 	if ov.Counts.Unanswered > 0 {
-		notes = append(notes, fmt.Sprintf("%d calls were never answered. Rates are calculated over recorded results only, so they do not absorb those calls.", ov.Counts.Unanswered))
+		noun := "calls were"
+		if ov.Counts.Unanswered == 1 {
+			noun = "call was"
+		}
+		notes = append(notes, fmt.Sprintf("%d %s never answered. Rates are calculated over recorded results only, so they do not absorb %s.", ov.Counts.Unanswered, noun, map[bool]string{true: "that call", false: "those calls"}[ov.Counts.Unanswered == 1]))
 	}
 	if ov.Counts.Results == 0 && ov.Counts.Calls > 0 {
 		notes = append(notes, "No results were recorded, so no error rate can be calculated. A percentage would be undefined here, not zero.")
 	}
+	// Three more evidence-quality facts. Each is emitted on its own, for the
+	// same reason the integrity notes are: one defect must not hide another.
+	if ov.Counts.AmbiguousCalls > 0 {
+		notes = append(notes, fmt.Sprintf("%d calls share a request id with another outstanding call, so which response answers which is unknown. Their results are counted as ambiguous, never as success or failure.", ov.Counts.AmbiguousCalls))
+	}
+	if ov.Counts.UnpairedResults > 0 {
+		noun, verb, subject, object := "recorded results", "are", "they", "them"
+		if ov.Counts.UnpairedResults == 1 {
+			noun, verb, subject, object = "recorded result", "is", "it", "it"
+		}
+		notes = append(notes, fmt.Sprintf("%d %s %s not claimed by any recorded call, so %s cannot be attributed to a conversation; a conversation that looks complete may be missing %s.", ov.Counts.UnpairedResults, noun, verb, subject, object))
+	}
+	if ov.Counts.UnknownSourceDecisions > 0 {
+		what := "policy decisions were"
+		if ov.Counts.UnknownSourceDecisions == 1 {
+			what = "policy decision was"
+		}
+		notes = append(notes, fmt.Sprintf("%d %s made while a value's source was unknown. The policy engine keeps that uncertainty for the rest of the session, so a later decision can rest on activity that is not in this view. It means provenance is uncertain, not that anything was contaminated.", ov.Counts.UnknownSourceDecisions, what))
+	}
+	// Both defects can be present at once. Stopping at the first one meant the
+	// warning a reader saw depended on file order, and the broken-chain warning
+	// — the more serious of the two — could be suppressed entirely.
+	var sawInvalid, sawIncomplete bool
 	for _, a := range idx.Sessions {
 		if a.Info.Integrity == "invalid" {
-			notes = append(notes, "At least one analysed recording failed its hash-chain check. Its activity is included, but treat it as untrusted evidence.")
-			break
+			sawInvalid = true
 		}
 		if !a.Info.Complete {
-			notes = append(notes, "At least one analysed recording has no session/end event. A missing end can mean an interruption, a live session or a failed startup; it does not establish a failure.")
-			break
+			sawIncomplete = true
 		}
+	}
+	if sawInvalid {
+		notes = append(notes, "At least one analysed recording failed its hash-chain check. Its activity is included, but treat it as untrusted evidence.")
+	}
+	if sawIncomplete {
+		notes = append(notes, "At least one analysed recording has no session/end event. A missing end can mean an interruption, a live session or a failed startup; it does not establish a failure.")
 	}
 	return notes
 }

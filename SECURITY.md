@@ -72,7 +72,7 @@ Per docs/THREAT_MODEL.md, tapelog is a security-adjacent tool. We therefore hold
 - **SBOM** per archive (syft/SPDX) + **GitHub build provenance attestation**
   — **automated** in the same workflow (`workflow_dispatch` backfills
   older tags)
-- **No telemetry, ever.** The tool makes no network calls except to MCP servers you configure.
+- **No telemetry, ever.** Nothing is collected or reported, and no network call happens unless you ask for one: `checkpoint --witness rekor` submits to a public transparency log, `export otel` sends OTLP traces to the endpoint you name, and MCP traffic goes to the servers you configure.
 - **Dependency hygiene:** automated updates, `govulncheck` in CI
 - **Prompt-response:** security fixes are released before public disclosure timelines typical for feature work
 

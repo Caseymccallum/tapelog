@@ -1,0 +1,58 @@
+name: User experience feedback
+description: How the first hour with Tapelog felt — harder or easier than it should have been
+labels: ["ux"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you — genuinely. Beta feedback about the *experience* is more useful right now than
+        feature ideas.
+
+        **Please do not paste secrets, unredacted recordings, tokens or private client data.**
+        Recordings can contain tool arguments and results. If you want to share evidence, use the
+        fictional demo (`tapelog demo`) or a recording made against disposable data, and say which
+        it is.
+  - type: dropdown
+    id: install
+    attributes:
+      label: How hard was installing it?
+      options:
+        - Trivial — downloaded, extracted, ran
+        - Easy — one hiccup I solved myself
+        - Hard — I needed to read more than one document
+        - Could not get it working
+    validations:
+      required: true
+  - type: textarea
+    id: install-note
+    attributes:
+      label: What happened during install?
+      description: OS, archive used, and the exact command that failed if one did.
+  - type: input
+    id: use
+    attributes:
+      label: Most useful capability so far
+      placeholder: "e.g. the denial timeline, replay in CI, the Regression Lab, the workspace"
+  - type: textarea
+    id: confusing
+    attributes:
+      label: What was confusing?
+      description: A workflow, a word, a screen. If you had to read something twice, that is a finding.
+  - type: textarea
+    id: missing
+    attributes:
+      label: What integration or workflow is missing for you?
+      description: Name the MCP client and server you use, if you are comfortable doing so.
+  - type: dropdown
+    id: helped
+    attributes:
+      label: Did Tapelog help diagnose a real problem?
+      options:
+        - "Yes — it showed something I could not see before"
+        - "Not yet"
+        - "No"
+  - type: textarea
+    id: helped-detail
+    attributes:
+      label: If yes, what did it show you?
+      description: Describe it in your own words; no raw recordings needed.

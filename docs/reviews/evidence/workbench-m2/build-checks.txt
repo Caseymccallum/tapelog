@@ -1,3 +1,0 @@
-PASS: Go 1.27.3 linux/amd64, CGO_ENABLED=0, go build ./...
-PASS: Go 1.27.3 darwin/amd64, CGO_ENABLED=0, go build ./... (compilation only)
-PASS: Windows/amd64 go build ./... and go vet ./...; node --check app.js; completed during candidate validation.

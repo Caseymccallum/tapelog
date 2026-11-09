@@ -161,15 +161,29 @@ func (w *Writer) Path() string { return w.path }
 
 // VerifyResult reports the outcome of chain verification.
 type VerifyResult struct {
-	Events      int    `json:"events"`
-	SessionID   string `json:"session_id,omitempty"`    // session id of the first event
-	FirstBadSeq uint64 `json:"first_bad_seq,omitempty"` // 0 = intact
+	Events    int    `json:"events"`
+	SessionID string `json:"session_id,omitempty"`
+	// Bad is true when verification stopped at a problem. FirstBadSeq is only
+	// meaningful while Bad is set, and it may legitimately be 0: seq 0 is not
+	// a legal sequence number, but a problem located there must still be
+	// representable. OK reads Bad precisely so that "problem at seq 0" can
+	// never be confused with "no problem".
+	Bad         bool   `json:"bad"`
+	FirstBadSeq uint64 `json:"first_bad_seq,omitempty"`
 	Problem     string `json:"problem,omitempty"`
 	LastHash    string `json:"last_hash,omitempty"` // chain head (last event hash)
 }
 
 // OK reports whether the verified log is fully intact.
-func (r *VerifyResult) OK() bool { return r.FirstBadSeq == 0 }
+func (r *VerifyResult) OK() bool { return !r.Bad }
+
+// fail records the first problem and returns the result for early exit.
+func (r *VerifyResult) fail(seq uint64, problem string) *VerifyResult {
+	r.Bad = true
+	r.FirstBadSeq = seq
+	r.Problem = problem
+	return r
+}
 
 // HashAt returns the hash of the event at the given sequence number —
 // the chain head as of that event (used to pin mid-session checkpoints).
@@ -242,40 +256,28 @@ func Verify(r io.Reader) (*VerifyResult, error) {
 		}
 		var e Event
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			res.FirstBadSeq = wantSeq
-			res.Problem = fmt.Sprintf("line %d: invalid JSON: %v", res.Events+1, err)
-			return res, nil
+			return res.fail(wantSeq, fmt.Sprintf("line %d: invalid JSON: %v", res.Events+1, err)), nil
 		}
 		res.Events++
 
 		if e.Seq != wantSeq {
-			res.FirstBadSeq = e.Seq
-			res.Problem = fmt.Sprintf("sequence gap: got seq %d, want %d", e.Seq, wantSeq)
-			return res, nil
+			return res.fail(e.Seq, fmt.Sprintf("sequence gap: got seq %d, want %d", e.Seq, wantSeq)), nil
 		}
 		if res.SessionID == "" {
 			res.SessionID = e.SessionID
 		}
 		if e.Version != SchemaVersion {
-			res.FirstBadSeq = e.Seq
-			res.Problem = fmt.Sprintf("unsupported schema version %d", e.Version)
-			return res, nil
+			return res.fail(e.Seq, fmt.Sprintf("unsupported schema version %d", e.Version)), nil
 		}
 		if e.PrevHash != prevHash {
-			res.FirstBadSeq = e.Seq
-			res.Problem = fmt.Sprintf("broken chain link: prev_hash %q, want %q", e.PrevHash, prevHash)
-			return res, nil
+			return res.fail(e.Seq, fmt.Sprintf("broken chain link: prev_hash %q, want %q", e.PrevHash, prevHash)), nil
 		}
 		h, err := e.ComputeHash()
 		if err != nil {
-			res.FirstBadSeq = e.Seq
-			res.Problem = fmt.Sprintf("event %d not hashable: %v", e.Seq, err)
-			return res, nil
+			return res.fail(e.Seq, fmt.Sprintf("event %d not hashable: %v", e.Seq, err)), nil
 		}
 		if h != e.Hash {
-			res.FirstBadSeq = e.Seq
-			res.Problem = fmt.Sprintf("hash mismatch: event %d was modified after writing", e.Seq)
-			return res, nil
+			return res.fail(e.Seq, fmt.Sprintf("hash mismatch: event %d was modified after writing", e.Seq)), nil
 		}
 		prevHash = e.Hash
 		wantSeq++

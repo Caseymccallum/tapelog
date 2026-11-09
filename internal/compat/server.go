@@ -184,7 +184,7 @@ func (s *Server) dispatch(msg *jsonrpc.Message) []byte {
 			"serverInfo":      map[string]any{"name": "compat-fake-" + string(s.era), "version": "1.0.0"},
 		})
 	case "tools/list":
-		return s.result(msg.ID, map[string]any{"tools": toolCatalog()})
+		return s.result(msg.ID, withCacheDirectives(s.era, map[string]any{"tools": toolCatalog()}))
 	case "tools/call":
 		return s.toolCall(msg)
 	default:
@@ -238,14 +238,50 @@ func (s *Server) toolCall(msg *jsonrpc.Message) []byte {
 
 // discoverResult builds the 2026-07-28 DiscoverResult.
 func discoverResult(era Era) map[string]any {
-	return map[string]any{
+	return withCacheDirectives(era, map[string]any{
 		"resultType":        "complete",
 		"supportedVersions": []string{string(era)},
 		"capabilities":      map[string]any{"tools": map[string]any{}},
 		"_meta": map[string]any{
 			"io.modelcontextprotocol/serverInfo": map[string]any{"name": "compat-fake-" + string(era), "version": "1.0.0"},
 		},
+	})
+}
+
+// Cacheable results carry client-side caching hints, and 2026-07-28 makes them
+// mandatory: "Servers MUST include caching hints on results with
+// `resultType: \"complete\"`" for server/discover, tools/list, prompts/list,
+// resources/list, resources/templates/list and resources/read.
+//
+// The two values are the most conservative the schema allows — `ttlMs: 0`
+// (immediately stale, so a client must not serve it from cache) and
+// `cacheScope: "private"` (never shared between clients). That is the honest
+// answer for a scripted fixture: it has no caching contract to offer, and
+// claiming one would be a false guarantee in the component whose whole job is
+// to be trustworthy about protocol shape. They also match the reference SDKs'
+// own defaults for a handler that sets nothing.
+const (
+	fixtureTTLMs      = 0
+	fixtureCacheScope = "private"
+)
+
+// withCacheDirectives adds the 2026-07-28 caching hints to a cacheable result.
+//
+// Gated on the era on purpose: 2024-11-05 and 2025-11-25 predate the fields, and
+// emitting them there would change what an older client parses — the compat lab
+// exists to reproduce each era faithfully, not to modernise all of them.
+//
+// This was a real defect rather than a theoretical one: the fixture looked
+// perfect to tapelog's own lenient Go client while every strict client rejected
+// it at tools/list ("cacheScope: Field required", "ttlMs: Field required"),
+// including Hermes through the recording boundary.
+func withCacheDirectives(era Era, result map[string]any) map[string]any {
+	if era != Era2026 {
+		return result
 	}
+	result["ttlMs"] = fixtureTTLMs
+	result["cacheScope"] = fixtureCacheScope
+	return result
 }
 
 func (s *Server) result(id json.RawMessage, v any) []byte {

@@ -2,6 +2,8 @@ package policy
 
 import (
 	"fmt"
+
+	"github.com/Caseymccallum/tapelog/internal/taint"
 	"regexp"
 	"strings"
 	"sync"
@@ -120,6 +122,12 @@ func (p *Policy) CheckFlowValues(state *TaintState, tool string, contaminatedBy 
 		matchedSources := make([]string, 0, len(contaminatedBy))
 		for _, src := range contaminatedBy {
 			if matchesAny(f.fromMatch, src) {
+				matchedSources = append(matchedSources, src)
+				continue
+			}
+			// A value whose producer could not be tracked might have come
+			// from any source: assume it did rather than call it clean.
+			if src == taint.UnknownSource && len(f.fromMatch) > 0 {
 				matchedSources = append(matchedSources, src)
 			}
 		}

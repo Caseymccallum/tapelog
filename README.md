@@ -3,20 +3,29 @@
 **Record MCP tool calls. Replay recorded responses. Test agent behaviour deterministically.**
 `rr` for tool-calling agents — a tamper-evident flight recorder and a hard policy boundary for MCP tool traffic.
 
-> **Status:** **v0.4.0 released** (2026-10-01)
+> **Status:** **0.5.0-beta.1 — public beta** (Windows and Linux amd64).
+> The last stable release is **v0.4.0** (2026-10-01); the beta adds the Regression Lab, the
+> Developer Workspace, behaviour and conversation investigation, result-text redaction and
+> `--omit-result-text`.
 > (the build version in [`internal/buildinfo`](internal/buildinfo/buildinfo.go) is the single source of truth).
 > **Stable:** `record` · `mux` · `policy` · `replay` · `verify` · `test` · `fuzz` · `inspect` · `export`.
+> **Beta:** `lab` · `behaviour` · `web` · `demo`.
 > **Experimental:** value-level taint · signed checkpoints · the MCP compat lab.
-> [CHANGELOG](CHANGELOG.md) · [roadmap](docs/ROADMAP.md) · [threat model](docs/THREAT_MODEL.md)
+> [CHANGELOG](CHANGELOG.md) · [getting started](docs/GETTING_STARTED.md) · [threat model](docs/THREAT_MODEL.md)
 
 ## Start here (development branch)
 
-[Your first session](docs/FIRST-SESSION.md): try the offline source demo,
-then use `tapelog setup` to preview recording for one existing stdio server.
-The helper saves a separate candidate config; it never edits active settings.
-These DX commands require building this branch; they are not in v0.4.0.
-Only traffic crossing Tapelog's MCP boundary is recorded. Built-in agent
-tools remain unobserved. Five-minute onboarding has not been measured.
+[**Getting started**](docs/GETTING_STARTED.md): build the binary, check which
+one you have, run the ~1-second offline demo, then wrap one existing stdio
+server. It states which platforms are actually tested, and every command in it
+was run on the branch it describes. Deeper walkthrough:
+[Your first session](docs/FIRST-SESSION.md).
+
+`tapelog setup` previews the change and saves a **separate candidate config**; it
+never edits active settings. These commands require building this branch; they
+are not in v0.4.0. Only traffic crossing Tapelog's MCP boundary is recorded —
+built-in agent tools remain unobserved, and five-minute onboarding has not been
+measured on a machine other than the author's.
 
 **Agent Session Workbench (M2 development branch):** `tapelog web --dir <recordings>`
 opens a searchable session library, linked call investigation, recorded-response
@@ -66,7 +75,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/THREAT_MODEL.md](docs/THREAT_MO
 ## Install
 
 ```bash
-# prebuilt binaries (Windows/macOS/Linux) — GitHub Releases, signed + SBOM:
+# prebuilt binaries for this beta: Windows and Linux, amd64 — GitHub Releases.
+# Checksums are published; signing and SBOM are NOT produced for the beta:
 #   https://github.com/Caseymccallum/tapelog/releases
 
 go install github.com/Caseymccallum/tapelog/cmd/tapelog@latest   # or from source
@@ -125,6 +135,9 @@ boundaries matter, so the limits are part of the docs, not a footnote.
 
 | Document | What |
 |---|---|
+| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | **Start here** — build, verify, demo, wrap a server, with the tested platforms stated |
+| [docs/REGRESSION-LAB.md](docs/REGRESSION-LAB.md) | **Regression cases** — claim kinds, PASS/FAIL/INCONCLUSIVE, the two eligibility modes, the 10,000-event limit |
+| [docs/SECURITY-AND-LIMITATIONS.md](docs/SECURITY-AND-LIMITATIONS.md) | **What it protects and what it only observes** — mediation vs observation, what a verified chain proves, resource limits |
 | [docs/QUICKSTART.md](docs/QUICKSTART.md) | **Five minutes to proof** — zero to a recorded, replayed session (and the denial that proves the boundary) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, trust boundaries |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | What we defend against — and what we honestly don't |
@@ -135,7 +148,7 @@ boundaries matter, so the limits are part of the docs, not a footnote.
 | [docs/PLUGINS.md](docs/PLUGINS.md) | **WASM plugins** — sandboxed verdict/redact hooks (`--plugin`, wazero) |
 | [spec/](spec/) | **The Agent Session Log Format spec** — normative rules, JSON Schema, conformance test vectors |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Week-by-week build plan |
-| [docs/launch/](docs/launch/) | Launch kit: post draft, checklist, and the hands-on [testing guide](docs/launch/TESTING-GUIDE.md) |
+| [docs/REGRESSION-LAB.md](docs/REGRESSION-LAB.md) | Writing regression cases over recorded evidence |
 | [adapters/](adapters/) | TypeScript & Python config adapters (thin, dependency-free) |
 | [examples/rogue-agent/](examples/rogue-agent/) | The 60-second attack-story demo |
 | [examples/trajectory-demo/](examples/trajectory-demo/) | The canonical demo: record → deny → verify → assertions → replay → tamper |

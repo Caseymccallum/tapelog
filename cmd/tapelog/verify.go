@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -9,9 +12,43 @@ import (
 	"github.com/Caseymccallum/tapelog/internal/session"
 )
 
+// errStructureRequired is returned when --require-structure is set and the
+// chain is intact but the file is not one valid complete session log. main
+// maps it to exit code 3. The wrapped message names the specific defect.
+var errStructureRequired = errors.New("session log failed the structure check")
+
+// errChainFailed is returned when the hash chain does not verify.
+var errChainFailed = errors.New("session log failed verification")
+
+// structureVerdict renders the structural verdict for verify. kind is "" for
+// a valid file, "invalid" for a structural defect and "incomplete" for a
+// missing end; bad is true for either defect. A missing end is reported as
+// INCOMPLETE, never as invalid, so an open recording keeps its vocabulary.
+func structureVerdict(data []byte) (line, kind string, bad bool) {
+	structure, err := session.InspectStructure(bytes.NewReader(data))
+	if err != nil {
+		return "UNREADABLE", "invalid", true
+	}
+	p := structure.FirstProblem()
+	if structure.Valid() && structure.Complete() {
+		return "VALID", "", false
+	}
+	if !structure.Valid() {
+		if p == nil {
+			return "INVALID", "invalid", true
+		}
+		return "INVALID — " + p.Describe(), "invalid", true
+	}
+	if p == nil {
+		return "INCOMPLETE", "incomplete", true
+	}
+	return "INCOMPLETE — " + p.Describe(), "incomplete", true
+}
+
 func newVerifyCmd() *cobra.Command {
 	var expect string
 	var checkpointPath string
+	var requireStructure bool
 	cmd := &cobra.Command{
 		Use:   "verify <session.jsonl>",
 		Short: "Verify the hash chain of a session log",
@@ -31,7 +68,11 @@ witness proves WHEN — making "this trajectory existed in this exact form"
 true rather than merely signed.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			res, err := session.VerifyFile(args[0])
+			data, err := os.ReadFile(args[0])
+			if err != nil {
+				return fmt.Errorf("open session log: %w", err)
+			}
+			res, err := session.Verify(bytes.NewReader(data))
 			if err != nil {
 				return err
 			}
@@ -52,8 +93,12 @@ true rather than merely signed.`,
 			if !res.OK() {
 				fmt.Printf("FAILED: %s\n", args[0])
 				fmt.Printf("  first bad event: seq %d\n  problem: %s\n", res.FirstBadSeq, res.Problem)
-				fmt.Printf("  verified %d events before the problem\n", res.FirstBadSeq-1)
-				return fmt.Errorf("session log failed verification")
+				if res.FirstBadSeq > 0 {
+					fmt.Printf("  verified %d events before the problem\n", res.FirstBadSeq-1)
+				} else {
+					fmt.Printf("  the first event is already invalid\n")
+				}
+				return errChainFailed
 			}
 			// Out-of-band payloads (spec §6.2): the chain binds the digests,
 			// so verify re-hashes every referenced blob when a store exists.
@@ -68,7 +113,24 @@ true rather than merely signed.`,
 				}
 				return fmt.Errorf("session log failed blob verification")
 			}
-			fmt.Printf("OK: %s\n  %d events, chain intact\n  chain head: %s\n", args[0], res.Events, res.LastHash)
+			structLine, structKind, structBad := structureVerdict(data)
+			if requireStructure && structBad {
+				fmt.Printf("FAILED: %s\n", args[0])
+				if structKind == "incomplete" {
+					fmt.Printf("  chain intact but the recording is incomplete: %s\n", structLine)
+					fmt.Printf("  a missing session/end is a completeness defect, not a structural one\n")
+				} else {
+					fmt.Printf("  chain intact but the session structure is invalid: %s\n", structLine)
+					fmt.Printf("  chain verification says nothing about session structure\n")
+				}
+				return fmt.Errorf("%w: %s", errStructureRequired, structLine)
+			}
+			if res.Events == 0 {
+				fmt.Printf("OK: %s\n  0 events — the file is empty; there is no chain to verify\n", args[0])
+			} else {
+				fmt.Printf("OK: %s\n  %d events, chain intact\n  chain head: %s\n", args[0], res.Events, res.LastHash)
+			}
+			fmt.Printf("  Structure: %s\n", structLine)
 			for _, w := range warnings {
 				fmt.Printf("  warning: %s\n", w)
 			}
@@ -87,6 +149,7 @@ true rather than merely signed.`,
 	}
 	cmd.Flags().StringVar(&expect, "expect", "", "expected chain head (last event hash) recorded outside the log; detects whole-log rewrites and truncation")
 	cmd.Flags().StringVar(&checkpointPath, "checkpoint", "", "signed checkpoint file (tapelog checkpoint) — verifies who attested the head and when")
+	cmd.Flags().BoolVar(&requireStructure, "require-structure", false, "exit 3 when the chain is intact but the file is not one valid complete session log")
 	return cmd
 }
 

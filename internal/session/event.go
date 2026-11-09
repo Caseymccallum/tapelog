@@ -93,6 +93,13 @@ type ToolCallPayload struct {
 	// Traceparent is the W3C trace context copied from the request's
 	// `_meta.traceparent` (optional correlation passthrough).
 	Traceparent string `json:"traceparent,omitempty"`
+	// ConversationID / ToolCallID / SubagentID are CLIENT-DECLARED
+	// correlation attribution copied from the request's `_meta`
+	// (spec §6.1, M11). They group activity; they are not a session
+	// boundary, not proof of completion, and not authenticated.
+	ConversationID string `json:"conversation_id,omitempty"`
+	ToolCallID     string `json:"tool_call_id,omitempty"`
+	SubagentID     string `json:"subagent_id,omitempty"`
 }
 
 // PolicyDecisionPayload is the payload of policy/decision.
@@ -104,6 +111,11 @@ type PolicyDecisionPayload struct {
 	// ParentSeq links the decision to the tools/call event it decided.
 	ParentSeq  *uint64 `json:"parent_seq,omitempty"`
 	Traceparent string `json:"traceparent,omitempty"`
+	// Attribution copied from the request's `_meta` (client-declared,
+	// correlation only — see ToolCallPayload).
+	ConversationID string `json:"conversation_id,omitempty"`
+	ToolCallID     string `json:"tool_call_id,omitempty"`
+	SubagentID     string `json:"subagent_id,omitempty"`
 }
 
 // ToolResultPayload is the payload of tools/result.
@@ -114,6 +126,17 @@ type ToolResultPayload struct {
 	// ParentSeq links the result to the tools/call event it answers.
 	ParentSeq  *uint64 `json:"parent_seq,omitempty"`
 	Traceparent string `json:"traceparent,omitempty"`
+	// Attribution copied from the request's `_meta` (client-declared,
+	// correlation only — see ToolCallPayload).
+	ConversationID string `json:"conversation_id,omitempty"`
+	ToolCallID     string `json:"tool_call_id,omitempty"`
+	SubagentID     string `json:"subagent_id,omitempty"`
+	// AttributionAmbiguous marks a result whose request id was shared by
+	// more than one outstanding call, so the recorder could not tell which
+	// call it answers. It is recorded instead of guessing: absence of
+	// attribution alone would conflate "the client declared nothing" with
+	// "the recorder could not know".
+	AttributionAmbiguous bool `json:"attribution_ambiguous,omitempty"`
 }
 
 // SessionEndPayload is the payload of session/end.

@@ -481,3 +481,44 @@ test('changing the comparison reference makes the former reference available as 
 
 
 
+
+/* --- Conversation-first investigation (M14) ------------------------- */
+test('a conversation deep link is built from the id alone and round-trips', ()=>{
+ const {context}=app();
+ context.location.hash='#behaviour&conversation=conv-a&compare=conv-b';
+ const route=vm.runInContext('conversationRoute()',context);
+ assert.equal(route.id,'conv-a');assert.equal(route.compare,'conv-b');
+ assert.equal(vm.runInContext('conversationHash("conv-a","conv-b")',context),'#behaviour&conversation=conv-a&compare=conv-b');
+ // Nothing but the ids can appear: arguments, results and tokens have no route.
+ assert.equal(vm.runInContext('conversationHash("a b&c=d",null)',context),'#behaviour&conversation=a+b%26c%3Dd');
+});
+test('the recording comparison route is not mistaken for a conversation', ()=>{
+ const {context}=app();
+ context.location.hash='#behaviour&a=one.jsonl&b=two.jsonl';
+ assert.equal(vm.runInContext('conversationRoute()',context),null);
+});
+test('a reserved or malformed conversation id is refused before any request', async ()=>{
+ const {context,nodes}=app();
+ let fetched=false;
+ context.fetch=()=>{fetched=true;return new Promise(()=>{});};
+ context.location.hash='#behaviour&conversation=(unattributed)';
+ await vm.runInContext('openConversation("(unattributed)",null,{updateHash:false})',context);
+ assert.equal(fetched,false);
+ assert.match(nodes.get('conversation-detail').textContent,/does not name a conversation/);
+});
+test('an incomparable pair states the reason instead of inventing numbers', ()=>{
+ const {context,nodes}=app();
+ context.__cmpOut=context.document.getElementById('conversation-compare-result');
+ vm.runInContext('renderConversationComparison(__cmpOut,{comparable:false,explanation:"the unattributed remainder is not a conversation: those calls declared no conversation id, so they cannot be compared as one"})',context);
+ assert.match(context.__cmpOut.textContent,/not a conversation/);
+ assert.equal(context.__cmpOut.children.some(n=>n.tagName==='table'),false);
+});
+test('a comparable pair renders counts, the observed differences and the limits', ()=>{
+ const {context,nodes}=app();
+ context.__cmpOut=context.document.getElementById('conversation-compare-result');
+ vm.runInContext('renderConversationComparison(__cmpOut,{comparable:true,metrics:[{metric:"Tool errors",a:0,b:3,change:3}],findings:["The second conversation recorded 3 more tool errors than the first."],tools:[{tool:"delete_file",a:1,b:0}],caveats:["A difference is an observation about recorded boundary activity."]})',context);
+ const text=context.__cmpOut.textContent;
+ assert.match(text,/The second conversation recorded 3 more tool errors than the first/);
+ assert.match(text,/What this comparison cannot support/);
+ assert.match(text,/A difference is an observation/);
+});

@@ -472,6 +472,9 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		Reference   string   `json:"reference"`
 		Candidate   string   `json:"candidate"`
 		Eligibility string   `json:"eligibility"`
+		// Conversation scopes the case to one client-declared conversation
+		// (M14). Empty means the claim applies to the whole recording.
+		Conversation string `json:"conversation"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
@@ -547,6 +550,7 @@ func (s *server) testAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		c := lab.Case{Version: 1, Title: req.Title, Description: req.Description, Evidence: req.File, EvidenceSHA256: rec.Info.Revision, Reference: req.Reference, EvidenceSeqs: seqs, Expectations: []lab.Expectation{expectation}}
 		c.Eligibility = req.Eligibility
+		c.Conversation = req.Conversation
 		if err := c.Validate(); err != nil {
 			apiError(w, 422, err)
 			return

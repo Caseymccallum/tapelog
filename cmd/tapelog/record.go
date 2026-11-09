@@ -32,6 +32,7 @@ import (
 func newRecordCmd() *cobra.Command {
 	var (
 		policyPath      string
+		omitResultText  bool
 		logPath         string
 		recordingsDir   string
 		sessionID       string
@@ -150,6 +151,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 				NonInteractive: nonInteractive,
 				DenyOnDrift:    denyOnDrift,
 				AuditMode:      auditMode,
+				OmitResultText: omitResultText,
 				Writer:         writer,
 				Blobs:          blobStore,
 				BlobThreshold:  blobThreshold,
@@ -224,6 +226,7 @@ against the policy (if given) and recorded into a hash-chained session log.`,
 	cmd.Flags().StringArrayVar(&sandboxRO, "sandbox-ro", nil, "sandbox the server: allow read-only access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().StringArrayVar(&sandboxRW, "sandbox-rw", nil, "sandbox the server: allow read-write access to this path (repeatable; Linux/landlock)")
 	cmd.Flags().BoolVar(&sandboxLax, "sandbox-lenient", false, "degrade to unsandboxed with a warning instead of failing")
+	cmd.Flags().BoolVar(&omitResultText, "omit-result-text", false, "record the shape of every tool result but not its text (for output that cannot be safely redacted); the body is replaced before redaction and hashing")
 	cmd.Flags().StringVar(&auditMode, "audit-mode", "strict", `what to do when the session log cannot be written: "strict" denies unrecordable calls and fails closed; "best-effort" keeps enforcing with a warning`)
 	cmd.Flags().BoolVar(&strictSchemas, "strict-schemas", false, "deny calls to tools whose advertised inputSchema fails to compile (default: skip validation for them)")
 	cmd.Flags().IntVar(&blobThreshold, "blob-threshold", 0, "offload args/result payloads larger than N bytes to the content-addressed <log>.blobs/ store (0 = keep everything inline; see spec/session-log-v0.md §6.2)")

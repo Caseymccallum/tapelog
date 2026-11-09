@@ -137,6 +137,99 @@ func TraceparentOf(meta json.RawMessage) string {
 	return m.Traceparent
 }
 
+// Attribution is client-declared correlation metadata carried in a
+// request's `_meta` object (spec/session-log-v0.md §6.1, M11). Every
+// field is a CLAIM by the client, not an authenticated fact: it groups
+// activity, and it must never be read as a session boundary,
+// completeness, identity of a human, or permission to read other
+// events. Empty means "the client declared nothing".
+type Attribution struct {
+	ConversationID string
+	ToolCallID     string
+	SubagentID     string
+}
+
+// MaxAttributionLen bounds a client-declared identifier. A longer value
+// is rejected rather than truncated: a truncated id is a different id,
+// and silently recording the wrong one is worse than recording none.
+const MaxAttributionLen = 128
+
+// Canonical (recorder-namespaced) keys, plus a first-party harness alias
+// so a client can declare its own identity without impersonating the
+// recorder. Canonical wins when a request carries both.
+const (
+	metaConversationID    = "io.tapelog/conversationId"
+	metaToolCallID        = "io.tapelog/toolCallId"
+	metaSubagentID        = "io.tapelog/subagentId"
+	aliasConversationID   = "io.hermes.agent/conversationId"
+	aliasToolCallID       = "io.hermes.agent/toolCallId"
+	aliasSubagentID       = "io.hermes.agent/subagentId"
+)
+
+// ValidAttributionID reports whether s is acceptable as a recorded
+// identifier: a bounded opaque token. The charset excludes control
+// characters (log injection) and non-ASCII (homoglyph confusion); it is
+// deliberately not a semantic check — the content is the client's
+// responsibility.
+func ValidAttributionID(s string) bool {
+	if s == "" || len(s) > MaxAttributionLen {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '.' || c == '_' || c == ':' || c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// AttributionOf extracts conversation/tool-call/subagent attribution from
+// a `_meta` object. The returned count is the number of keys that were
+// present but rejected as invalid, so callers can surface a diagnostic
+// without ever recording a malformed identifier.
+func AttributionOf(meta json.RawMessage) (Attribution, int) {
+	var a Attribution
+	if len(meta) == 0 {
+		return a, 0
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(meta, &m); err != nil {
+		return a, 0
+	}
+	dropped := 0
+	pick := func(canonical, alias string) string {
+		for _, key := range []string{canonical, alias} {
+			raw, ok := m[key]
+			if !ok {
+				continue
+			}
+			// A declared canonical key decides: if it is malformed we do not
+			// silently fall through to the alias, or a client could present an
+			// invalid canonical value alongside a valid alias and still be
+			// recorded under the alias, contradicting the documented precedence.
+			var v string
+			if err := json.Unmarshal(raw, &v); err != nil {
+				dropped++
+				return ""
+			}
+			if !ValidAttributionID(v) {
+				dropped++
+				return ""
+			}
+			return v
+		}
+		return ""
+	}
+	a.ConversationID = pick(metaConversationID, aliasConversationID)
+	a.ToolCallID = pick(metaToolCallID, aliasToolCallID)
+	a.SubagentID = pick(metaSubagentID, aliasSubagentID)
+	return a, dropped
+}
+
 // DenyResponse synthesizes a structured JSON-RPC error response for a
 // denied tool call. The original request id is echoed back.
 func DenyResponse(id json.RawMessage, data any) *Message {

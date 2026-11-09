@@ -14,7 +14,7 @@ Key choices:
 - **JSONL:** greppable, streamable, diffable, language-neutral.
 - **SHA-256 chain per event:** verifying the whole file (or a prefix) detects modification, deletion, and reordering. Simpler than Merkle proofs; adequate for a local-first tool. Not Byzantine-tamper-evident against an attacker who can rewrite the entire file — **documented honestly** in THREAT_MODEL.
 - **Canonical form is hand-specified** (fixed field order + sorted-key payload JSON) so any language can implement a verifier in ~50 LOC.
-- **Redaction happens before hashing** — the log never contains raw secrets; replay matching operates on redacted data and is therefore stable.
+- **Redaction happens before hashing** — known secret patterns and sensitive field names are masked before the event is hashed, so replay matching operates on redacted data and is stable. Redaction is best-effort: a value with no recognisable shape under an innocuous key is stored as recorded, and key-based masking does not reach inside JSON that a server returned as a *string*. Treat every log as sensitive (see `docs/THREAT_MODEL.md` and `docs/releases/M15_SECURITY_PRIVACY_AUDIT.md`).
 
 ## Consequences
 

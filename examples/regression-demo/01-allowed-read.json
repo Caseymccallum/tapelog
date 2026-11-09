@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "title": "A permitted read reached the boundary",
+  "description": "The recording is one complete session; a call to read_file crossed the boundary. Proves an attempt occurred — not that its result was correct, and not what any harness tool did outside the boundary.",
+  "evidence": "session-two-conversations.jsonl",
+  "expectations": [
+    { "kind": "attempted", "tool": "read_file" }
+  ]
+}

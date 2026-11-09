@@ -1514,3 +1514,99 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 @media (max-width:1000px) {
   .lab-grid { grid-template-columns:1fr; }
 }
+
+/* Conversations: client-declared grouping. The declared badge and the
+   unattributed label are deliberately quiet: attribution is a claim, and an
+   invented-looking identifier would overstate it. */
+.badge.declared { color:var(--muted); border-style:dashed; font-style:normal; }
+.badge.ambiguous { color:var(--amber); border-color:var(--amber); background:var(--amber-bg); }
+.conversation-name { display:flex; align-items:center; gap:8px; flex:1 1 320px; min-width:0; }
+.conversation-id { font:12px "Cascadia Code",Consolas,monospace; color:var(--text); overflow-wrap:anywhere; }
+.conversation-id.unattributed-label { color:var(--muted); font-family:inherit; font-style:italic; }
+.conversation-counts { display:flex; gap:6px; flex-wrap:wrap; }
+.conversation.unattributed { border-left:3px solid var(--line); }
+.timeline { counter-reset:none; }
+.timeline-item.ambiguous button { color:var(--amber); }
+.timeline-item button { text-align:left; }
+.unattributed-separator { margin-top:14px; color:var(--muted); }
+.unattributed-separator span { letter-spacing:.08em; }
+
+/* --- Conversation-first investigation (M14) --------------------------- */
+#conversation-panel .conversation-open {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin:14px 0 6px;
+}
+#conversation-panel .conversation-id {
+  font-size:15px;
+  overflow-wrap:anywhere;
+}
+/* Six counted facts, always in the same order, so the eye can compare two
+   conversations by position instead of re-reading labels. */
+.conversation-stats .stat span {
+  display:block;
+  margin-top:4px;
+  font-size:11px;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.conversation-tools {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px 16px;
+}
+.conversation-tools li { display:flex; gap:6px; align-items:baseline; }
+.conversation-pager {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-top:12px;
+}
+.conversation-compare-picker {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin:20px 0 12px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.conversation-compare-picker select { max-width:320px; }
+.comparison-table th[scope] { white-space:nowrap; }
+.comparison-table td:nth-child(n+2),
+.comparison-table th:nth-child(n+2) {
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+@media (max-width:800px) {
+  .conversation-stats { flex-wrap:wrap; gap:14px 0; }
+  .conversation-stats .stat { flex:1 1 45%; }
+  .conversation-compare-picker select { max-width:100%; width:100%; }
+}
+
+/* The metric label is the readable part of a comparison; the three numeric
+   columns are short. Without this, table-layout squeezes the label to a few
+   characters and wraps it one syllable per line on a phone. */
+.comparison-table { table-layout: fixed; }
+.comparison-table th { white-space: normal; overflow-wrap: anywhere; }
+.comparison-caption { margin: 6px 0 8px; }
+.comparison-table td:first-child,
+.comparison-table th:first-child {
+  width: 42%;
+  min-width: 11ch;
+  overflow-wrap: anywhere;
+}
+.comparison-table td:nth-child(n+2),
+.comparison-table th:nth-child(n+2) {
+  width: 19%;
+}
+@media (max-width:520px) {
+  .comparison-table { font-size: 12px; }
+  .comparison-table td:first-child,
+  .comparison-table th:first-child { width: 40%; min-width: 10ch; }
+  .comparison-table th:nth-child(n+2) { font-size: 10px; }
+}

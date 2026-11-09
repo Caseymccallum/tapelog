@@ -7,6 +7,299 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versions: [SemVer](http
 [`internal/buildinfo`](internal/buildinfo/buildinfo.go) is the single
 source of truth for the version.
 
+## [0.5.0-beta.1] — public beta
+
+- **`tapelog demo` — the first-run experience a downloaded package can actually have (BETA)** — one
+  command records a complete fictional session through the real boundary (an allowed call, a
+  policy-denied call and a tool error) against the fixture the compatibility tests use, then verifies
+  the chain it just wrote and prints the inspect / workspace / Regression Lab commands. It needs no
+  agent, account, network or source checkout, and it refuses to overwrite an existing directory rather
+  than silently replacing evidence.
+- **Archives now ship the guides and the suite they depend on (BETA)** — `docs/GETTING_STARTED.md`,
+  `docs/SECURITY-AND-LIMITATIONS.md` and `docs/REGRESSION-LAB.md` travel with the binary, next to the
+  fictional `examples/regression-demo/` recordings, so the documented walkthrough runs from the
+  download alone.
+- **Installation is archive-first, with the privacy guidance before the first recording (BETA)** —
+  Getting Started leads with download, checksum verification and `tapelog demo`; the privacy block
+  states what recordings contain, that redaction is bounded, what omit mode costs in replay fidelity,
+  that beta users should start with fictional data, and that nothing is sent anywhere.
+- **Two platforms for the beta, and only two (BETA)** — Windows amd64 and Linux amd64 are built,
+  executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
+## [Unreleased]
+
+- **JSON carried as a tool result is redacted by key (M15.1)** — an MCP result usually delivers its payload as a
+  string (`content[].text`), so a sensitive key inside it was stored verbatim even though the argument copy of the
+  same value was masked. A JSON document returned as text is now parsed and masked with the same key rules as
+  arguments, including nested objects, arrays and JSON escaped inside JSON. The behaviour is bounded and stated:
+  256 KiB, 24 nested string layers, one well-formed document; anything else is left to the credential-pattern pass
+  and recorded as received. Text that nothing matched is kept byte-identical rather than re-serialised.
+- **`--omit-result-text` records the shape of a result and none of its bytes (M15.1)** — for output that cannot be
+  safely redacted (prose, malformed or oversized payloads). Content types, ids and `is_error` survive; payload text
+  becomes `[REDACTED] (result text omitted at record time)` before hashing, so the bytes never reach the disk and
+  replay reproduces exactly what was kept. Result-based regression claims report `redacted_content`.
+- **Two disclosures removed from the shipped tree (M15.1)** — `scripts/gen-third-party-notices.py` hard-coded one
+  machine's checkout path (now derived from the script location), and the example plugin's `argguard.wasm` carried
+  the builder's home directory in its debug info (rebuilt with `-trimpath -ldflags="-s -w"`, and `build.ps1` now
+  does the same). `examples/roo-live-scenario.yaml` no longer asserts on an absolute path.
+- **The release candidate identifies itself (M15)** — a source build reported `0.4.0`, the same string as the
+  published release, so no banner could tell them apart. `internal/buildinfo.Version` is now `0.4.1-m15rc.1`, and
+  `Commit` is stamped through `-ldflags` and printed beside it: `tapelog 0.4.1-m15rc.1 (286165e)`. A plain
+  `go build` prints no commit — the absence is the signal that the binary carries no build provenance. The
+  published `v0.4.0` tag is untouched.
+- **Local release-candidate packaging (M15)** — `scripts/build-release-candidate.sh` builds the five configured
+  targets `CGO_ENABLED=0` with `-trimpath`, stamps version and commit, bundles `LICENSE`, `README.md`,
+  `CHANGELOG.md`, `THIRD_PARTY_NOTICES.md` and the fictional `examples/regression-demo/` suite, and writes
+  `checksums.txt` plus a manifest that states signing and SBOM production were **not** performed. Building it
+  exposed a real defect: MSYS `tar` recorded `0644` for every file on NTFS, so the Linux and macOS archives shipped
+  a binary that could not run. Archives are now written with Python `tarfile`, and the Linux archive was extracted
+  and executed in a clean container.
+- **Third-party notices are generated (M15)** — `scripts/gen-third-party-notices.py` reads the module cache and
+  writes `THIRD_PARTY_NOTICES.md` (122 modules, 0 unclassified). `github.com/mattn/go-localereader` ships no licence
+  file inside its module zip; its upstream repository is MIT (Copyright 2022 Yasuhiro Matsumoto), and the notices
+  record it as a reconstructed entry rather than a guess.
+- **What redaction actually masks is now measured, not assumed (M15)** — nine recording shapes were written and the
+  raw bytes inspected: argument values under sensitive keys are masked, and credential shapes (AWS keys, GitHub
+  tokens, `Bearer` after a colon) are masked wherever they appear, including result text. Sensitive key names inside
+  a result body are **not** consulted — `{"password": "…"}` in a text result is stored verbatim, in every form,
+  including malformed and 1 MB bodies. No configuration omits result bodies, so the candidate is documented as
+  fictional-data-only in `docs/GETTING_STARTED.md` and `docs/SECURITY-AND-LIMITATIONS.md`.
+- **A policy decision now attaches to the call it decided, not to whichever call was oldest (M15)** — when two
+  calls shared a request id while both were outstanding, the loader gave the second call's decision to the first,
+  so a Regression Lab case asserting "read_file was denied" returned **PASS** on a recording where `read_file` was
+  allowed and only `delete_file` was denied. Decisions now attach by `parent_seq` (which the recorder has always
+  written), a verdict attached by id alone is marked as a guess and cleared if the id turns out to have been
+  shared, and `denied` eligibility returns `ambiguous_correlation` instead of reading an absence as "not denied".
+  Found by independent review; the same case now FAILs where the pairing is recorded and stays INCONCLUSIVE where
+  it is not.
+- **Sensitive field names are matched after normalisation (M15)** — the list was matched as a substring of the key
+  as written, so `passphrase`, `privateKey`, `accessKey` and `session_key` were recorded verbatim while
+  `password`, `private_key` and `api_key` were masked. Keys are now lowercased with `_`/`-`/`.` removed before
+  matching, and the list names the same secret under its other words (`passphrase`, `session_key`, `auth_token`).
+  A second test pins that ordinary keys (`path`, `author`, `session_id`, `hostname`) stay readable.
+- **Replay serves the bytes it verified (M15)** — `LoadVerifiedAttributable` verified one read of the file and then
+  re-opened the path to parse it, so a file swapped in between would be served without passing either gate. It now
+  parses the verified buffer.
+- **Every replay override now announces itself (M15)** — `--allow-ambiguous-ids` served evidence with shared,
+  still-outstanding request ids and said nothing, while its two siblings (`--allow-unverified`,
+  `--allow-invalid-structure`) each print a `WARNING` on stderr. A caller piping replay into a harness could not
+  tell that a served answer might belong to the other call. It now names the ambiguous ids, and
+  `TestReplayAmbiguityOverrideIsVisible` pins both the warning and the default refusal's pointer to the flag.
+- **The lab's event-limit refusal no longer reads as corruption (M15)** — the workbench glossed a
+  `damaged_recording` refusal as "damaged or ambiguous" even when the recording was merely above the 10,000-event
+  lab limit; it now says so.
+- **Performance re-baselined on the integrated candidate (M15)** — no regression of the M12/M13 work: the block
+  detector's pathological identical run is 0.65 ms with a single allocation (the fix it replaced measured 799.6 ms),
+  and conversation grouping remains single-pass at 9.4 ms for 12 000 conversations. Recording sustains about
+  1 040 calls/s. One cost is documented rather than optimised: on an 11.9 MB recording a repeat `/api/behaviour`
+  call is ~830 ms against 959 ms cold, because the request re-reads and re-decodes the file. See
+  `docs/releases/M15_PERFORMANCE_RELIABILITY.md`.
+- **Redaction limits are now stated and pinned (M15)** — key-based masking covers JSON objects and known
+  credential shapes, but it does **not** reach JSON that a server returns as text, which is the usual shape of an
+  MCP result: a server that echoes arguments writes the secret into the result payload even though the argument copy
+  is masked. `docs/THREAT_MODEL.md` and `docs/SECURITY-AND-LIMITATIONS.md` now say so, ADR 0003 no longer claims the
+  log never contains raw secrets, and `TestRedactionGapJSONEncodedStrings` pins the gap so closing it forces a doc
+  update in the same change.
+- **The published gateway evidence is derived, not the original bytes (M15)** — the authentic M14.1 recordings
+  carried the recorder's absolute policy path. `test-fixtures/m14.1-gateway/` now holds re-chained copies with a
+  neutral policy name, `DERIVED.md`/`DERIVED.json` record both sets of heads, and the test fails if a derived file
+  ever shares the original's head. The originals stay outside the public tree.
+- **The gateway attribution evidence ships with the repository (M15)** — the M14.1 live session is committed as
+  two byte-linked snapshots (`test-fixtures/m14.1-gateway/`): the 16-event file verified during the experiment
+  (chain intact, **INCOMPLETE — no_end**) and the 17-event file the gateway completed eleven minutes later. The open
+  file is an exact byte prefix of the closed one, so the difference between "still recording" and "finished" is a
+  verifiable fact rather than a footnote. `TestGatewayEvidenceIsVerifiableAndHonest` asserts the chain, the
+  completeness split, five calls across two client-declared conversations, zero unattributed calls and the single
+  `no-delete` deny. `docs/HERMES-ATTRIBUTION.md` separates Tapelog's ability to ingest conversation metadata from any
+  particular client supplying it, and states that unmodified clients send nothing.
+- **Documentation a stranger can follow (M15)** — `docs/GETTING_STARTED.md` is now the entry point: build from
+  source, identify which binary you actually have (the version banner cannot tell a source build from v0.4.0), run
+  the ~0.9 s offline demo, wrap one existing server, then reach the workbench and the lab. It states the tested
+  platforms rather than implying support: Windows amd64 accepted, Linux amd64 partially (race suite in Docker),
+  macOS built but not functionally accepted. `docs/REGRESSION-LAB.md` documents the claim kinds, the three verdicts,
+  the two eligibility modes and the 10,000-event limit, none of which had user-facing documentation.
+  `docs/SECURITY-AND-LIMITATIONS.md` separates authoritative mediation from passive observation and links the
+  threat model rather than restating it. `docs/launch/TESTING-GUIDE.md` no longer hardcodes the author's checkout
+  path and Go installation path.
+- **`tapelog web` binds before it announces (M15)** — the command printed `session dashboard on http://…` and only
+  then called `ListenAndServe`, so an occupied port produced a success-looking URL followed by a bind error, and any
+  script grepping for the URL received the address of a server that never ran. It now listens first, reports the
+  address the listener actually got (so `--listen 127.0.0.1:0` prints the real port), and fails with only the error.
+  Covered by `TestWebDoesNotAnnounceBeforeBinding`.
+- **The workspace stops hiding its own warnings (M15)** — the integrity, missing-end and ambiguous-request
+  banners lived inside a collapsed "Recording integrity & scope" disclosure, so a session whose result pairing
+  cannot be determined looked like two plainly unanswered calls. The disclosure now opens itself when any warning
+  was rendered. Library rows also carry a `pairing unknown` badge (the API already reported `ambiguous`), and the
+  card count reads `1 call` rather than `1 calls`.
+- **Comparison is refused where the evidence cannot support it (M15)** — the ambiguity banner claimed
+  "Comparison and test creation are disabled" while both stayed clickable (the API refused the comparison, the UI
+  did not). Compare is now actually disabled for an ambiguous recording, and the sentence states what happens
+  instead: a result whose owner is unknown is attached to neither call, and a case that depends on which call
+  produced it will be inconclusive. Test creation stays available on purpose — the lab decides per claim.
+- **A replay override is now visible (M15)** — `tapelog replay --allow-invalid-structure` overrode the structure
+  refusal and then said nothing: stderr showed `replaying <file> (session , 0 interactions)` with no warning, while
+  `--allow-unverified` had always printed a loud one. It now prints `WARNING — replaying evidence that is NOT one
+  complete valid session (<code>)`, naming the shared checker's own problem (`no_events`, `no_start`, `no_end`, …), so it
+  agrees with `verify` and `inspect`. Covered by `TestReplayStructureOverrideIsVisible`, which also pins that the
+  default refusal names the flag. No eligibility rule or refusal was changed.
+- **A five-case fictional regression demo ships in `examples/regression-demo/` (M15)** — one complete session with two
+  client-declared conversations produced through the boundary, plus an interrupted copy, and five cases that produce
+  PASS, FAIL and INCONCLUSIVE deliberately (2 pass / 1 fail / 2 inconclusive). `generate.sh` rebuilds both recordings
+  and asserts the defects survive generation. No Hermes integration is needed to run it.
+- **Structure verdicts now name the defect they found (M15)** — `tapelog inspect` printed one canned
+  sentence for every structurally invalid recording, so a zero-event file was described as having
+  "mixed session ids" while `verify` and the workbench API named `no_events`. The CLI now renders the
+  shared checker's own codes (`no_events`, `no_start`, `start_not_first`, `mixed_identity at seq N`,
+  `multiple_starts`, `no_end`) and the workspace API exposes them as `structure_problems`, so every
+  surface names the same problem. Covered by `TestStructureVerdictNamesTheActualDefect`, which also
+  asserts the empty file is *not* described as mixed identities.
+- **M14 review fixes** — a lab conversation scope now treats a call whose declared id the analysis layer
+  rejects as unplaceable (`conversation_scope_unknown`), closing the one way a scoped absence claim could
+  PASS while such a call sat in the recording; the comparison's explanation field is `explanation` so it
+  survives the CLI's payload minimiser; `behaviour conversations --conversation` validates its id (the
+  remainder is not selectable) and refuses `--json` instead of silently ignoring the filter; a conversation
+  now carries its recording's own warnings (integrity, completeness, unpaired results, unknown-source
+  decisions); recorded timestamps are sanitised before printing; `recurrence` is declared in the array-order
+  contract and the gate covers a real recurrence and the recording comparison; an invalid deep link clears
+  the previous comparison; note and sentence grammar corrected.
+- **The conversation is now the unit of investigation (M14)** — `tapelog behaviour conversation --dir … --conversation <id>`
+  prints one conversation's counted facts, the evidence limits that apply to it and a paged, library-ordered timeline
+  that reaches past the overview's 200-entry cap; `tapelog behaviour compare-conversations --a <id> --b <id>` compares
+  two conversations on recorded counts only, with server-written factual difference sentences and a separate list of
+  what the comparison cannot support. The workspace gains the matching deep link and panels. New endpoints:
+  `GET /api/behaviour/conversation` and `GET /api/behaviour/compare-conversations`.
+- **Array order is now a declared data contract, not an exemption list (M14)** — `workflowSafe` used to canonical-sort
+  every array of objects except the names on a list, and forgetting the list has now produced three separate defects
+  (conversation groups, repeats, timeline). The default is inverted: an undeclared array keeps the producer's order and
+  only declared unordered sets are canonicalised; the contract is keyed by collection with path overrides, and
+  `TestArrayOrderContract` fails when a new array of objects appears with no declared meaning.
+- **Conversation counts are named for what they count (M14)** — `ambiguous_results` is `ambiguous_calls` (one unpaired
+  ambiguous result shared by two calls was being reported as two "results"), a group now carries `unanswered`, per-tool
+  call counts (`tool_calls`) and a library position (`first_library_seq`), and the overview states whether conversation
+  order is `library` or `per-recording` instead of implying one chronology.
+- **Two M13 evidence gaps are closed (M14)** — a recorded result that no call claims is now counted (`unpaired_results`,
+  plus a warning) instead of leaving a conversation that looks complete while evidence is missing, and the CLI text view
+  prints the ambiguity, unanswered and timeline detail the card already showed.
+- **Unknown-source uncertainty is visible where it matters (M14)** — recorded policy decisions whose reason names an
+  unknown value source are counted (`unknown_source_decisions`) and explained in the notes: the policy engine keeps
+  provenance uncertainty for the rest of the session, so a later decision can rest on activity the view does not contain.
+  It means provenance is uncertain, not that anything was contaminated, and the fail-closed behaviour is unchanged.
+- **Conversation view in the workspace (M13)** — the Behaviour view opens with a CONVERSATIONS card built from
+  the server's analysis: each declared conversation shows its calls, denials, errors, tools, repetitions
+  measured inside that conversation, and a bounded timeline whose entries open the underlying event. The
+  unattributed remainder is a separate group under its own heading, ordered last and never given a made-up id;
+  ambiguity is shown as unknown rather than zero; a call with no recorded result is drawn as neither success
+  nor failure. `CallRecord` gains `File`/`Index`, and a conversation summary gains `Files`, a 200-entry
+  `Timeline` and `TimelineTruncated`.
+- **`detectBlocks` is linear on long identical runs (M13)** — it measured a run's length before discarding
+  single-operation blocks, so a polling tool repeating one call 8 000 times took 800 ms. The discard test now
+  runs the moment the block is known to repeat: 1.75 ms at 8 000 calls, with output proven identical to the
+  original algorithm across 240 randomised recordings.
+- **Fixed: "1 calls were never answered"** — the unanswered-calls note now agrees with its number.
+
+
+- **Conversation-aware Behaviour Intelligence (M12)** — a single MCP session can carry several agent
+  conversations, and Behaviour Intelligence had only the session as an axis, so four conversations that each
+  called `read_file` twice read as one eight-call loop. Calls now carry the client-declared conversation id;
+  `behaviour conversations` groups activity per conversation with the unattributed remainder kept separate and
+  last; recurrence (an operation seen in two or more conversations) is distinguished from repetition (the same
+  operation inside one); and repeat findings record `scope: "conversation"` so existing `repeats`/`summary`
+  output stops presenting cross-conversation recurrence as a single loop. Attribution never creates a session
+  boundary, changes a verdict, alters hash-chain verification or affects Regression Lab eligibility, and it is
+  labelled as client-declared wherever it is shown.
+- **Unknown-source taint is fail-closed and durable (M12)** — past 4 096 distinct tool names the mediator
+  cannot name a source, and a value from it is now marked as having an *unknown* source rather than no source.
+  Value-flow rules treat an unknown source as matching, so the check a rule was written to make still happens.
+  The mark is a sticky session fact, not a value in the capped store: a value-bucket eviction can no longer turn
+  "never clean" back into "clean".
+- **Fixed: producer-ordered arrays were silently re-sorted** — `workflowSafe` canonical-JSON-sorts arrays of
+  objects for deterministic output, which rewrote conversation groups (unattributed first), recurrence and the
+  ranked `repeats`/`failures`/`denied`/`tools` tables. Those arrays are now exempt.
+- **Fixed: grouping was O(n·g)** — `GroupConversations` rescanned the call list per group (1 146.9 ms at 12 000
+  conversations); it now buckets in one pass (5.95 ms).
+
+- **Regression Lab is claim-specific about ambiguous evidence (M11.2)** — a recording that reuses a request id
+  is no longer rejected outright as `damaged_recording`. Claims that need a result tied to a call (`answered`,
+  `result_contains`, `result_never_contains`, `no_deny_bypassed`) become INCONCLUSIVE with
+  `ambiguous_correlation`; claims that only need calls or decisions (`attempted`, `no_attempts`,
+  `attempt_ceiling`, `denied`, `sequence`) stay decidable. Same rule in complete-boundary mode. Ambiguity is
+  never upgraded to PASS
+- **A denied call no longer leaks correlation state** — every deny path settles its own link (`dropLinkRef` via
+  a named-return `defer`), and the loader decrements its outstanding count on a deny decision. Previously a
+  denied call left a phantom "still outstanding" entry, so the next call under the same id looked ambiguous
+  for no reason
+- **`tapelog` records a response that follows a deny under a shared id** — the boundary deleted the whole
+  in-flight entry for an id when denying, which hid an allowed call's response from the recorder (the client
+  saw two responses, the recording kept one). It now decrements one slot
+- **Taint refuses to under-taint at its own limits** — an overflowing per-id union no longer drops source
+  names (which silently disabled value-flow rules); it falls back to every tool name seen this session.
+  Ambiguity reporting is no longer capped at 16 ids internally, so an id past the cap is still labelled
+- **Race-tested** — the full suite passes under `CGO_ENABLED=1 go test -race ./...` in a `golang:1.27`
+  container with gcc (27 packages, no data races)
+
+- **Request identity: no more manufactured certainty when ids collide (M11.1)** — a JSON-RPC id is only a
+  correlation token while it is unique among *outstanding* calls. When two calls share an id, the transport
+  cannot say which response answers which call, so `tools/result` now carries `attribution_ambiguous: true`
+  and claims no `parent_seq`, `conversation_id`, `tool_call_id` or `traceparent`. The flag is sticky for that
+  ambiguous cluster (it clears when the cluster drains, so later sequential reuse is exact again). M11's FIFO
+  pairing presented a guess as fact and is replaced
+- **Two evidence-loss defects fixed** — `internal/proxy` tracked in-flight calls in a boolean map and deleted
+  the id on the first response, so a reused id's second response reached the client but was **never recorded**;
+  it is now a per-id count. And a call's correlation link was registered *after* its event was appended, so a
+  concurrent response could see a short queue and be declared unambiguous
+- **Value taint degrades conservatively under collision** — `pendingTools` is a FIFO queue per id and a shared
+  id taints every one of its results with the **union** of the tools that shared it (over-taint, never
+  under-taint, deduplicated and capped at 32). The same fix applies to the memory caps: a cap wipe now retains
+  discarded sources as always-assumed taint, and sets `corrLost` so no later pairing is attested
+- **Decisions point at their own call** — a `policy/decision` no longer resolves through the queue head, which
+  made decision #2 point at call #1 under a reused id
+- **`replay` refuses ambiguous evidence** — `replay` exits non-zero naming the ids whose responses cannot be
+  paired, with `--allow-ambiguous-ids` as the explicit escape hatch. Sequential reuse is still served normally
+
+- **Conversation attribution (M11)** — one MCP connection can serve many agent conversations; the recorder can
+  now group them without inventing session boundaries. A client MAY declare `_meta` keys
+  `io.tapelog/conversationId` / `toolCallId` / `subagentId` (alias `io.hermes.agent/...`), recorded as additive
+  `conversation_id` / `tool_call_id` / `subagent_id` on `tools/call`, `policy/decision` and `tools/result`.
+  Client-declared correlation only: `session_id`, structural validity, completeness and `lab` eligibility are
+  untouched, and absent attribution is reported as absent rather than invented. Identifiers are bounded
+  (1–128 bytes, `[A-Za-z0-9._:-]`) and rejected rather than truncated. See `docs/CONVERSATION-ATTRIBUTION.md`
+  and spec §6.3
+- **`inspect` shows the conversation** — a call carrying attribution prints `[conversation <id>]` beside it; an
+  unattributed call prints nothing rather than a placeholder
+- **`replay` matches repeated request ids in order** — a long-lived recording may legitimately reuse JSON-RPC
+  ids (a client that restarts its counter each conversation). Matching was last-write-wins, which silently
+  dropped the earlier call and could pair a result with the wrong request: a two-call recording was served as
+  one. Matching is now FIFO per id, and decisions may still supersede one another (decision history)
+- **Hermes integration available as a patch** — an isolated, reviewable two-file change forwards the
+  conversation and tool-call ids as MCP `_meta`, and is skipped entirely when the installed SDK's `call_tool`
+  has no `meta=` parameter
+- **Evidence integrity: four properties, never conflated** — `verify`, `inspect`, `behaviour`, `replay` and `lab`
+  now separate *cryptographic integrity*, *structural/session validity*, *completeness* and *per-assertion
+  eligibility*. One shared checker (`internal/session.InspectStructure`) defines what a well-formed session log
+  is: ≥1 event, a non-empty `session_id` on every event, exactly one identity, exactly one leading
+  `session/start`, and at most one `session/end` which must be last. A missing end is **incomplete**, never
+  invalid. Previously `verify` reported OK, `behaviour` reported *complete* (exit 0) and `replay` served files
+  containing two sessions or no start, while `lab` alone refused them
+- **`verify` gains a structure verdict** (`Structure: VALID | INVALID — <code> at seq N | INCOMPLETE — no_end`)
+  while its default exit codes stay unchanged (0 intact / 1 failed) so existing scripts keep working;
+  `--require-structure` makes a structural or completeness defect fatal (exit 3)
+- **`behaviour` completeness derives from structure** — a file with no start, two starts, a relocated end or two
+  identities can no longer be *complete*; `identities` is reported alongside `sessions` (which still counts
+  files, deliberately unchanged in meaning), and rows carry `session_id` and `structure`
+- **`inspect` publishes all four verdicts and can gate CI** — `--check` exits 3 on integrity failure, 4 on
+  structure failure; an unparseable file now says why it cannot render instead of silently producing nothing
+- **`inspect` causal story no longer mis-attributes calls** — the correlation map is scoped per session; two
+  denied calls previously both rendered as `#14` when the first was `#6`
+- **`replay` refuses structurally invalid evidence** by default (it was serving files `lab` rejected);
+  `--allow-invalid-structure` is the explicit escape hatch for tamper-testing workflows. `lab` keeps
+  `incomplete_recording` for open recordings and gains `structure_invalid` for structural defects, with every
+  eligibility rule unchanged
+- **Sequence/identity sentinel fix** — an empty or mixed identity at `seq 0` was invisible to both the chain
+  check (`FirstBadSeq == 0` meant "intact") and the structure check; such a file had `lab` PASS and `replay`
+  serve it. Problems are no longer encoded in a `uint64` whose zero value means "none"
+- **New trust-bearing gates are mutation-tested** — removing the replay gate, the lab validity gate, the
+  `inspect --check` mapping or `--require-structure` now fails the suite; previously all four could be deleted
+  with `go test ./...` green
+
 ## [0.4.0] — 2026-10-01
 - **Raw-protocol fail-closed (boundary invariant)** — client→server lines that fail JSON-RPC parsing were previously forwarded untouched ("protocol safety"); they are now REJECTED (JSON-RPC `-32700` parse error / `-32600` invalid request, id echoed when detectable) and recorded, and actionable methods sent as id-less notifications are refused too — a more lenient upstream parser (batch arrays, NaN literals, `jsonrpc` version drift) must never form a second interpretation of an actionable request. Protocol notifications (`notifications/*`) still pass. Invariant pinned by `TestUnparseableLinesNeverReachUpstream`; mux's silent drop got the same recorded-rejection contract
 - **Causal linkage for boundary rejections** — the `malformed-request` decision now carries `parent_seq` of its `tools/call` event like any ordinary mediated call (spec §6.1), and the event carries best-effort `_meta.traceparent`

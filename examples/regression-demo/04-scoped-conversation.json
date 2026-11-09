@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "title": "Scoped to one conversation: write_file was attempted there",
+  "description": "One MCP session, two client-declared conversations (demo-alpha, demo-beta). This case narrows the evidence to demo-beta before deciding anything, so it can only see that conversation's calls.",
+  "evidence": "session-two-conversations.jsonl",
+  "conversation": "demo-beta",
+  "expectations": [
+    { "kind": "attempted", "tool": "write_file" }
+  ]
+}

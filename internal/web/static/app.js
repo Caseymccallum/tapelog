@@ -141,7 +141,8 @@ async function loadLibrary() {
       const state=el("div");
       state.append(integrity(s),el("small","",s.complete?"Recorded end · "+fmtDuration(s.duration_ms):"No recorded end"));
       const counts=el("div","row-counts");
-      counts.append(el("span","badge",s.calls+" calls"));
+      counts.append(el("span","badge",s.calls+(s.calls===1?" call":" calls")));
+      if(s.ambiguous)counts.append(el("span","badge ambiguous","pairing unknown"));
       if(s.denies)counts.append(el("span","badge denied",s.denies+(s.denies===1?" deny decision":" deny decisions")));
       if(s.failures)counts.append(el("span","badge failed",s.failures+(s.failures===1?" tool error":" tool errors")));
       const date=el("div","when",when(s.first_ts));
@@ -271,21 +272,27 @@ function showSession(info) {
   stats($("session-stats"),[[info.calls,"Observed calls"],[Math.max(0,info.answered-info.failures),"Non-error results"],[info.denies,"Deny decisions"],[info.failures,"Tool errors"]]);
   const diag=$("session-diagnostics");
   diag.replaceChildren();
+  let healthWarning=false;
   if(!info.chain_ok)notice(diag,info.problem||"This recording has no verified event chain. Comparison and test creation are unavailable.","error");
   else {
     const n=notice(diag,"✓ Hash chain verified for this snapshot. This is an integrity check, not proof of authorship or a complete record of agent activity.");
     n.classList.add("integrity-note");
   }
-  if(!info.complete)notice(diag,"No session/end event was recorded. This may be a live session, interruption or failed startup; a missing end alone does not establish a connection failure.","warning");
+  if(!info.chain_ok)healthWarning=true;
+  if(!info.complete){notice(diag,"No session/end event was recorded. This may be a live session, interruption or failed startup; a missing end alone does not establish a connection failure.","warning");healthWarning=true;}
   if(info.end_reason)notice(diag,"Recorded end reason: "+info.end_reason);
-  if(info.calls===0)notice(diag,info.discovery?"Discovery was recorded, but no tool calls crossed this boundary. Explicitly invoke a tool from the wrapped MCP server. Built-in client operations will not appear here.":"No tool calls were recorded. Confirm that your client launches the generated Tapelog entry, then call one of that server’s MCP tools.","warning");
-  if(info.ambiguous)notice(diag,"Some request relationships are missing or ambiguous. The timeline does not guess a pairing; inspect All events. Comparison and test creation are disabled.","warning");
+  if(info.calls===0){notice(diag,info.discovery?"Discovery was recorded, but no tool calls crossed this boundary. Explicitly invoke a tool from the wrapped MCP server. Built-in client operations will not appear here.":"No tool calls were recorded. Confirm that your client launches the generated Tapelog entry, then call one of that server’s MCP tools.","warning");healthWarning=true;}
+  if(info.ambiguous){notice(diag,"Some request relationships are missing or ambiguous. The timeline does not guess a pairing: a result whose owner is unknown is attached to neither call, comparison is unavailable, and any case that depends on which call produced a result will be inconclusive.","warning");healthWarning=true;}
+  // A warning nobody opens is a warning nobody reads: the banners live inside
+  // the collapsed "Recording integrity & scope" disclosure.
+  const health=document.querySelector("details.recording-health");
+  if(healthWarning&&health)health.open=true;
   const server=$("activity-server"),prev=server.value;
   server.replaceChildren(new Option("All servers",""));
   for(const name of info.servers||[])server.add(new Option(name,name));
   if([...server.options].some(o=>o.value===prev))server.value=prev;
-  $("run-compare").disabled=single;
-  $("compare-session").disabled=single;
+  $("run-compare").disabled=single||!!info.ambiguous;
+  $("compare-session").disabled=single||!!info.ambiguous;
 }
 async function loadActivity() {
   const request=++activityRequest,file=currentFile;
@@ -667,7 +674,7 @@ async function previewLab() {
   if(!$("lab-title-input").value.trim()){notice($("lab-result"),"Give this case a title.","warning");return;}
   const file=currentFile,seq=selectedCall.seq,request=++testRequest;
   try {
-    const data=await api("/api/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({file,revision:detailRevision,seq,kind,fixture:$("fixture-path").value,seqs:selectedEvents.map(x=>x.seq),ceiling:kind==="attempt_ceiling"&&$("attempt-ceiling").value.trim()!==""?Number($("attempt-ceiling").value):null,run:true,lab:true,eligibility:"complete-boundary",title:$("lab-title-input").value,description:$("lab-description").value,reference:$("lab-reference").value,candidate:$("lab-candidate").value})});
+    const data=await api("/api/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({file,revision:detailRevision,seq,kind,fixture:$("fixture-path").value,seqs:selectedEvents.map(x=>x.seq),ceiling:kind==="attempt_ceiling"&&$("attempt-ceiling").value.trim()!==""?Number($("attempt-ceiling").value):null,run:true,lab:true,eligibility:"complete-boundary",title:$("lab-title-input").value,description:$("lab-description").value,reference:$("lab-reference").value,candidate:$("lab-candidate").value,conversation:($("lab-conversation")?.value||"").trim()})});
     if(request!==testRequest||file!==currentFile||seq!==selectedCall?.seq)return;
     labPreview=data.case_json;$("lab-definition").hidden=false;$("lab-json").textContent=labPreview;$("lab-json").hidden=false;$("lab-save").disabled=false;
     const out=$("lab-result"),result=data.result;notice(out,result.status+" · "+result.evidence,result.status==="FAIL"?"error":result.status==="INCONCLUSIVE"?"warning":"");
@@ -1666,7 +1673,10 @@ function showBehaviour(updateHash=true) {
   clearError();
   if(updateHash)setWorkspaceRoute("#behaviour");
   pendingDelta=behaviourLink();
-  loadBehaviour();
+  // The conversation panel is driven by the route, so it is applied after the
+  // overview has rendered: a deep link then has conversation ids to show in its
+  // comparison picker without a second round trip.
+  loadBehaviour().then(()=>applyConversationRoute());
 }
 // behaviourLink reads #behaviour&a=<reference>&b=<recording>, so a comparison
 // can be bookmarked or sent to a colleague without re-picking both recordings.
@@ -1699,6 +1709,14 @@ async function loadBehaviour() {
     if(request!==behaviourRequest)return;
     behaviourData=data;
     renderBehaviour(data);
+    // The filters changed what "this view" means, so an open conversation must
+    // be re-read against them: showing numbers from a recording the filters now
+    // exclude is the same class of mistake as hiding the unattributed
+    // remainder. If it is excluded, the panel says so instead of going stale.
+    if(conversationView)await openConversation(conversationView.id,conversationView.compare, {
+      updateHash:false,focus:false,offset:conversationView.offset,limit:conversationView.limit
+    }
+    );
   } catch(e) {
     if(request===behaviourRequest)error(e);
   }
@@ -1713,6 +1731,7 @@ function renderBehaviour(ov) {
   const c=ov.counts;
   stats($("behaviour-stats"),[[c.sessions,"Recordings in view"],[c.calls,"Tool calls"],[c.results,"Recorded results"],[c.failures,"Tool errors"],[c.denies,"Calls denied"],[c.unanswered,"Unanswered"]]);
   $("behaviour-coverage").textContent=coverageText(ov);
+  renderBehaviourConversations(ov);
   renderBehaviourFailures(ov);
   renderBehaviourRepeats(ov);
   renderBehaviourTools(ov);
@@ -1746,6 +1765,142 @@ function coverageText(ov) {
   if(lib.truncated)parts.push("the "+lib.budget_files+"-recording limit was reached");
   const window=ov.window.from||ov.window.to?(ov.window.from||"any time")+" to "+(ov.window.to||"now"):"all recorded time";
   return parts.join(" · ")+". Window: "+window+".";
+}
+// Conversations are client-declared groups of activity inside one MCP session.
+// The server decides membership, counts and ordering; this function only
+// presents them, and says plainly which parts are a claim and which are not.
+function renderBehaviourConversations(ov) {
+  const box=$("behaviour-conversations"),recur=$("behaviour-recurrence");
+  box.replaceChildren();
+  recur.replaceChildren();
+  const groups=ov.conversations||[];
+  if(!groups.length) {
+    empty(box,"No conversations to show","These recordings contain no tool calls, so there is nothing to attribute.");
+    return;
+  }
+  const attributed=groups.filter(g=>g.attributed);
+  const loose=groups.filter(g=>!g.attributed);
+  const looseCalls=loose.reduce((n,g)=>n+g.calls,0);
+  let separated=false;
+  const caption=el("div","list-caption");
+  caption.append(el("span","","OBSERVED GROUPS"),el("span","",attributed.length+(attributed.length===1?" conversation":" conversations")+(looseCalls?" · "+looseCalls+(looseCalls===1?" unattributed call":" unattributed calls"):"")));
+  box.append(caption);
+  // The unattributed remainder must ALWAYS render. It sorts last, so a plain
+  // slice(0,25) dropped it as soon as a library held more than 25 groups —
+  // hiding exactly the activity that could not be placed.
+  const attributedSlice=groups.filter(g=>g.attributed).slice(0,25);
+  const remainder=groups.filter(g=>!g.attributed);
+  const visible=attributedSlice.concat(remainder);
+  if(groups.length>visible.length)box.append(el("p","muted","Showing the first "+visible.length+" of "+groups.length+" groups; the unattributed remainder is always shown."));
+  for(const g of visible) {
+    if(!g.attributed&&!separated&&attributed.length) {
+      const sep=el("div","list-caption unattributed-separator");
+      sep.append(el("span","","NO DECLARED CONVERSATION"));
+      box.append(sep);
+      separated=true;
+    }
+    box.append(conversationItem(g));
+  }
+
+  renderRecurrence(recur,ov.recurrence||[],looseCalls);
+}
+function conversationItem(g) {
+  const item=el("details",g.attributed?"finding conversation":"finding conversation unattributed");
+  const summary=el("summary","finding-row");
+  const name=el("span","conversation-name");
+  if(g.attributed) {
+    name.append(el("code","conversation-id",g.id));
+    name.append(el("span","badge declared","client-declared"));
+  } else {
+    name.append(el("span","conversation-id unattributed-label","No declared conversation"));
+  }
+  const counts=el("span","conversation-counts");
+  counts.append(el("span","badge",g.calls+(g.calls===1?" call":" calls")));
+  if(g.denials)counts.append(el("span","badge denied",g.denials+" denied"));
+  if(g.failures)counts.append(el("span","badge failed",g.failures+(g.failures===1?" error":" errors")));
+  if(g.ambiguous_calls)counts.append(el("span","badge ambiguous",g.ambiguous_calls+(g.ambiguous_calls===1?" ambiguous call":" ambiguous calls")));
+  summary.append(name,counts);
+  // The panel is one click away without expanding the row: an investigation
+  // should not depend on discovering that the row is a <details> element.
+  if(g.attributed) {
+    const open=button("Open →",ev=> {
+      if(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
+      openConversation(g.id);
+    }
+    ,"quiet");
+    open.setAttribute("aria-label","Open conversation "+g.id);
+    summary.append(open);
+  }
+  item.append(summary);
+
+  const body=el("div","finding-body");
+  if(!g.attributed) {
+    body.append(el("p","criteria","These calls declared no conversation id, or declared one Tapelog rejects. They are shown together because they cannot be placed — not because they belong to one conversation."));
+  } else {
+    body.append(el("p","criteria","Grouped by the conversation id each call declared. The client chose that id: the recording does not prove who the client was, and nothing here says the conversation finished."));
+  }
+  const res=g.calls-g.results;
+  const facts=el("p","muted");
+  const fileCount=(g.files||[]).length;
+  facts.textContent=g.calls+(g.calls===1?" call":" calls")+" · "+g.results+" with a recorded result"+(res>0?" · "+res+" with no recorded result — a denial, or an answer the recording does not show. Neither a success nor a failure":"")+(fileCount>1?" · across "+fileCount+" recordings":"");
+  body.append(facts);
+  if((g.tools||[]).length)body.append(el("p","muted","Tools: "+g.tools.join(", ")+"."));
+  if((g.repeats||[]).length) {
+    for(const r of g.repeats.slice(0,5))body.append(el("p","muted","Inside this conversation, "+repeatSentence(r)));
+  }
+  if(g.ambiguous_calls) {
+    body.append(el("p","text-warn","Some calls share a request id with another outstanding call, so which response answers which is unknown. Those results are counted as ambiguous calls — unknown, not zero — and never as a success or a failure."));
+  }
+  const entries=g.timeline||[];
+  if(entries.length) {
+    const list=el("ol","occurrence-list timeline");
+    const multiFile=(g.files||[]).length>1;
+    for(const e of entries)list.append(timelineItem(e,multiFile));
+    body.append(list);
+    if(g.timeline_truncated)body.append(el("p","muted","Showing the first "+entries.length+" calls in this conversation; the recording holds more."));
+  }
+  item.append(body);
+  return item;
+}
+function timelineItem(e,showFile) {
+  const li=el("li","timeline-item"+(e.ambiguous?" ambiguous":""));
+  const bits=[(e.tool||"call")];
+  if(e.verdict==="deny")bits.push("denied");
+  else if(e.verdict)bits.push(e.verdict);
+  if(e.is_error)bits.push("tool error");
+  else if(e.ambiguous)bits.push("result owner unknown");
+  else if(!e.answered)bits.push("no recorded result");
+  else bits.push("answered");
+  const label=(showFile&&e.file?e.file+" · ":"")+"event #"+e.seq+" · "+bits.join(" · ")+(e.ts?" · "+when(e.ts):"");
+  li.append(button(label,()=>openBehaviourCall(e.file,e.seq,e.index||0)));
+  return li;
+}
+function repeatSentence(r) {
+  const what=r.tool?r.tool:"this operation";
+  const n=r.count||r.occurrences||0;
+  // "insufficient_evidence" is the detector's own name for "repeated, but not
+  // enough to characterise". Print that meaning rather than the internal code.
+  if(r.kind==="insufficient_evidence")return what+" repeated "+n+" times — a repetition was observed, but too few to characterise as a loop.";
+  if(r.kind==="possible_retry_loop")return what+" repeated "+n+" times (possible retry loop).";
+  return what+" repeated "+n+" times"+(r.kind?" ("+r.kind.replace(/_/g," ")+")":"")+".";
+}
+function renderRecurrence(box,recurrence,looseCalls) {
+  if(!(recurrence||[]).length) {
+    if(looseCalls)box.append(el("p","muted","No operation was seen in two different conversations. "+looseCalls+" call(s) could not be attributed, so recurrence across them cannot be claimed either way."));
+    return;
+  }
+  box.append(el("h3","","Seen across conversations"));
+  box.append(el("p","muted","The same operation appearing in more than one conversation. This is not a loop inside any one of them."));
+  const list=el("ul","occurrence-list");
+  for(const r of recurrence.slice(0,15)) {
+    const li=el("li");
+    li.append(el("span","tool-name",r.tool||r.fingerprint||"operation"),el("span","muted"," in "+r.conversations+" conversations ("+r.calls+" calls)"));
+    list.append(li);
+  }
+  box.append(list);
 }
 function renderBehaviourFailures(ov) {
   const box=$("behaviour-failures");
@@ -2144,7 +2299,7 @@ const LAB_CODE_LABELS= {
   no_denials:"No deny decision to test the invariant",
   short_sequence:"Not enough recorded results for the sequence",
   incomplete_recording:"The recording has no complete start and end",
-  damaged_recording:"The recording is damaged or ambiguous",
+  damaged_recording:"The recording is damaged, empty, or above the lab's event limit",
   revision_changed:"The recording changed since the case was saved",
   evidence_unreadable:"The recording could not be read",
   invalid_case:"The case definition could not be used"
@@ -2756,6 +2911,9 @@ async function restoreWorkspaceRoute() {
     if(hash.startsWith("#session=")) {
       const target=hashTarget();
       await openSession(target.file,false);
+    } else if(hash.startsWith("#behaviour&")&&new URLSearchParams(hash.slice(hash.indexOf("&")+1)).get("conversation")) {
+      // A conversation deep link: the Behaviour view opens the conversation.
+      showBehaviour(false);
     } else if(hash.startsWith("#compare")||hash.startsWith("#behaviour&")) {
       const q=new URLSearchParams(hash.slice(hash.indexOf("&")+1));
       await showComparisons(q.get("a")||"",q.get("b")||"",false);
@@ -2970,3 +3128,309 @@ createPolicyProposal=async function() {
 
 
 
+
+/* --- Conversation-first investigation (M14) --------------------------
+   A conversation is the unit a developer investigates, so it gets its own
+   panel and its own deep link. Everything shown here comes from the server's
+   analysis: the front end never re-derives membership, counts or order, and it
+   never invents a conversation the recording did not declare. */
+const CONVERSATION_ID=/^[A-Za-z0-9._:-]{1,128}$/;
+let conversationView=null;
+function validConversationId(id) {
+  return typeof id==="string"&&CONVERSATION_ID.test(id);
+}
+function conversationRoute() {
+  if(!location.hash.startsWith("#behaviour"))return null;
+  const cut=location.hash.indexOf("&");
+  if(cut<0)return null;
+  const q=new URLSearchParams(location.hash.slice(cut+1));
+  // #behaviour&a=…&b=… is the recording comparison, not a conversation.
+  if(q.get("a")&&q.get("b"))return null;
+  const id=q.get("conversation");
+  if(!id)return null;
+  return {
+    id,compare:q.get("compare")||null
+  };
+}
+function conversationHash(id,compare) {
+  const q=new URLSearchParams({
+    conversation:id
+  });
+  if(compare)q.set("compare",compare);
+  return "#behaviour&"+q.toString();
+}
+function behaviourFilterQuery() {
+  return {
+    q:$("behaviour-search").value,server:$("behaviour-server").value,from:$("behaviour-from").value,to:$("behaviour-to").value
+  };
+}
+function hideConversationPanel() {
+  const panel=$("conversation-panel");
+  if(!panel)return;
+  panel.hidden=true;
+  $("conversation-head").replaceChildren();
+  $("conversation-detail").replaceChildren();
+  $("conversation-compare-controls").replaceChildren();
+  $("conversation-compare-result").replaceChildren();
+  conversationView=null;
+}
+// applyConversationRoute opens whatever the hash names. A malformed or reserved
+// id is refused here for the same reason the server refuses it: the
+// unattributed remainder is not a conversation.
+function applyConversationRoute() {
+  const route=conversationRoute();
+  if(!route) {
+    hideConversationPanel();
+    return null;
+  }
+  return openConversation(route.id,route.compare, {
+    updateHash:false
+  }
+  );
+}
+async function openConversation(id,compare,opts) {
+  const options=opts||{};
+  const panel=$("conversation-panel");
+  if(!panel)return;
+  panel.hidden=false;
+  if(!validConversationId(id)) {
+    $("conversation-head").replaceChildren();
+    // The comparison belonged to whatever was open before: leaving it above a
+    // refusal would read as a result for the id in the link (M14 review F8).
+    $("conversation-compare-result").replaceChildren();
+    $("conversation-compare-controls").replaceChildren();
+    const detail=$("conversation-detail");
+    detail.replaceChildren();
+    notice(detail,"That link does not name a conversation Tapelog can open. A conversation id is 1-128 characters of A-Z, a-z, 0-9, dot, underscore, colon or hyphen; the reserved unattributed remainder is not a conversation.","warning");
+    return;
+  }
+  if(options.updateHash!==false)setWorkspaceRoute(conversationHash(id,compare));
+  const limit=options.limit||100,offset=options.offset||0;
+  conversationView= {
+    id,compare:compare||null,offset,limit
+  };
+  $("conversation-head").replaceChildren(el("p","muted","Reading this conversation…"));
+  $("conversation-detail").replaceChildren();
+  $("conversation-compare-result").replaceChildren();
+  renderConversationCompareControls(id,compare);
+  try {
+    const data=await api("/api/behaviour/conversation?"+params(Object.assign( {
+      conversation:id,offset,limit
+    }
+    ,behaviourFilterQuery())));
+    if(!conversationView||conversationView.id!==id)return;
+    if(options.updateHash===false&&conversationView.offset!==offset)return;
+    conversationView.data=data;
+    renderConversationHead(data);
+    renderConversationDetail(data);
+    // The panel is the point of the click: bring it into view and put keyboard
+    // focus on its heading instead of leaving the reader at the top of a long
+    // library list.
+    if(options.focus!==false) {
+      panel.scrollIntoView( {
+        block:"start"
+      }
+      );
+      const heading=$("conversation-panel-title");
+      if(heading) {
+        heading.setAttribute("tabindex","-1");
+        heading.focus();
+      }
+    }
+    if(data.found&&compare)await runConversationComparison(id,compare);
+  } catch(e) {
+    notice($("conversation-detail"),"This conversation could not be read: "+e.message+". The recording may have been removed, renamed or filtered out; go back to the conversation list to choose another.","warning");
+  }
+}
+function renderConversationHead(data) {
+  const head=$("conversation-head");
+  head.replaceChildren();
+  if(!data.found) {
+    head.append(el("div","banner warning","No analysed recording in this view declares this conversation id. It may have been renamed, removed, or filtered out by the current search or date range."));
+    head.append(el("p","muted",data.reason||""));
+    head.append(button("← Back to the conversation list",()=> {
+      setWorkspaceRoute("#behaviour");
+      hideConversationPanel();
+    }
+    ,"secondary"));
+    return;
+  }
+  const line=el("div","conversation-open");
+  line.append(el("code","conversation-id",conversationView.id),el("span","badge declared","client-declared"));
+  head.append(line);
+  const link=el("p","muted","This view is linkable: ");
+  link.append(el("code","",conversationHash(conversationView.id,conversationView.compare)));
+  link.append(el("span","",conversationView.compare?" — the link carries the conversation ids only, never arguments, results or tokens.":" — the link carries the conversation id only, never arguments, results or tokens."));
+  head.append(link);
+  const lib=data.library||  {
+  };
+  head.append(el("p","selection-note","Library coverage: "+(lib.analysed||0)+" of "+(lib.files||0)+" recordings analysed for this view"+(lib.truncated?" · the analysis budget was reached, so older recordings are not in this view":"")+". A conversation can appear in more than one of them."));
+}
+function renderConversationDetail(data) {
+  const detail=$("conversation-detail");
+  detail.replaceChildren();
+  if(!data.found)return;
+  const g=data.summary||  {
+  };
+  const counts=el("div","stat-strip conversation-stats");
+  counts.append(statTile(g.calls,"Calls"),statTile(g.results,"Recorded results"),statTile(g.unanswered,"No recorded result"),statTile(g.denials,"Denied"),statTile(g.failures,"Tool errors"),statTile(g.ambiguous_calls||0,"Ambiguous calls"));
+  detail.append(counts);
+  const files=(g.files||[]);
+  if(files.length) {
+    const p=el("p","muted","Recordings: ");
+    p.append(el("span","",files.join(" · ")));
+    detail.append(p);
+  }
+  const tools=(g.tool_calls||[]);
+  if(tools.length) {
+    const ul=el("ul","occurrence-list conversation-tools");
+    for(const t of tools) {
+      const li=el("li");
+      li.append(el("span","tool-name",t.tool),el("span","muted"," — "+(t.calls===1?"1 call":t.calls+" calls")));
+      ul.append(li);
+    }
+    detail.append(ul);
+  }
+  for(const r of (g.repeats||[]))detail.append(el("p","muted","Inside this conversation, "+repeatSentence(r)));
+  for(const note of (data.evidence||[]))detail.append(el("p","text-warn",note));
+  const entries=data.timeline||[];
+  if(!entries.length) {
+    detail.append(el("p","muted","This conversation has no recorded calls in the current view."));
+    return;
+  }
+  const multiFile=files.length>1;
+  const list=el("ol","occurrence-list timeline");
+  for(const e of entries)list.append(timelineItem(e,multiFile));
+  detail.append(list);
+  const total=data.total||entries.length;
+  const shown=(data.offset||0)+entries.length;
+  const pager=el("div","conversation-pager");
+  const first=(data.offset||0)+1;
+  pager.append(el("p","muted","Showing "+first+"–"+shown+" of "+total+" recorded call"+(total===1?"":"s")+", in library order. The #number is the recording's own event sequence, so gaps are policy decisions and results recorded between calls."));
+  const actions=el("div","actions");
+  if((data.offset||0)>0) {
+    actions.append(button("← Previous page",()=>openConversation(data.conversation,conversationView&&conversationView.compare, {
+      offset:Math.max(0,(data.offset||0)-(data.limit||100)),limit:data.limit||100
+    }
+    ),"secondary"));
+  }
+  if(data.has_more) {
+    actions.append(button("Next page →",()=>openConversation(data.conversation,conversationView&&conversationView.compare, {
+      offset:shown,limit:data.limit||100
+    }
+    ),"secondary"));
+  }
+  if(actions.children.length)pager.append(actions);
+  detail.append(pager);
+  // The last step of an investigation is a case that will hold next time. The
+  // scope is carried into the builder so the saved case cannot quietly widen to
+  // the whole recording.
+  const next=el("div","actions conversation-actions");
+  next.append(button("Draft a regression case for this conversation →",()=>draftConversationCase(data.conversation,entries[0]),"primary"));
+  detail.append(next);
+}
+function statTile(value,label) {
+  const tile=el("div","stat");
+  tile.append(el("strong","",String(value===undefined||value===null?0:value)),el("span","",label));
+  return tile;
+}
+function renderConversationCompareControls(id,compare) {
+  const box=$("conversation-compare-controls");
+  box.replaceChildren();
+  const options=(behaviourData&&behaviourData.conversations?behaviourData.conversations:[]).filter(g=>g.attributed&&g.id!==id);
+  if(!options.length) {
+    box.append(el("p","muted","No other declared conversation is in this view, so there is nothing to compare with."));
+    return;
+  }
+  const row=el("div","conversation-compare-picker");
+  row.append(el("span","eyebrow","COMPARE WITH"));
+  const select=el("select");
+  select.setAttribute("aria-label","Conversation to compare with");
+  select.append(new Option("Choose a conversation…",""));
+  for(const g of options)select.append(new Option(g.id+(g.calls===1?" (1 call)":" ("+g.calls+" calls)"),g.id));
+  if(compare&&options.some(g=>g.id===compare))select.value=compare;
+  select.onchange=()=> {
+    if(select.value) {
+      openConversation(id,select.value);
+    } else {
+      setWorkspaceRoute(conversationHash(id));
+      $("conversation-compare-result").replaceChildren();
+    }
+  };
+  row.append(select);
+  box.append(row);
+}
+async function runConversationComparison(a,b) {
+  const out=$("conversation-compare-result");
+  out.replaceChildren(el("p","muted","Comparing the two conversations…"));
+  try {
+    const data=await api("/api/behaviour/compare-conversations?"+params(Object.assign( {
+      a,b
+    }
+    ,behaviourFilterQuery())));
+    if(!conversationView||conversationView.id!==a)return;
+    renderConversationComparison(out,data.comparison||  {
+    });
+  } catch(e) {
+    notice(out,"The comparison could not be read: "+e.message,"warning");
+  }
+}
+function renderConversationComparison(out,cmp) {
+  out.replaceChildren();
+  out.append(el("h3","","Comparison"));
+  if(!cmp.comparable) {
+    out.append(el("p","text-warn",cmp.explanation||"These two cannot be compared from this evidence."));
+    return;
+  }
+  // The ids live in a caption line, not in the column headers: on a phone a
+  // header cell holding "A · conv-alpha" cannot fit and overlaps its neighbours.
+  const caption=el("p","muted comparison-caption");
+  caption.append(el("strong","","A = "+(cmp.a?.id||"")),el("span",""," · "),el("strong","","B = "+(cmp.b?.id||"")));
+  out.append(caption);
+  const table=el("table","data-table comparison-table");
+  const head=el("tr");
+  head.append(el("th","","Metric"),el("th","","A"),el("th","","B"),el("th","","Δ (B−A)"));
+  table.append(head);
+  for(const m of (cmp.metrics||[])) {
+    const tr=el("tr");
+    tr.append(el("td","",m.metric),el("td","",String(m.a)),el("td","",String(m.b)),el("td","",(m.change>0?"+":"")+m.change));
+    if(m.note)tr.setAttribute("title",m.note);
+    table.append(tr);
+  }
+  out.append(table);
+  out.append(el("p","muted","Change is B − A. These are counts of recorded boundary events, not scores."));
+  if((cmp.findings||[]).length) {
+    out.append(el("h4","","Observed differences"));
+    const ul=el("ul","occurrence-list");
+    for(const f of cmp.findings)ul.append(el("li","",f));
+    out.append(ul);
+  }
+  if((cmp.tools||[]).length) {
+    out.append(el("h4","","Tool usage"));
+    const ul=el("ul","occurrence-list");
+    for(const t of cmp.tools)ul.append(el("li","",t.tool+": "+t.a+" in A · "+t.b+" in B"));
+    out.append(ul);
+  }
+  if((cmp.caveats||[]).length) {
+    out.append(el("h4","","What this comparison cannot support"));
+    for(const c of cmp.caveats)out.append(el("p","text-warn",c));
+  }
+}
+
+// Draft a regression case scoped to one conversation from the conversation
+// panel: the case builder opens on this conversation's first recorded call, and
+// the scope field carries the id so the saved case cannot silently widen to the
+// whole recording.
+async function draftConversationCase(id, firstEntry) {
+  if(!id||!firstEntry)return;
+  await openBehaviourCall(firstEntry.file,firstEntry.seq,firstEntry.index||0);
+  if(!selectedCall) {
+    error(new Error("That conversation's call could not be opened, so the case builder has no evidence to point at."));
+    return;
+  }
+  clearTest();
+  $("lab-conversation").value=id;
+  setTab("test");
+  $("lab-title-input").value=("Conversation "+id+" boundary expectation").slice(0,200);
+  $("test-panel").scrollIntoView({block:"start"});
+}
