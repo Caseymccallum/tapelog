@@ -464,7 +464,7 @@ test('editing suite membership cannot silently run the old saved membership',()=
   const {context,nodes}=app();
   vm.runInContext('suiteDraft={file:"suite.json",title:"Suite",cases:["case.json"],revision:"r",isNew:false,dirty:true};renderSuiteEditor()',context);
   const all=n=>[n,...n.children.flatMap(all)];
-  const run=all(nodes.get('lab-suite-detail')).find(n=>n.tagName==='button'&&n.textContent==='Run this suite →');
+  const run=all(nodes.get('lab-suite-detail')).find(n=>n.tagName==='button'&&n.textContent==='Run saved suite →');
   assert.equal(run.disabled,true);
   assert.match(nodes.get('lab-suite-detail').textContent,/Unsaved changes/);
 });
@@ -599,6 +599,56 @@ test('conversation summaries replace the native marker with an explicit chevron'
  const chevron=css.match(/\.finding\.conversation > summary\.finding-row::before\s*\{([^}]+)\}/);
  assert.ok(chevron&&/content:/.test(chevron[1]),'an explicit chevron must replace the marker');
  assert.match(css,/details\[open\][^{]*summary[^{]*::before\s*\{[^}]*content:/,'the chevron must show the open state');
+});
+test('the saved-suite editor reads as a composed list, not glued inline text',()=>{
+ const {context,nodes}=app();
+ context.index={cases:[
+  {file:'01-allowed-read.json',title:'A permitted read reached the boundary',description:'One complete session; a read crossed the boundary.',evidence:'session-two-conversations.jsonl'},
+  {file:'02-denied-read-fails.json',title:'The recording proves read_file was NOT denied',description:'The evidence establishes the opposite of the claim.',evidence:'session-two-conversations.jsonl'}],suites:[]};
+ vm.runInContext('labIndex=index',context);
+ vm.runInContext('suiteDraft={file:"suite.json",title:"Owner review suite",cases:["01-allowed-read.json"],revision:"r",isNew:false,dirty:false,missing:[]};renderSuiteEditor()',context);
+ const detail=nodes.get('lab-suite-detail'),all=n=>[n,...n.children.flatMap(all)];
+ const text=detail.textContent;
+ assert.match(text,/Owner review suite/);assert.match(text,/A permitted read reached the boundary/);
+ assert.match(text,/One complete session/,'the description must be readable, not just the filename');
+ assert.match(text,/01-allowed-read\.json/,'the filename stays as secondary metadata');
+ const remove=all(detail).find(n=>n.tagName==='button'&&n.textContent==='Remove');
+ assert.ok(remove);assert.match(remove.getAttribute('aria-label'),/A permitted read reached the boundary/);
+ const run=all(detail).find(n=>n.id==='suite-run-saved');
+ assert.ok(run&&run.disabled===false);
+ const select=all(detail).find(n=>n.id==='lab-add-case');
+ assert.ok(select);assert.equal(select.getAttribute('aria-label'),'Case to add');
+ assert.match(text,/tapelog lab suite --dir \. --suite suite\.json/);
+});
+test('unsaved suite edits are signalled and protected before switching suites',()=>{
+ const {context,nodes}=app();
+ context.index={cases:[{file:'01-allowed-read.json',title:'A permitted read',description:'d',evidence:'e'}],suites:[{file:'other.json',title:'Other',cases:[],revision:'x'}]};
+ vm.runInContext('labIndex=index',context);
+ vm.runInContext('suiteDraft={file:"suite.json",title:"Edited",cases:["01-allowed-read.json"],revision:"r",isNew:false,dirty:true,missing:[]};renderSuiteEditor()',context);
+ const all=n=>[n,...n.children.flatMap(all)];
+ assert.match(nodes.get('lab-suite-detail').textContent,/Unsaved changes/);
+ assert.equal(all(nodes.get('lab-suite-detail')).find(n=>n.id==='suite-run-saved').disabled,true,'Run must not execute a stale saved file while the draft differs');
+ context.asked=0;context.confirm=()=>{context.asked++;return false;};
+ vm.runInContext('openLabSuite("other.json")',context);
+ assert.equal(context.asked,1,'switching suites must ask before discarding edits');
+ assert.equal(vm.runInContext('suiteDraft.file',context),'suite.json','a declined switch keeps the draft');
+});
+test('saving a suite clears the unsaved state before reopening it',async()=>{
+ const {context,nodes}=app();
+ vm.runInContext('suiteDraft={file:"suite.json",title:"T",cases:["01-allowed-read.json"],revision:"r",isNew:false,dirty:true};api=async()=>({file:"suite.json"});loadLab=async()=>{};openLabSuite=()=>{renderSuiteEditor();};renderSuiteEditor()',context);
+ await vm.runInContext('saveSuiteDraft()',context);
+ assert.equal(vm.runInContext('suiteDraft.dirty',context),false,'the saved state must not still read as unsaved');
+ assert.match(nodes.get('lab-suite-detail').textContent,/Saved as suite\.json/);
+});
+test('a suite that cannot be saved explains why in an alert',async()=>{
+ const {context,nodes}=app();
+ vm.runInContext('suiteDraft={file:"suite.json",title:"   ",cases:["01-allowed-read.json"],revision:"r",isNew:false,dirty:true};renderSuiteEditor()',context);
+ await vm.runInContext('saveSuiteDraft()',context);
+ const all=n=>[n,...n.children.flatMap(all)];
+ const banner=all(nodes.get('lab-suite-detail')).find(n=>n.className==='banner warning');
+ assert.ok(banner,'the failure must be visible, not silent');
+ assert.equal(banner.getAttribute('role'),'alert');
+ assert.match(banner.textContent,/title/);
 });
 test('activity rows expose their visible label rather than an incompatible override',async()=>{
  const {context,nodes}=app();context.response={session:{calls:1},total:1,findings:[],activities:[{seq:3,tool:'read_file',status:'success',verdict:'allow',server:'fictional',ts:'2026-01-01T00:00:00Z',duration_ms:1}]};

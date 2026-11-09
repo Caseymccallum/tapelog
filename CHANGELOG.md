@@ -27,6 +27,25 @@ source of truth for the version.
   executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
 ## [Unreleased]
 
+- **The saved-suite editor is a workspace now, not a stack of glued fields (design)** — the suite
+  detail column was 452px wide at 1440 and the whole editor was inline text: the title input shrank
+  to 173px, each case rendered `filename · title` as unflexed spans with its `Remove` button wrapping
+  to a different x per row (row heights 51/70/91px), `Save changes` and the run action were both
+  `primary` and adjacent, and the CLI command was a `mono` paragraph that wrapped mid-path. The
+  suite view now widens its own column to ≈720px, leads with the full title in an `<h2>` plus a
+  labelled title field, and shows `N cases` with a `Saved` / `Unsaved changes` badge that is a live
+  region. Cases are a separator-lined list — index, title, plain-language description, filename and
+  evidence as secondary metadata, one `Remove` aligned at the right edge (32px target, accessible
+  name `Remove case <title> …`), no per-case cards. `Add a case` is a labelled select with the same
+  action button at every width, and says so when every case is already in the suite. `Save changes`
+  is the only primary action; `Run saved suite →` is secondary and disabled while the draft differs,
+  with a line stating it runs the saved file rather than the draft. The CLI block sits apart behind an
+  accent rule with a working `Copy` action. Switching suites or starting a new one with unsaved edits
+  now asks first, returning to the same suite keeps the draft, and closing the tab warns; a failed
+  save is a `role="alert"` banner instead of silence. Measured at 320/390/684/768/1440: 0 axe
+  violations, no small targets, no page overflow, description measure 530px at every width, contrast
+  5.6–8.4:1. Frontend suite 60 → 64 tests.
+
 - **Observed-group rows now lead with the conversation they represent (design)** — the user-agent
   disclosure marker became a *grid item* once the summary was laid out as a grid, so it claimed the
   first `minmax(0,1fr)` track and pushed the identifier, badges and counts into the last two columns:

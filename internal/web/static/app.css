@@ -2770,6 +2770,213 @@ dialog::backdrop {
   font-weight: 600;
 }
 
+/* ------------------------------------------------------- saved suites */
+/* Editing a suite is a workspace, not a rail: give the editor the wider
+   column while it is open, and let the case list use it. */
+.lab-grid.suite-editing {
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+}
+.suite-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2) var(--s4);
+  align-items: start;
+  margin: var(--s2) 0 var(--s3);
+}
+.suite-name {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-20);
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.suite-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  justify-content: flex-end;
+  align-items: center;
+}
+.suite-save-state.success {
+  border-color: transparent;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.suite-save-state.denied {
+  border-color: transparent;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.suite-title-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+.suite-field-label {
+  color: var(--text-3);
+  font-size: var(--fs-11);
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.suite-title-input {
+  width: 100%;
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+.suite-lede {
+  margin: 0 0 var(--s4);
+  max-width: 78ch;
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  line-height: 1.55;
+}
+.suite-case-list {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line-soft);
+}
+.suite-case {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: var(--s3) var(--s4);
+  align-items: start;
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.suite-case-empty {
+  padding: var(--s4) 0;
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  border-bottom: 1px solid var(--line-soft);
+}
+.suite-case-index {
+  padding-top: 2px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: var(--fs-11);
+}
+.suite-case-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+.suite-case-title {
+  color: var(--text);
+  font-size: var(--fs-14);
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.suite-case-desc {
+  max-width: 82ch;
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.suite-case-file {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: var(--fs-11);
+  overflow-wrap: anywhere;
+}
+.suite-case-remove {
+  min-height: 32px;
+  white-space: nowrap;
+}
+.suite-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: 0 0 var(--s4);
+}
+.suite-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.suite-add-row select {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.suite-add-empty {
+  margin: 0 0 var(--s4);
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+.suite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+}
+.suite-run-note {
+  margin: var(--s2) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+.suite-cli {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2) var(--s3);
+  align-items: center;
+  margin-top: var(--s5);
+  padding: var(--s3) var(--s3) var(--s3) var(--s4);
+  border-left: 2px solid var(--accent-line);
+  background: var(--surface);
+}
+.suite-cli-head {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+}
+.suite-cli-label {
+  color: var(--text-3);
+  font-size: var(--fs-11);
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.suite-cli-command {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.suite-cli-copy {
+  min-height: 32px;
+}
+@media (max-width: 720px) {
+  .suite-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .suite-status {
+    justify-content: flex-start;
+  }
+  .suite-case {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s2);
+  }
+  .suite-case-index {
+    display: none;
+  }
+  .suite-case-remove {
+    justify-self: start;
+  }
+}
+
 /* Conversation view: one identity line, six counts, then the calls. */
 .conversation-open {
   display: flex;
@@ -2884,6 +3091,7 @@ footer > span:last-child {
   }
   .investigation-grid,
   .lab-grid,
+  .lab-grid.suite-editing,
   .studio-grid {
     grid-template-columns: minmax(0, 1fr);
   }

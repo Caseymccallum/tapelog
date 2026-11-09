@@ -980,6 +980,13 @@ $("theme").onclick=()=> {
   }
 };
 window.addEventListener("hashchange",restoreWorkspaceRoute);
+window.addEventListener("beforeunload",event=> {
+  if(suiteDraft&&suiteDraft.dirty) {
+    event.preventDefault();
+    event.returnValue="";
+  }
+}
+);
 window.addEventListener("popstate",restoreWorkspaceRoute);
 loadLibrary().then(async()=>{await restoreWorkspaceRoute();refreshPending();});
 setInterval(refreshPending,3000);
@@ -2747,6 +2754,7 @@ function renderLabSuites(index) {
   }
 }
 function newSuiteDraft() {
+  if(!confirmDiscardSuiteEdits())return;
   ++labRunRequest;
   suiteDraft= {file:"",title:"",cases:[],revision:"",isNew:true,missing:[]};
   labSuiteFile="";
@@ -2754,7 +2762,19 @@ function newSuiteDraft() {
   if(labIndex)renderLabSuites(labIndex);
   renderSuiteEditor();
 }
+function confirmDiscardSuiteEdits() {
+  if(!(suiteDraft&&suiteDraft.dirty))return true;
+  if(typeof confirm!=="function")return true;
+  return confirm("Discard unsaved changes to \u201c"+(suiteDraft.title||"this suite")+"\u201d?");
+}
 function openLabSuite(file) {
+  // Returning to the same suite keeps the draft: navigating away must not
+  // silently throw the owner's edits away.
+  if(suiteDraft&&suiteDraft.file===file&&suiteDraft.dirty) {
+    renderSuiteEditor();
+    return;
+  }
+  if(!confirmDiscardSuiteEdits())return;
   ++labRunRequest;
   labSuiteFile=file;
   setLabTab("suites",false);
@@ -2772,81 +2792,175 @@ function openLabSuite(file) {
   renderSuiteEditor();
   restoreLabRun("suite",file);
 }
+function suiteCommand(file) {
+  return "tapelog lab suite --dir . --suite "+file;
+}
+function refreshSuiteState() {
+  const draft=suiteDraft;
+  if(!draft)return;
+  const badge=$("suite-save-state");
+  if(badge) {
+    badge.className="badge suite-save-state "+(draft.dirty?"denied":"success");
+    badge.textContent=draft.dirty?"Unsaved changes":"Saved";
+  }
+  const count=$("suite-case-count");
+  if(count)count.textContent=draft.cases.length+(draft.cases.length===1?" case":" cases");
+  const run=$("suite-run-saved");
+  if(run) {
+    run.disabled=!!draft.dirty;
+    run.title=draft.dirty?"Save your changes before running the saved file.":"";
+  }
+  const note=$("suite-run-note");
+  if(note)note.textContent=draft.dirty?"Save your changes before running. Run executes the saved file, not this draft.":"Run executes the saved file named by the CLI command below.";
+}
 function renderSuiteEditor() {
   const detail=$("lab-suite-detail");
   const draft=suiteDraft;
+  const grid=detail.closest?detail.closest(".lab-grid"):null;
   detail.replaceChildren();
+  if(grid)grid.classList.toggle("suite-editing",!!draft);
   if(!draft) {
     empty(detail,"Choose a suite","Open a suite to see its cases, or create a new one.");
     return;
   }
   detail.append(el("div","eyebrow",draft.isNew?"NEW SUITE":"SAVED SUITE"));
-  const title=el("input","");
+  const head=el("div","suite-head");
+  const name=el("h2","suite-name",draft.title||"Untitled suite");
+  name.id="suite-name";
+  head.append(name);
+  const status=el("div","suite-status");
+  status.id="suite-status";status.setAttribute("role","status");status.setAttribute("aria-live","polite");
+  const countBadge=el("span","badge suite-case-count",draft.cases.length+(draft.cases.length===1?" case":" cases"));
+  countBadge.id="suite-case-count";
+  status.append(countBadge);
+  const saveBadge=el("span","badge suite-save-state "+(draft.dirty?"denied":"success"),draft.dirty?"Unsaved changes":"Saved");
+  saveBadge.id="suite-save-state";
+  status.append(saveBadge);
+  head.append(status);
+  detail.append(head);
+  const field=el("label","suite-title-field");
+  field.append(el("span","suite-field-label","Suite title"));
+  const title=el("input","suite-title-input");
   title.type="text";
   title.value=draft.title;
   title.maxLength=200;
   title.placeholder="e.g. Nightly boundary checks";
-  title.setAttribute("aria-label","Suite title");
+  title.setAttribute("aria-describedby","suite-status");
   title.oninput=()=> {
     draft.title=title.value;
     draft.dirty=true;
-    const run=$("suite-run-saved");if(run)run.disabled=true;
+    const heading=$("suite-name");
+    if(heading)heading.textContent=draft.title||"Untitled suite";
+    refreshSuiteState();
   };
-  detail.append(el("label","","Suite title"),title);
-  detail.append(el("h3","","Cases in this suite ("+draft.cases.length+")"));
-  const list=el("ul","lab-expectations");
-  if(!draft.cases.length)list.append(el("li","muted","No cases yet. Add at least one."));
-  for(const name of draft.cases) {
-    const li=el("li");
+  field.append(title);
+  detail.append(field);
+  detail.append(el("p","suite-lede","Each case states a claim about recorded evidence; the verdict comes from running it. Cases run in this order."));
+  const list=el("ul","suite-case-list");
+  if(!draft.cases.length)list.append(el("li","suite-case-empty","No cases yet. Add at least one before saving."));
+  draft.cases.forEach((name,index)=> {
     const entry=((labIndex&&labIndex.cases)||[]).find(c=>c.file===name);
-    li.append(el("span","mono",name));
-    li.append(el("span","muted","· "+(entry?(entry.title||entry.file):"not in this directory")));
-    li.append(button("Remove",()=> {
+    const li=el("li","suite-case");
+    li.append(el("span","suite-case-index",String(index+1).padStart(2,"0")));
+    const text=el("div","suite-case-text");
+    text.append(el("span","suite-case-title",entry?(entry.title||entry.file):name));
+    if(entry&&entry.description)text.append(el("span","suite-case-desc",entry.description));
+    const meta=el("span","suite-case-file");
+    meta.textContent=name+(entry&&entry.evidence?" · "+entry.evidence:"")+(entry?"":" · not in this directory");
+    text.append(meta);
+    li.append(text);
+    const remove=button("Remove",()=> {
       draft.cases=draft.cases.filter(x=>x!==name);
       draft.dirty=true;
       renderSuiteEditor();
     }
-    ,"secondary"));
+    ,"quiet suite-case-remove");
+    remove.setAttribute("aria-label","Remove case "+(entry&&entry.title?entry.title:name)+" from this suite");
+    li.append(remove);
     list.append(li);
   }
+  );
   detail.append(list);
   const available=((labIndex&&labIndex.cases)||[]).filter(c=>!draft.cases.includes(c.file)&&!c.invalid);
   if(available.length) {
+    const add=el("div","suite-add");
+    const label=el("label","suite-field-label","Add a case");
+    label.setAttribute("for","lab-add-case");
+    add.append(label);
+    const row=el("div","suite-add-row");
     const select=el("select","");
     select.id="lab-add-case";
     select.setAttribute("aria-label","Case to add");
     for(const c of available)select.add(new Option(c.title||c.file,c.file));
-    detail.append(el("label","","Add a case"),select);
-    detail.append(button("Add to suite",()=> {
+    row.append(select);
+    row.append(button("Add to suite",()=> {
       const chosen=select.value;
       if(chosen&&!draft.cases.includes(chosen))draft.cases.push(chosen);
+      else {
+        notice(detail,"That case is already in this suite.","warning");
+        return;
+      }
       draft.dirty=true;
       renderSuiteEditor();
     }
     ,"secondary"));
+    add.append(row);
+    detail.append(add);
+  } else {
+    detail.append(el("p","suite-add-empty","Every saved case is already in this suite."));
   }
   if(draft.invalid)notice(detail,draft.invalid,"warning");
   if((draft.missing||[]).length)notice(detail,"Referenced but not present: "+draft.missing.join(", ")+". The suite still runs, and each missing case is reported as inconclusive.","warning");
-  const actions=el("div","actions");
+  const actions=el("div","suite-actions");
   actions.append(button(draft.isNew?"Save suite":"Save changes",()=>saveSuiteDraft(),"primary"));
   if(!draft.isNew) {
-    const run=button("Run this suite →",()=>runLabSuite(draft.file),"primary");
-    run.id="suite-run-saved";run.disabled=!!draft.dirty;
+    const run=button("Run saved suite →",()=>runLabSuite(draft.file),"secondary");
+    run.id="suite-run-saved";
+    run.disabled=!!draft.dirty;
     actions.append(run);
   }
-  if(draft.dirty)detail.append(el("p","selection-note","Unsaved changes. Save the suite before running it."));
   detail.append(actions);
-  if(!draft.isNew)detail.append(el("p","muted mono","tapelog lab suite --dir . --suite "+draft.file));
+  const note=el("p","suite-run-note");
+  note.id="suite-run-note";
+  detail.append(note);
+  if(!draft.isNew) {
+    const cli=el("div","suite-cli");
+    const cliHead=el("div","suite-cli-head");
+    cliHead.append(el("span","suite-cli-label","Reproduce from a terminal"));
+    const command=suiteCommand(draft.file);
+    const copy=button("Copy",async()=> {
+      try {
+        await navigator.clipboard.writeText(command);
+        copy.textContent="Copied";
+        setTimeout(()=> {
+          copy.textContent="Copy";
+        }
+        ,1500);
+      } catch(e) {
+        notice(detail,"Copy this command yourself: "+command,"warning");
+      }
+    }
+    ,"quiet suite-cli-copy");
+    copy.setAttribute("aria-label","Copy the CLI command for this suite");
+    cliHead.append(copy);
+    cli.append(cliHead,el("code","suite-cli-command",command));
+    detail.append(cli);
+  }
+  refreshSuiteState();
 }
 async function saveSuiteDraft() {
   const draft=suiteDraft;
   if(!draft)return;
+  const fail=text=> {
+    const banner=notice($("lab-suite-detail"),text,"warning");
+    banner.setAttribute("role","alert");
+  };
   if(!draft.title.trim()) {
-    notice($("lab-suite-detail"),"Give the suite a title.","warning");
+    fail("Give the suite a title before saving.");
     return;
   }
   if(!draft.cases.length) {
-    notice($("lab-suite-detail"),"Add at least one case before saving.","warning");
+    fail("Add at least one case before saving.");
     return;
   }
   try {
@@ -2862,11 +2976,15 @@ async function saveSuiteDraft() {
       )
     }
     );
+    // The server accepted the suite: the draft is no longer ahead of the file.
+    // Clearing this before reopening also lets openLabSuite reload the saved
+    // revision instead of keeping the (now identical) dirty draft.
+    draft.dirty=false;
     await loadLab();
     openLabSuite(data.file);
     notice($("lab-suite-detail"),"Saved as "+data.file+".","");
   } catch(e) {
-    notice($("lab-suite-detail"),e.message,"warning");
+    fail(e.message);
   }
 }
 async function runLabSuite(file) {

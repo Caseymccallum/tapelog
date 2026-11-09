@@ -119,6 +119,21 @@ example that produces PASS, FAIL and INCONCLUSIVE deliberately ships in
 [`examples/regression-demo/`](../examples/regression-demo/README.md), together with a generator that
 rebuilds its recordings through the real boundary.
 
+### Editing a suite in the workspace
+
+Regression Lab → **Suites** → open a suite. The editor shows the full title, the case count and
+whether the draft matches the file on disk.
+
+- Cases run in the order listed. Each row names the claim being tested, explains it in plain
+  language, and keeps the case filename and its recording as secondary metadata.
+- **Save changes** writes the suite file. **Run saved suite** executes what is on disk, so it is
+  disabled while the draft differs — saving first is the only way to run what you just edited.
+- The command the editor shows (`tapelog lab suite --dir . --suite <file>`) is the same execution
+  path, run from the recordings directory, and **Copy** puts it on the clipboard.
+- Unsaved edits are kept if you navigate to another screen and back. Switching to a different suite,
+  creating a new one, or closing the tab warns first; a suite that cannot be saved (no title, no
+  cases, or a rejected revision) explains why in an alert.
+
 ## What a case cannot prove
 
 - Only MCP-mediated traffic is recorded; built-in agent tools never appear.
