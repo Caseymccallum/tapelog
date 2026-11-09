@@ -272,6 +272,25 @@ async function openSession(file,updateHash=true) {
   }
   updateWorkspaceContext();
 }
+// structureNotice separates the structure verdict from the chain verdict. A
+// verified chain says nothing about whether the file is one usable session, and
+// this surface is where a reader decides what the evidence is.
+function structureNotice(info) {
+  const problems=(info.structure_problems||[]).filter(Boolean);
+  const detail=problems.length?" ("+problems.join("; ")+")":"";
+  if(info.structure==="invalid")return {
+    tone:"error",
+    text:"This recording is not one valid session"+detail+". Its hash chain may still be intact — integrity and structure are different questions — but it cannot establish a single complete session, comparison is unavailable, and a case that depends on one session will be inconclusive."
+  };
+  // no_end is already explained by the completeness banner; only unusual
+  // structural problems need their own sentence.
+  const unusual=problems.filter(p=>p!=="no_end");
+  if(info.structure==="incomplete"&&unusual.length)return {
+    tone:"warning",
+    text:"This recording is structurally incomplete"+detail+". The chain may be intact; the missing structure is a separate defect."
+  };
+  return null;
+}
 function showSession(info) {
   const changed=currentInfo&&currentInfo.revision!==info.revision;
   currentInfo=info;
@@ -296,6 +315,8 @@ function showSession(info) {
   }
   if(!info.chain_ok)healthWarning=true;
   if(!info.complete){notice(diag,"No session/end event was recorded. This may be a live session, interruption or failed startup; a missing end alone does not establish a connection failure.","warning");healthWarning=true;}
+  const structure=structureNotice(info);
+  if(structure){notice(diag,structure.text,structure.tone);healthWarning=true;}
   if(info.end_reason)notice(diag,"Recorded end reason: "+info.end_reason);
   if(info.calls===0){notice(diag,info.discovery?"Discovery was recorded, but no tool calls crossed this boundary. Explicitly invoke a tool from the wrapped MCP server. Built-in client operations will not appear here.":"No tool calls were recorded. Confirm that your client launches the generated Tapelog entry, then call one of that server’s MCP tools.","warning");healthWarning=true;}
   if(info.ambiguous){notice(diag,"Some request relationships are missing or ambiguous. The timeline does not guess a pairing: a result whose owner is unknown is attached to neither call, comparison is unavailable, and any case that depends on which call produced a result will be inconclusive.","warning");healthWarning=true;}

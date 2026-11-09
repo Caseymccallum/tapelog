@@ -1,5 +1,5 @@
 exported-from: (public-safe source snapshot; see this commit)
-exported-at: 2026-11-09T18:41:19Z
+exported-at: 2026-11-09T19:07:34Z
 files: 354
 excluded-by-design: private engineering history, internal design handovers, original gateway recordings, local build/review output
 included paths:

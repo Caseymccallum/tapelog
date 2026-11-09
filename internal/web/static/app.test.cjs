@@ -583,6 +583,18 @@ test('activity rows expose their visible label rather than an incompatible overr
  assert.equal(row.getAttribute('aria-label'),undefined,'native visible content must determine the accessible name');
  assert.equal(row.dataset.seq,'3','selection identity must not depend on an accessible-name override');
 });
+test('the session trust surface states the structure verdict, not only the chain',()=>{
+ const {context}=app();
+ const invalid=vm.runInContext('structureNotice({chain_ok:true,complete:true,structure:"invalid",structure_problems:["mixed_identity at seq 9"]})',context);
+ assert.ok(invalid,'an invalid structure must produce a banner');
+ assert.equal(invalid.tone,'error');
+ assert.match(invalid.text,/not one valid session/i);
+ assert.match(invalid.text,/mixed_identity at seq 9/);
+ assert.match(invalid.text,/hash chain/i,'the copy must separate the chain verdict from the structure verdict');
+ assert.equal(vm.runInContext('structureNotice({chain_ok:true,complete:true,structure:"valid"})',context),null);
+ assert.equal(vm.runInContext('structureNotice({chain_ok:true,complete:false,structure:"incomplete",structure_problems:["no_end"]})',context),null,'no_end is already explained by the completeness banner');
+ assert.equal(vm.runInContext('structureNotice({chain_ok:true,complete:false,structure:"incomplete",structure_problems:["multiple_starts"]})',context).tone,'warning');
+});
 test('search fields do not duplicate their existing decorative glyph',()=>{
  const html=fs.readFileSync(__dirname+'/index.html','utf8'),css=fs.readFileSync(__dirname+'/app.css','utf8');
  assert.match(html,/<label class="search"><span aria-hidden="true">⌕<\/span>/);

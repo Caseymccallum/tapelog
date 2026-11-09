@@ -27,6 +27,16 @@ source of truth for the version.
   executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
 ## [Unreleased]
 
+- **The session screen now states the structure verdict, not only the chain (evidence integrity)** —
+  a recording with an intact hash chain but an invalid structure (mixed identity, no first
+  `session/start`) was presented as merely "no session/end": the trust panel read the chain, the
+  completeness flag and the end reason, but never `structure` or `structure_problems`, so the one
+  surface where a reader judges the evidence described a structurally invalid file as incomplete.
+  It now emits a separate error banner naming the recorded problems (for example
+  `mixed_identity at seq 9`) and says plainly that integrity and structure are different questions.
+  `no_end` stays with the completeness banner instead of being repeated. Found by the independent
+  reviewer, fixed with a rendering test watched failing first.
+
 - **Accessibility acceptance pass on the Prism workspace (design)** — measured in the real browser with
   axe-core 4.14 across seven screens in both themes: `--text-4` was 3.78:1 and is now 5.62:1 dark /
   5.31:1 light; form boundaries take a dedicated `--control-line` (≥3:1 on every surface); a focused
