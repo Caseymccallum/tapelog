@@ -1894,7 +1894,11 @@ function conversationItem(g) {
   const summary=el("summary","finding-row");
   const name=el("span","conversation-name");
   if(g.attributed) {
-    name.append(el("code","conversation-id",g.id));
+    const id=el("code","conversation-id",g.id);
+    // The row truncates a long client-declared id; keep the whole value
+    // available without widening the row.
+    id.setAttribute("title",g.id);
+    name.append(id);
     name.append(el("span","badge declared","client-declared"));
   } else {
     name.append(el("span","conversation-id unattributed-label","No declared conversation"));

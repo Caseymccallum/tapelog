@@ -574,6 +574,32 @@ test('policy source buttons belong to a labelled group rather than an invalid li
  const buttons=nodes.get('studio-source-list').children[0].children;
  assert.equal(buttons.length,2);assert.equal(buttons.every(n=>n.tagName==='button'),true);assert.match(buttons[0].textContent,/Workspace policy/);assert.equal(buttons[1].textContent,'Simulate');
 });
+test('conversation rows lead with the identifier and keep the full value available',()=>{
+ const {context}=app();
+ const id='fictional-atlas-with-a-very-long-conversation-identifier';
+ context.group={id,attributed:true,calls:3,results:3,tools:['read_file'],timeline:[],files:['a.jsonl'],denials:1,failures:0,ambiguous_calls:0};
+ const entry=vm.runInContext('conversationItem(group)',context);
+ const details=entry.children.find(n=>n.tagName==='details');
+ const summary=details.children.find(n=>n.tagName==='summary');
+ assert.equal(summary.children[0].className,'conversation-name','the identifier must come first, not after an empty grid cell');
+ assert.equal(summary.children[1].className,'conversation-counts');
+ const code=summary.children[0].children.find(n=>n.tagName==='code');
+ assert.equal(code.textContent,id);assert.equal(code.getAttribute('title'),id,'a truncated id must still be readable in full');
+ assert.match(summary.children[1].textContent,/3 calls/);
+ assert.match(summary.children[1].textContent,/1 denied/,'secondary signals stay with the counts');
+ assert.equal(vm.runInContext('conversationItem({attributed:false,calls:1,results:0,timeline:[],files:[]}).children.find(n=>n.tagName==="details").children[0].textContent.includes("No declared conversation")',context),true);
+});
+test('conversation summaries replace the native marker with an explicit chevron',()=>{
+ const css=fs.readFileSync(__dirname+'/app.css','utf8');
+ const block=css.match(/\.finding\.conversation > summary\.finding-row[^{]*\{([^}]+)\}/);
+ assert.ok(block,'conversation summary must have its own layout rule');
+ assert.match(block[1],/grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\)\s+auto/,'columns must be chevron, identifier, counts');
+ const marker=css.match(/\.finding\.conversation > summary\.finding-row::-webkit-details-marker\s*\{([^}]+)\}/);
+ assert.ok(marker&&/display:\s*none/.test(marker[1]),'the user-agent marker must leave the grid');
+ const chevron=css.match(/\.finding\.conversation > summary\.finding-row::before\s*\{([^}]+)\}/);
+ assert.ok(chevron&&/content:/.test(chevron[1]),'an explicit chevron must replace the marker');
+ assert.match(css,/details\[open\][^{]*summary[^{]*::before\s*\{[^}]*content:/,'the chevron must show the open state');
+});
 test('activity rows expose their visible label rather than an incompatible override',async()=>{
  const {context,nodes}=app();context.response={session:{calls:1},total:1,findings:[],activities:[{seq:3,tool:'read_file',status:'success',verdict:'allow',server:'fictional',ts:'2026-01-01T00:00:00Z',duration_ms:1}]};
  vm.runInContext('currentFile="a.jsonl";showSession=()=>{};api=async()=>response;',context);

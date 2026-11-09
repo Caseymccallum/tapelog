@@ -1903,6 +1903,10 @@ details > summary:hover {
   border-bottom: 1px solid var(--line-soft);
 }
 .conversation-name {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
   font-size: var(--fs-14);
   font-weight: 600;
   color: var(--text);
@@ -1912,11 +1916,24 @@ details > summary:hover {
   font-size: var(--fs-11);
   color: var(--text-3);
 }
+.conversation-name > .conversation-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.unattributed-label {
+  font-family: var(--sans);
+  font-size: var(--fs-13);
+  font-style: italic;
+  color: var(--text-2);
+}
 .conversation-counts {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s1) var(--s2);
   min-width: 0;
+  justify-self: end;
   color: var(--text-3);
   font-size: var(--fs-12);
 }
@@ -1964,10 +1981,41 @@ details > summary:hover {
 }
 /* A conversation's summary row is name, counts, action: three columns, and the
    name may shrink. The label/body pair above is for findings. */
-.finding.conversation > summary.finding-row,
-.conversation > summary {
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: var(--s2) var(--s4);
+/* A conversation's summary row is chevron, identifier, counts. The browser's
+   own disclosure marker becomes a GRID ITEM here (::-webkit-details-marker
+   computed display:grid), so it claimed the first track and pushed the name and
+   counts to the right of a 700px empty column — the tiny marker the owner saw
+   at the far left with everything meaningful pushed right. Remove that marker
+   box and draw an explicit chevron in its place. */
+.finding.conversation > summary.finding-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s2) var(--s3);
+  align-items: center;
+  list-style: none;
+  cursor: pointer;
+}
+.finding.conversation > summary.finding-row::-webkit-details-marker {
+  display: none;
+}
+.finding.conversation > summary.finding-row::marker {
+  content: "";
+}
+.finding.conversation > summary.finding-row::before {
+  grid-column: 1;
+  grid-row: 1;
+  content: "▸";
+  color: var(--text-3);
+  font-size: var(--fs-12);
+  line-height: 1;
+  transition: color var(--t-fast);
+}
+.finding.conversation[open] > summary.finding-row::before,
+details[open] > summary.finding-row::before {
+  content: "▾";
+  color: var(--accent);
+}
+.finding.conversation > summary.finding-row:hover::before {
+  color: var(--text);
 }
 .finding.conversation > summary > .conversation-name {
   min-width: 0;
@@ -2958,6 +3006,16 @@ footer > span:last-child {
   .definition-row,
   .finding-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+  /* A conversation row keeps its chevron beside the identifier and moves the
+     counts to a second line, so the row still reads left-to-right on a phone. */
+  .finding.conversation > summary.finding-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .finding.conversation > summary.finding-row > .conversation-counts {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
   }
 }
 

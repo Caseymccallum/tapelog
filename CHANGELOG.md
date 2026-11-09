@@ -27,6 +27,15 @@ source of truth for the version.
   executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
 ## [Unreleased]
 
+- **Observed-group rows now lead with the conversation they represent (design)** — the user-agent
+  disclosure marker became a *grid item* once the summary was laid out as a grid, so it claimed the
+  first `minmax(0,1fr)` track and pushed the identifier, badges and counts into the last two columns:
+  a tiny marker sat at the far left with a ~700px empty gap before the name. The marker box is now
+  removed from the grid and replaced by an explicit chevron that shows the open state; the row reads
+  chevron → client-declared id → counts, with `Open →` consistently at the right edge. Long ids
+  truncate with the full value in `title`, the unattributed remainder keeps its own label and no
+  Open action, and the phone layout puts the counts under the identifier. Measured at 320/390/1440.
+
 - **The session screen now states the structure verdict, not only the chain (evidence integrity)** —
   a recording with an intact hash chain but an invalid structure (mixed identity, no first
   `session/start`) was presented as merely "no session/end": the trust panel read the chain, the
