@@ -1,7 +1,7 @@
-exported-from: (source snapshot; see this commit)
-exported-at: 2026-11-09T16:14:56Z
-files: 352
-excluded-by-design: docs/releases/ docs/reviews/ docs/launch/ tools/hermes-observer/ .m15/ dist-m15/
+exported-from: (public-safe source snapshot; see this commit)
+exported-at: 2026-11-09T18:41:19Z
+files: 354
+excluded-by-design: private engineering history, internal design handovers, original gateway recordings, local build/review output
 included paths:
   .gitignore
   LICENSE
@@ -43,10 +43,10 @@ included paths:
   docs/POLICY.md
   docs/QUICKSTART.md
   docs/REGRESSION-LAB.md
-  docs/RESEARCH-EVOLUTION.md
   docs/ROADMAP.md
   docs/SCHEMA.md
   docs/SECURITY-AND-LIMITATIONS.md
   docs/TESTING.md
   docs/THREAT_MODEL.md
   docs/WORKBENCH.md
+  docs/reviews/TAPELOG_LOCAL_REVIEW_GUIDE.md

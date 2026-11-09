@@ -522,3 +522,79 @@ test('a comparable pair renders counts, the observed differences and the limits'
  assert.match(text,/What this comparison cannot support/);
  assert.match(text,/A difference is an observation/);
 });
+
+/* Prism acceptance: real rendering semantics plus theme contrast contracts. */
+function prismThemeColors(){
+ const css=fs.readFileSync(__dirname+'/app.css','utf8');
+ return [...css.matchAll(/:root(?:\[data-theme="light"\])?\s*\{([^}]+)\}/g)].slice(0,2).map(m=>Object.fromEntries([...m[1].matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})\s*;/gi)].map(x=>[x[1],x[2]])));
+}
+function prismContrast(a,b){
+ const luminance=h=>{const v=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(n=>n<=0.04045?n/12.92:((n+0.055)/1.055)**2.4);return v[0]*0.2126+v[1]*0.7152+v[2]*0.0722;};
+ const x=luminance(a),y=luminance(b);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05);
+}
+test('metadata text clears normal-text contrast on each theme surface',()=>{
+ const themes=prismThemeColors();assert.equal(themes.length,2);
+ for(const theme of themes)for(const surface of ['bg','bg-raise','surface','surface-2','surface-3'])assert.ok(prismContrast(theme['text-4'],theme[surface])>=4.5,`${theme['text-4']} on ${surface} must reach 4.5:1`);
+});
+test('form control boundaries clear non-text contrast on each theme surface',()=>{
+ for(const theme of prismThemeColors()){
+  assert.ok(theme['control-line'],'form controls need a dedicated visible boundary token');
+  for(const surface of ['bg','bg-raise','surface','surface-2','surface-3'])assert.ok(prismContrast(theme['control-line'],theme[surface])>=3,`${surface} boundary must reach 3:1`);
+ }
+ const css=fs.readFileSync(__dirname+'/app.css','utf8');
+ assert.match(css.match(/input\[type="search"\],[\s\S]*?textarea\s*\{([^}]+)\}/)[1],/border:\s*1px solid var\(--control-line\)/);
+});
+test('focused form fields use an opaque visible outline instead of a soft tint',()=>{
+ const css=fs.readFileSync(__dirname+'/app.css','utf8');
+ const focus=css.match(/input:focus,\s*select:focus,\s*textarea:focus\s*\{([^}]+)\}/)[1];
+ assert.match(focus,/outline:\s*2px solid var\(--focus\)/);
+ assert.match(focus,/border-color:\s*var\(--accent\)/);
+});
+test('glossary render targets are definition lists in both Behaviour and Lab',()=>{
+ const html=fs.readFileSync(__dirname+'/index.html','utf8');
+ for(const id of ['behaviour-definitions','lab-help'])assert.match(html,new RegExp('<dl\\b[^>]*id="'+id+'"'),id+' must own its dt/dd entries');
+ const {context,nodes}=app();context.ov={definitions:[{term:'Integrity',meaning:'Hash-chain verification.'}]};
+ vm.runInContext('renderBehaviourDefinitions(ov);renderLabHelp()',context);
+ assert.match(nodes.get('behaviour-definitions').textContent,/Hash-chain verification/);
+ assert.match(nodes.get('lab-help').textContent,/INCONCLUSIVE/);
+});
+test('conversation opening remains visible without nesting a button in its disclosure',()=>{
+ const {context}=app();context.group={id:'fictional-atlas',attributed:true,calls:2,results:2,tools:[],timeline:[],files:['a.jsonl']};
+ const root=vm.runInContext('conversationItem(group)',context),all=n=>[n,...n.children.flatMap(all)];
+ for(const summary of all(root).filter(n=>n.tagName==='summary'))assert.equal(all(summary).some(n=>['button','a','input','select','textarea'].includes(n.tagName)),false,'a disclosure summary cannot contain another interactive control');
+ const open=all(root).find(n=>n.tagName==='button'&&n.textContent==='Open →');
+ assert.ok(open,'the direct Open action must remain');assert.ok(root.children.includes(open),'Open must stay outside the closed details');
+ context.openedConversation='';vm.runInContext('openConversation=id=>{openedConversation=id;}',context);open.onclick({preventDefault(){},stopPropagation(){}});
+ assert.equal(context.openedConversation,'fictional-atlas');
+});
+test('policy source buttons belong to a labelled group rather than an invalid list',()=>{
+ const html=fs.readFileSync(__dirname+'/index.html','utf8'),target=html.match(/<div\b[^>]*id="studio-source-list"[^>]*>/)[0];
+ assert.match(target,/role="group"/);assert.match(target,/aria-label="Policy sources"/);
+ const {context,nodes}=app();vm.runInContext('studioState.sources=[{id:"active",kind:"active",name:"fictional"}];renderStudioSources()',context);
+ const buttons=nodes.get('studio-source-list').children[0].children;
+ assert.equal(buttons.length,2);assert.equal(buttons.every(n=>n.tagName==='button'),true);assert.match(buttons[0].textContent,/Workspace policy/);assert.equal(buttons[1].textContent,'Simulate');
+});
+test('activity rows expose their visible label rather than an incompatible override',async()=>{
+ const {context,nodes}=app();context.response={session:{calls:1},total:1,findings:[],activities:[{seq:3,tool:'read_file',status:'success',verdict:'allow',server:'fictional',ts:'2026-01-01T00:00:00Z',duration_ms:1}]};
+ vm.runInContext('currentFile="a.jsonl";showSession=()=>{};api=async()=>response;',context);
+ await vm.runInContext('loadActivity()',context);
+ const row=nodes.get('activity-list').children[0].children.find(n=>n.tagName==='button');
+ assert.ok(row,'the real activity renderer must produce the row');assert.match(row.textContent,/read_file/);assert.match(row.textContent,/Result recorded/);
+ assert.equal(row.getAttribute('aria-label'),undefined,'native visible content must determine the accessible name');
+ assert.equal(row.dataset.seq,'3','selection identity must not depend on an accessible-name override');
+});
+test('search fields do not duplicate their existing decorative glyph',()=>{
+ const html=fs.readFileSync(__dirname+'/index.html','utf8'),css=fs.readFileSync(__dirname+'/app.css','utf8');
+ assert.match(html,/<label class="search"><span aria-hidden="true">⌕<\/span>/);
+ assert.doesNotMatch(css,/\.search::before\s*\{\s*content:\s*"⌕"/,'the HTML already supplies the search glyph');
+});
+test('selection checkboxes have a usable 24px target without relying on spacing exceptions',()=>{
+ const css=fs.readFileSync(__dirname+'/app.css','utf8'),rule=css.match(/input\[type="checkbox"\]\s*\{([^}]+)\}/)[1];
+ for(const axis of ['width','height'])assert.ok(Number(rule.match(new RegExp(axis+':\\s*(\\d+)px'))[1])>=24,axis+' must be at least 24px');
+});
+test('unattributed activity keeps a readable label rather than a one-pixel divider',()=>{
+ const css=fs.readFileSync(__dirname+'/app.css','utf8'),rule=css.match(/\.unattributed-separator\s*\{([^}]+)\}/)[1];
+ assert.doesNotMatch(rule,/height:\s*1px/);assert.match(rule,/color:\s*var\(--text-2\)/);
+ const {context,nodes}=app();context.ov={conversations:[{attributed:true,id:'a',calls:1,results:1,files:[]},{attributed:false,calls:1,results:1,files:[]}]};
+ vm.runInContext('renderBehaviourConversations(ov)',context);assert.match(nodes.get('behaviour-conversations').textContent,/NO DECLARED CONVERSATION/);
+});

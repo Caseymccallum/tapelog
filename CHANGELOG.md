@@ -27,6 +27,65 @@ source of truth for the version.
   executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
 ## [Unreleased]
 
+- **Accessibility acceptance pass on the Prism workspace (design)** — measured in the real browser with
+  axe-core 4.14 across seven screens in both themes: `--text-4` was 3.78:1 and is now 5.62:1 dark /
+  5.31:1 light; form boundaries take a dedicated `--control-line` (≥3:1 on every surface); a focused
+  field now paints an opaque `--focus` ring instead of a 12%-alpha tint. Structured semantics replaced
+  visual-only fixes: glossary entries are real `<dl>` lists, the policy source controls are a labelled
+  group rather than a `role="list"` holding buttons, an activity row's accessible name comes from its
+  visible text instead of a shorter override, the conversation `Open →` action moved beside its
+  disclosure instead of inside the `<summary>`, the duplicate search glyph was removed, and selection
+  checkboxes are a 24px target. Seven new rendering/contrast regression tests were each watched fail
+  before their fix; the frontend suite is 57 pass.
+- **Behaviour notes now name structurally invalid evidence (evidence integrity)** — a recording whose
+  chain is intact but whose structure is invalid (mixed identity, no first `session/start`) was counted
+  in the overview totals with no note at all; the notes named only a failed hash chain. It now emits a
+  separate warning that those totals include evidence which cannot establish one complete session.
+
+- **Prism design coverage: every class the UI emits now has a rule (design)** — the replacement
+  stylesheet was written against a class vocabulary `app.js` does not use, so ~57 component classes
+  fell back to user-agent layout. The stylesheet now covers all 218 emitted class names (route words
+  and the dynamic `finding-` prefix excepted): the call inspector (evidence card, policy steps, call
+  actions), the all-events list, comparison verdict/pair/diff groups, behaviour deltas, repeat and
+  failure rows with per-kind severity (a repeated tool error is red, a repeated denial amber), the
+  policy studio's rules, conditions and simulation rows, the case builder's selected sequence, the
+  Lab's expectations and case JSON, and the conversation view. Six confirmed layout defects were
+  measured before and after in the browser: the context bar concatenated its three identity lines,
+  `.tool-meta` ran `Not recorded9 Nov, 16:45Policy: allow` together, `.tool-outcome` ran
+  `Result recorded1 ms` together, `.activity-row` sized itself to 385px inside a 614px list, compare
+  labels touched their selects, and the footer read `…view.Evidence, with context.`
+- **Two overflow defects found by measurement and fixed (design)** — a policy-base select sized its
+  grid column from its longest option and pushed a 320px viewport 75px sideways, and a long mono
+  call key in the compare policy history pushed a 390px viewport 187px sideways. Builder controls
+  are now `width:100%` with `min-width:0`, and mono identifiers wrap. Verified across 49 screen ×
+  width combinations: no page overflow and no element spilling text.
+- **`stats()` guarantees its own strip (design)** — the candidate summary rendered four `.stat`
+  blocks stacked full-width because it never received `.stat-strip`; the helper now adds the class
+  to any container that lacks it.
+
+- **Prism completion pass: every implemented screen art-directed (design)** — the policy studio,
+  saved investigations, comparison, Regression Lab and the approvals queue were still falling back
+  to user-agent layout. Policy sources are now a hairline list with a selected edge, rule action
+  chips have real styles (the `.chip` classes had none), rules expand into a fact grid, the studio
+  reading column repeats which source it explains, comparison opens with a `Differs` / `No change`
+  status word and shows its three difference groups without a disclosure, lab case rows are rows
+  with an accent selection edge, and detail panes are rails rather than rounded cards.
+- **Measured accessibility corrections (design)** — table column labels and `.finding-label`
+  measured 3.87:1 dark / 3.62:1 light at 10.5px and now take the metadata grey (5.95 / 5.01);
+  `.source-item small` on a selected row measured 4.39:1 light and now takes `--text-2`. Behaviour
+  at 320px overflowed by 12px because a grid item carried `margin: 0 auto` (which turns off grid
+  stretch); the session integrity disclosure was a flex sibling of its summary and collapsed its
+  banner to 34px; timeline entries were appended as the only grid child and rendered inside the
+  52px sequence gutter. Tap targets under 24px (`back`, `link-button`, timeline links) were raised.
+- **Regression Lab copy and labels (design)** — pluralisation for counts (`1 suite`, `1 finding`,
+  `1 deny decision`), and the candidate picker now always shows the recording file, because one
+  harness can produce several recordings with the same name.
+- **Fictional review library (local, not committed)** — a second, independently generated set of
+  seven recordings, nine cases and two suites in a disposable local review folder,
+  written through the real boundary and re-asserted on every regeneration: 4 PASS, 1 deliberate
+  FAIL, 4 INCONCLUSIVE (`incomplete_recording`, `structure_invalid`, `conversation_absent`,
+  `ambiguous_correlation`).
+
 - **JSON carried as a tool result is redacted by key (M15.1)** — an MCP result usually delivers its payload as a
   string (`content[].text`), so a sensitive key inside it was stored verbatim even though the argument copy of the
   same value was masked. A JSON document returned as text is now parsed and masked with the same key rules as

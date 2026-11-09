@@ -12,16 +12,16 @@
   <a class="brand" href="#"><span class="brandmark" aria-hidden="true">▤</span> tapelog<span class="version">LOCAL</span></a>
   <div class="rail-label">WORKSPACE</div>
   <nav aria-label="Main navigation">
-   <button id="library-nav" class="nav-item active">▦ <span>Sessions</span></button>
-   <button id="investigations-nav" class="nav-item">◇ <span>Investigations</span></button>
-   <button id="behaviour-nav" class="nav-item">▥ <span>Behaviour</span></button>
-   <button id="comparisons-nav" class="nav-item">⇄ <span>Compare</span></button>
+   <button id="library-nav" class="nav-item active"><span class="nav-icon" aria-hidden="true">▦</span> <span>Sessions</span></button>
+   <button id="investigations-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">◇</span> <span>Investigations</span></button>
+   <button id="behaviour-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">▥</span> <span>Behaviour</span></button>
+   <button id="comparisons-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">⇄</span> <span>Compare</span></button>
    <div class="rail-label nav-group">TEST &amp; PREVENT</div>
-   <button id="lab-nav" class="nav-item">✓ <span>Regression cases</span></button>
-   <button id="suites-nav" class="nav-item">☷ <span>Test suites</span></button>
-   <button id="studio-nav" class="nav-item">◈ <span>Policies</span></button>
-   <button id="approvals-nav" class="nav-item" hidden>◇ <span>Live approvals</span><span id="pending-count" class="count">0</span></button>
-   <button id="help-nav" class="nav-item">↗ <span>Getting started</span></button>
+   <button id="lab-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">✓</span> <span>Regression cases</span></button>
+   <button id="suites-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">☷</span> <span>Test suites</span></button>
+   <button id="studio-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span> <span>Policies</span></button>
+   <button id="approvals-nav" class="nav-item" hidden><span class="nav-icon" aria-hidden="true">◇</span> <span>Live approvals</span><span id="pending-count" class="count">0</span></button>
+   <button id="help-nav" class="nav-item"><span class="nav-icon" aria-hidden="true">↗</span> <span>Getting started</span></button>
   </nav>
   <div class="rail-note"><span class="local-dot" aria-hidden="true"></span> Local workspace<p>Your recordings stay here.<br>No uploads. No account.</p></div>
   <div class="rail-bottom"><button id="theme" class="quiet">◐ Appearance</button><p>LOCAL DEVELOPER WORKSPACE</p></div>
@@ -47,9 +47,14 @@
    </section>
    <section id="comparisons-view" hidden>
     <div class="page-heading"><div><div class="eyebrow">TWO RECORDINGS. ONE QUESTION.</div><h1>Compare recordings<span class="accent">.</span></h1><p class="lede">Follow changes in calls, decisions and failure patterns. Differences are observations; an explicit case decides what should pass.</p></div></div>
-    <div class="workflow-card comparison-picker"><div class="delta-pickers"><div><label for="compare-base">Reference recording</label><select id="compare-base"></select></div><div><label for="compare-session">Recording to examine</label><select id="compare-session"></select></div><button id="run-compare" class="primary" type="button">Compare recordings →</button></div><p class="muted">Both views use these recordings. Missing results and ambiguous matches are reported beside the evidence.</p></div>
-    <section class="workflow-card"><div class="eyebrow">RECORDED CALLS &amp; DECISIONS</div><h2>What changed at the boundary?</h2><div id="compare-result" aria-live="polite"></div></section>
-    <section class="workflow-card"><div class="eyebrow">PATTERNS &amp; RATES</div><h2>What changed in behaviour?</h2><div class="delta-pickers" hidden><select id="delta-reference" aria-label="Behaviour reference"></select><select id="delta-current" aria-label="Behaviour candidate"></select><button id="run-delta" type="button">Compare behaviour</button></div><div id="delta-result" aria-live="polite"></div></section>
+    <div class="compare-deck">
+     <div><label for="compare-base">Reference recording</label><select id="compare-base"></select></div>
+     <div><label for="compare-session">Recording to examine</label><select id="compare-session"></select></div>
+     <button id="run-compare" class="primary" type="button">Compare recordings →</button>
+    </div>
+    <p class="selection-note">Both names describe what each side is, not which one is better. Missing results and ambiguous matches are reported beside the evidence.</p>
+    <section class="workflow-card" aria-labelledby="compare-boundary-title"><div class="eyebrow">RECORDED CALLS &amp; DECISIONS</div><h2 id="compare-boundary-title">What changed at the boundary?</h2><div id="compare-result" aria-live="polite"></div></section>
+    <section class="workflow-card" aria-labelledby="compare-behaviour-title"><div class="eyebrow">PATTERNS &amp; RATES</div><h2 id="compare-behaviour-title">What changed in behaviour?</h2><div class="delta-pickers" hidden><select id="delta-reference" aria-label="Behaviour reference"></select><select id="delta-current" aria-label="Behaviour candidate"></select><button id="run-delta" type="button">Compare behaviour</button></div><div id="delta-result" aria-live="polite"></div></section>
    </section>
    <section id="behaviour-view" hidden>
     <div class="page-heading"><div><div class="eyebrow">ACROSS YOUR RECORDINGS</div><h1>Agent behaviour<span class="accent">.</span></h1><p class="lede">Find the pattern that repeats, then follow it back to the evidence.</p></div><span class="outline-label">OBSERVATIONS</span></div>
@@ -91,7 +96,7 @@
      <div id="behaviour-trend"></div>
     </section>
     <div class="workflow-card next-step"><div><h2>Investigating a change between runs?</h2><p class="muted">Compare calls, policy decisions, failure groups and rates in one place.</p></div><button id="behaviour-to-compare" class="secondary" type="button">Compare recordings →</button></div>
-    <section class="workflow-card" aria-labelledby="behaviour-definitions-title"><div class="eyebrow">GLOSSARY</div><h2 id="behaviour-definitions-title">What these numbers mean</h2><div id="behaviour-definitions"></div></section>
+    <section class="workflow-card" aria-labelledby="behaviour-definitions-title"><div class="eyebrow">GLOSSARY</div><h2 id="behaviour-definitions-title">What these numbers mean</h2><dl id="behaviour-definitions"></dl></section>
    </section>
    <section id="lab-view" hidden>
     <div class="page-heading"><div><div class="eyebrow">KEEP WHAT YOU PROVED</div><h1 id="lab-page-title">Regression cases<span class="accent">.</span></h1><p class="lede">Turn a recorded investigation into a case you can re-run against new evidence. Nothing is executed: the runner reads recordings.</p></div><span class="outline-label">OFFLINE RUNNER</span></div>
@@ -113,7 +118,7 @@
      </div>
     </div>
     <div id="lab-help-panel" role="tabpanel" aria-labelledby="lab-tab-help" hidden>
-     <div class="workflow-card"><div class="eyebrow">WHAT A CASE IS</div><h2>A recorded expectation you can re-run.</h2><div id="lab-help"></div></div>
+     <div class="workflow-card"><div class="eyebrow">WHAT A CASE IS</div><h2>A recorded expectation you can re-run.</h2><dl id="lab-help"></dl></div>
     </div>
     <section class="workflow-card" aria-labelledby="lab-run-title"><div class="eyebrow">RESULT</div><h2 id="lab-run-title">Run outcome</h2><p id="lab-run-target" class="muted">Nothing has been run yet. Open a case or a suite and run it.</p><div id="lab-run" aria-live="polite"></div></section>
    </section>
@@ -135,7 +140,7 @@
     <div class="page-heading"><div><div class="eyebrow">UNDERSTAND. DRAFT. SIMULATE.</div><h1>Policies<span class="accent">.</span></h1><p class="lede">Read what a policy actually does, draft a narrow rule, and see what it would change before you save anything.</p></div><span class="outline-label">READ-ONLY</span></div>
     <div id="studio-notes"></div>
     <div class="studio-grid">
-     <aside class="studio-sources" aria-label="Policies"><div class="section-heading"><h2>Policies</h2></div><div id="studio-source-list" role="list"></div><p class="muted" id="studio-source-help">Explanations come from the same engine that decides your calls.</p></aside>
+     <aside class="studio-sources" aria-label="Policy sources"><div class="section-heading"><h2>Sources</h2><span class="muted">Read-only</span></div><div id="studio-source-list" role="group" aria-label="Policy sources"></div><p class="muted" id="studio-source-help">Explanations come from the same engine that decides your calls.</p></aside>
      <div class="studio-main"><div id="studio-summary" class="stat-strip"></div><div id="studio-status" aria-live="polite"></div><div id="studio-findings"></div><div id="studio-rules"></div><div id="studio-source"></div></div>
     </div>
     <section class="workflow-card studio-builder" aria-labelledby="builder-title">

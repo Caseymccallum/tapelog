@@ -1212,10 +1212,13 @@ func behaviourNotes(idx *behaviourIndex, ov *behaviourOverview) []string {
 	// Both defects can be present at once. Stopping at the first one meant the
 	// warning a reader saw depended on file order, and the broken-chain warning
 	// — the more serious of the two — could be suppressed entirely.
-	var sawInvalid, sawIncomplete bool
+	var sawInvalid, sawIncomplete, sawStructureInvalid bool
 	for _, a := range idx.Sessions {
 		if a.Info.Integrity == "invalid" {
 			sawInvalid = true
+		}
+		if a.Info.Structure == "invalid" {
+			sawStructureInvalid = true
 		}
 		if !a.Info.Complete {
 			sawIncomplete = true
@@ -1223,6 +1226,12 @@ func behaviourNotes(idx *behaviourIndex, ov *behaviourOverview) []string {
 	}
 	if sawInvalid {
 		notes = append(notes, "At least one analysed recording failed its hash-chain check. Its activity is included, but treat it as untrusted evidence.")
+	}
+	// A broken chain and an invalid structure are different questions: the chain
+	// can be intact on a mixed-identity or start-less file. Saying only the first
+	// left structurally invalid evidence counted in these totals with no warning.
+	if sawStructureInvalid {
+		notes = append(notes, "At least one analysed recording is structurally invalid (for example more than one session identity, or no first session/start). Its activity is still counted here, so those totals include evidence that cannot establish one complete session.")
 	}
 	if sawIncomplete {
 		notes = append(notes, "At least one analysed recording has no session/end event. A missing end can mean an interruption, a live session or a failed startup; it does not establish a failure.")

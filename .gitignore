@@ -60,3 +60,6 @@ dist-m15/
 
 # public tree export (build artifact, never committed)
 dist-public/
+
+# local build + design scratch (never published)
+.prism/

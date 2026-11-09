@@ -22,7 +22,9 @@ function notice(parent,text,kind="") {
 function empty(parent,title,text) {
   parent.replaceChildren();
   const n=el("div","empty");
-  n.append(el("div","empty-symbol","▤"),el("h2","",title),el("p","",text));
+  const symbol=el("div","empty-symbol","▤");
+  symbol.setAttribute("aria-hidden","true");
+  n.append(symbol,el("h2","",title),el("p","",text));
   parent.append(n);
 }
 function badge(status) {
@@ -54,11 +56,20 @@ function when(ts,full=false) {
   }
   );
 }
+function groupDigits(value) {
+  // Numbers in a dense table are read by comparing digit groups, so group them.
+  if(typeof value!=="number"||!Number.isFinite(value))return value;
+  return value.toLocaleString("en-GB");
+}
 function stats(parent,items) {
   parent.replaceChildren();
+  // A stat is only legible as a strip: four bare .stat blocks used to stack as
+  // full-width rows in any container that forgot the wrapper class. A fragment
+  // or a test double has no classList, so the guard stays optional.
+  if(parent.classList&&typeof parent.classList.contains==="function"&&!parent.classList.contains("stat-strip"))parent.classList.add("stat-strip");
   for(const [num,label]of items) {
     const n=el("div","stat");
-    n.append(el("div","stat-number",num),el("div","stat-label",label));
+    n.append(el("div","stat-number",groupDigits(num)),el("div","stat-label",label));
     parent.append(n);
   }
 }
@@ -133,6 +144,11 @@ async function loadLibrary() {
     stats($("library-stats"),[[data.catalog_total,"Recordings in library"],[library.reduce((n,s)=>n+s.calls,0),"Observed calls · this page"],[library.filter(s=>s.denies||s.failures).length,"Sessions with issues · this page"],[library.filter(s=>s.chain_ok).length,"Verified chains · this page"]]);
     const list=$("session-list");
     list.replaceChildren();
+    if(library.length) {
+      const head=el("div","session-head");
+      for(const label of ["Session","Recording","Signals","Recorded"])head.append(el("span","",label));
+      list.append(head);
+    }
     if(!library.length)empty(list,data.catalog_total?"No matching sessions":"Your next session starts here.",data.catalog_total?"Try a different search or clear the status filter.":"Point tapelog web --dir at your recordings directory. After your client uses an MCP tool, refresh this library.");
     for(const s of library) {
       const row=button("",()=>openSession(s.file),"session-row");
@@ -314,7 +330,8 @@ async function loadActivity() {
     if(!data.activities.length)empty(list,"No calls in this view",currentInfo.calls?"Clear an outcome or server filter to see more activity.":"Discovery, session boundaries and other recorded events are available in All events.");
     for(const a of data.activities) {
       const row=button("",()=>selectCall(a.seq),"activity-row"+(selectedCall?.seq===a.seq?" selected":""));
-      row.setAttribute("aria-label",a.tool+", "+a.status+", event "+a.seq);
+      // Keep internal selection identity separate from the native visible name.
+      row.dataset.seq=String(a.seq);
       row.setAttribute("aria-pressed",String(selectedCall?.seq===a.seq));
       const text=el("div");
       text.append(el("span","tool-name",a.tool));
@@ -415,7 +432,7 @@ async function selectCall(seq) {
     parent.append(before);
     for(const wrapper of $("activity-list").children) {
       const row=wrapper.children[1]; if(!row)continue;
-      const yes=row.getAttribute("aria-label")?.endsWith("event "+a.seq);
+      const yes=row.dataset.seq===String(a.seq);
       row.classList.toggle("selected",!!yes);
       row.setAttribute("aria-pressed",String(!!yes));
     }
@@ -536,23 +553,53 @@ async function compare() {
     ));
     if(file!==compareBaseFile()||request!==compareRequest)return;
     const inv=data.investigation;
-    notice(out,inv.change_count||inv.sequence_differs?"Recorded boundary activity differs.":"No difference found in the compared boundary fields.",inv.change_count||inv.sequence_differs?"warning":"");
-    out.append(el("p","","Observed attempts · reference: "+inv.attempts_a+" / candidate: "+inv.attempts_b+" · "+inv.change_count+" outcome or count differences"));
-    if(inv.ambiguous_duplicates)notice(out,"Repeated identical call keys are paired by occurrence; the pairing is uncertain.","warning");
-    const technical=el("details","comparison-technical");
-    technical.append(el("summary","","Inspect call matching details and argument hashes"));
-    const differences=el("ul","mono"); for(const change of inv.changes)differences.append(el("li","",change)); technical.append(differences);
-    if(inv.change_count>100)technical.append(el("p","muted","Showing first 100 differences."));
-    out.append(el("p","muted",inv.sequence_differs?"Attempt sequence differs (including added or missing attempts).":"Attempt sequence matches."));
-    technical.append(el("p","muted",data.scope));
-    const history=data.policy_history; if(history){const section=el("section","policy-history");section.append(el("h3","","Policy decision history"),el("p","muted",history.total+" matched call histories changed (verdict, rule or reason). Matching shares the same occurrence uncertainty."));for(const change of history.changes)section.append(el("p","mono",change));if(history.total>100)section.append(el("p","muted","Showing the first 100 changes."));out.append(section);}
-    const cols=el("div","comparison-columns");
+    const differs=!!(inv.change_count||inv.sequence_differs);
+    // The verdict is one line with a status word, not a banner: a difference is
+    // the normal result of comparing two runs, so it must not read as an alarm.
+    const verdict=el("div","compare-verdict "+(differs?"differs":"same"));
+    verdict.append(el("span","compare-verdict-word",differs?"Differs":"No change"));
+    const facts=el("p","");
+    facts.append(el("span","",inv.attempts_a+" → "+inv.attempts_b+" recorded attempts"),el("span","compare-sep"," · "),el("span","",inv.change_count+" outcome or count difference"+(inv.change_count===1?"":"s")));
+    verdict.append(facts);
+    verdict.append(el("p","muted",inv.sequence_differs?"The attempt sequence differs, including calls that were added or removed.":"The attempt sequence matches."));
+    out.append(verdict);
+    if(inv.ambiguous_duplicates)notice(out,"Some call keys repeat, so pairing is by occurrence. That pairing is uncertain and no sentence below depends on it being right.","warning");
+    const pair=el("div","compare-pair");
     for(const [side,title]of [[data.a,"Reference recording"],[data.b,"Recording to examine"]]) {
       const n=el("div");
-      n.append(el("h3","",title),el("p","",side.name),el("p","muted",side.answered+" results · "+side.denies+" deny decisions · "+side.failures+" tool errors"));
-      cols.append(n);
+      const plural=(n,noun)=>n+" "+noun+(n===1?"":"s");
+      n.append(el("h3","",title),el("p","",side.name),el("p","muted",plural(side.answered,"result")+" · "+plural(side.denies,"deny decision")+" · "+plural(side.failures,"tool error")));
+      pair.append(n);
     }
-    out.append(cols);
+    out.append(pair);
+    // Differences are the substance of the screen, so they are visible; only the
+    // matching detail (keys, hashes, long tails) stays behind a disclosure.
+    const diffSections=el("div","compare-diffs");
+    for(const[key,title]of [["only_in_a","Only in the reference recording"],["only_in_b","Only in the recording examined"],["changed","Same call key, a different recorded outcome or count"]]) {
+      const rows=(data.diff[key]||[]);
+      const n=el("section","compare-diff");
+      const head=el("div","section-heading");
+      head.append(el("h3","",title),el("span","muted",rows.length+(rows.length===1?" entry":" entries")));
+      n.append(head);
+      if(!rows.length) {
+        n.append(el("p","muted","None."));
+      } else {
+        const list=el("ul","occurrence-list mono");
+        for(const text of rows.slice(0,20))list.append(el("li","",String(text).slice(0,512)));
+        n.append(list);
+        if(rows.length>20)n.append(el("p","muted","Showing the first 20 of "+rows.length+"; open the matching detail for the rest."));
+      }
+      diffSections.append(n);
+    }
+    out.append(diffSections);
+    out.append(el("p","muted",data.diff.order_differs?"The answered-call sequence differs. Added or missing calls also change this sequence.":"The answered-call sequence is unchanged."));
+    const technical=el("details","comparison-technical");
+    technical.append(el("summary","","Call matching detail and argument hashes"));
+    const differences=el("ul","mono");
+    for(const change of inv.changes)differences.append(el("li","",change));
+    technical.append(differences);
+    if(inv.change_count>100)technical.append(el("p","muted","Showing first 100 differences."));
+    technical.append(el("p","muted",data.scope));
     for(const[key,title]of [["only_in_a","Only in this recording"],["only_in_b","Only in compared recording"],["changed","Same call key, different recorded outcomes / count"]]) {
       const n=el("div");
       n.append(el("h3","",title));
@@ -563,7 +610,14 @@ async function compare() {
       n.append(list);
       technical.append(n);
     }
-    out.append(el("p","muted",data.diff.order_differs?"Answered call sequence differs. Added or missing calls also change this sequence.":"Answered call sequence is unchanged."));
+    const history=data.policy_history;
+    if(history) {
+      const section=el("section","policy-history");
+      section.append(el("h3","","Policy decision history"),el("p","muted",history.total+" matched call histories changed (verdict, rule or reason). Matching shares the same occurrence uncertainty."));
+      for(const change of history.changes)section.append(el("p","mono",change));
+      if(history.total>100)section.append(el("p","muted","Showing the first 100 changes."));
+      out.append(section);
+    }
     out.append(technical);
   } catch(e) {
     if(file===compareBaseFile()&&request===compareRequest)notice(out,e.message,"warning");
@@ -1057,6 +1111,14 @@ function renderStudioInspection() {
   findings.replaceChildren();
   source.replaceChildren();
   if(!insp)return;
+  // The main column is read on its own, so it repeats which source it is
+  // explaining: the selected row lives in a different column of the page.
+  const current=el("div","studio-current");
+  const sourceHead=el("div","");
+  sourceHead.append(el("div","eyebrow","EXPLAINING"),el("h2","",insp.name||insp.title||insp.id||"Policy source"));
+  current.append(sourceHead);
+  if(insp.path)current.append(el("p","studio-current-path",insp.path));
+  findings.append(current);
   const analysis=insp.analysis||null;
   if(!insp.valid||!analysis) {
     stats($("studio-summary"),[[0,"Rules"],[0,"Command-flow rules"],[insp.bytes||0,"Bytes"]]);
@@ -1064,7 +1126,8 @@ function renderStudioInspection() {
     addSourceBlock(source,insp);
     return;
   }
-  stats($("studio-summary"),[[analysis.rules.length,"Rules"],[analysis.flows.length,"Flow rules"],[analysis.broad_permissions,"Broad permissions"],[(analysis.warnings||[]).length+(analysis.unsupported||[]).length,"Findings"]]);
+  const findingCount=(analysis.warnings||[]).length+(analysis.unsupported||[]).length;
+  stats($("studio-summary"),[[analysis.rules.length,"Rules"],[analysis.flows.length,"Flow rules"],[analysis.broad_permissions,"Broad permissions"],[findingCount,findingCount===1?"Finding":"Findings"]]);
   const summary=el("p","lede");
   summary.textContent="Default when no rule matches: "+analysis.default_label+". "+analysis.default_effect;
   findings.append(summary);
@@ -1805,6 +1868,7 @@ function renderBehaviourConversations(ov) {
   renderRecurrence(recur,ov.recurrence||[],looseCalls);
 }
 function conversationItem(g) {
+  const entry=el("div","conversation-entry");
   const item=el("details",g.attributed?"finding conversation":"finding conversation unattributed");
   const summary=el("summary","finding-row");
   const name=el("span","conversation-name");
@@ -1820,8 +1884,8 @@ function conversationItem(g) {
   if(g.failures)counts.append(el("span","badge failed",g.failures+(g.failures===1?" error":" errors")));
   if(g.ambiguous_calls)counts.append(el("span","badge ambiguous",g.ambiguous_calls+(g.ambiguous_calls===1?" ambiguous call":" ambiguous calls")));
   summary.append(name,counts);
-  // The panel is one click away without expanding the row: an investigation
-  // should not depend on discovering that the row is a <details> element.
+  // Keep the direct action visible, but outside the summary: nesting a button
+  // inside a disclosure creates competing interactive controls for assistive tech.
   if(g.attributed) {
     const open=button("Open →",ev=> {
       if(ev) {
@@ -1832,7 +1896,7 @@ function conversationItem(g) {
     }
     ,"quiet");
     open.setAttribute("aria-label","Open conversation "+g.id);
-    summary.append(open);
+    entry.append(open);
   }
   item.append(summary);
 
@@ -1863,7 +1927,8 @@ function conversationItem(g) {
     if(g.timeline_truncated)body.append(el("p","muted","Showing the first "+entries.length+" calls in this conversation; the recording holds more."));
   }
   item.append(body);
-  return item;
+  entry.prepend(item);
+  return entry;
 }
 function timelineItem(e,showFile) {
   const li=el("li","timeline-item"+(e.ambiguous?" ambiguous":""));
@@ -1874,8 +1939,11 @@ function timelineItem(e,showFile) {
   else if(e.ambiguous)bits.push("result owner unknown");
   else if(!e.answered)bits.push("no recorded result");
   else bits.push("answered");
-  const label=(showFile&&e.file?e.file+" · ":"")+"event #"+e.seq+" · "+bits.join(" · ")+(e.ts?" · "+when(e.ts):"");
-  li.append(button(label,()=>openBehaviourCall(e.file,e.seq,e.index||0)));
+  const label=(showFile&&e.file?e.file+" · ":"")+bits.join(" · ")+(e.ts?" · "+when(e.ts):"");
+  // The sequence number belongs in the gutter the timeline rail is drawn for;
+  // appending the sentence as the only child put it inside that 52px column.
+  li.append(el("span","seq","#"+e.seq));
+  li.append(button(label,()=>openBehaviourCall(e.file,e.seq,e.index||0),"timeline-link"));
   return li;
 }
 function repeatSentence(r) {
@@ -1944,7 +2012,7 @@ function renderBehaviourFailures(ov) {
 }
 function occurrenceItem(o) {
   const li=el("li");
-  li.append(button(o.file+" · event #"+o.seq+(o.ts?" · "+when(o.ts):" · time not recorded"),()=>openBehaviourCall(o.file,o.seq,o.index)));
+  li.append(button(o.file+" · event #"+o.seq+(o.ts?" · "+when(o.ts):" · time not recorded"),()=>openBehaviourCall(o.file,o.seq,o.index),"occurrence-link"));
   return li;
 }
 // draftAbsenceTest is the Phase 7 loop: a recurring failure becomes a real
@@ -2376,12 +2444,14 @@ function renderLab(index) {
   for(const note of index.notes||[])notes.append(el("p","behaviour-note",note));
   const invalid=(index.cases||[]).filter(c=>c.invalid).length;
   const missing=(index.suites||[]).reduce((n,s)=>n+(s.missing||[]).length,0);
-  stats($("lab-stats"),[[(index.cases||[]).length,"Saved cases"],[(index.suites||[]).length,"Suites"],[invalid,"Cases needing a fix"],[missing,"Suite entries missing"]]);
+  const savedCount=(index.cases||[]).length, suiteTotal=(index.suites||[]).length;
+  stats($("lab-stats"),[[savedCount,savedCount===1?"Saved case":"Saved cases"],[suiteTotal,suiteTotal===1?"Suite":"Suites"],[invalid,"Cases needing a fix"],[missing,"Suite entries missing"]]);
   renderLabCases(index);
   renderLabSuites(index);
   renderLabHelp(index);
-  $("lab-case-count").textContent=(index.cases||[]).length+" case(s)";
-  $("lab-suite-count").textContent=(index.suites||[]).length+" suite(s)";
+  const caseCount=(index.cases||[]).length, suiteCount=(index.suites||[]).length;
+  $("lab-case-count").textContent=caseCount+(caseCount===1?" case":" cases");
+  $("lab-suite-count").textContent=suiteCount+(suiteCount===1?" suite":" suites");
   if(!labCaseFile)empty($("lab-case-detail"),"Open a case","Select a saved case to read what it asserts, run it against its evidence, and jump to the recorded calls behind it.");
   if(!labSuiteFile&&!suiteDraft)empty($("lab-suite-detail"),"Open a suite","A suite runs several cases in order and reports one overall result.");
   if(pendingLab) {
@@ -2473,7 +2543,9 @@ function renderLabCaseDetail(data) {
   const candidate=el("select","lab-candidate-choice");
   candidate.setAttribute("aria-label","Evidence to run this case against");
   candidate.add(new Option("Original evidence · "+c.evidence,""));
-  for(const r of workspaceRecordings)if(r.file!==c.evidence)candidate.add(new Option("Candidate · "+(r.name||r.file),r.file));
+  // A directory can hold recordings that share a name (one harness, many runs),
+  // so the file is always shown beside it: two identical options are unusable.
+  for(const r of workspaceRecordings)if(r.file!==c.evidence)candidate.add(new Option("Candidate · "+(r.name||r.file)+" · "+r.file,r.file));
   detail.append(el("label","","Run against"),candidate);
   actions.append(button("Run this case →",()=>runLabCase(c.file,candidate.value),"primary"));
   if(data.evidence.present)actions.append(button("Open saved evidence →",()=>openBehaviourCall(c.evidence,c.evidence_seqs?.[0]||0)));
@@ -3048,7 +3120,11 @@ function renderInvestigations() {
   }
   for(const item of entries) {
     const card=el("article","investigation-bookmark");
-    card.append(el("div","eyebrow",when(item.saved)),el("h2","",item.title),el("p","mono muted",item.file+(item.seq?" · event #"+item.seq:"")));
+    const body=el("div","");
+    const meta=el("p","investigation-meta");
+    meta.append(el("span","when",when(item.saved)),el("span","mono",item.file+(item.seq?" · event #"+item.seq:"")));
+    body.append(el("h2","",item.title),meta);
+    card.append(body);
     const actions=el("div","actions");
     actions.append(button("Reopen investigation →",async()=> {
       returnRoute="#investigations";
