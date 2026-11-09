@@ -1,6 +1,7 @@
 name: release
 
-# Publishes a signed GitHub Release for every v* tag: 6 static binaries,
+# Publishes a signed GitHub Release for every v* tag: the two tested static
+# binaries (windows/amd64, linux/amd64 — see .goreleaser.yaml),
 # checksums.txt (cosign-signed, keyless), one SBOM per archive (syft),
 # and GitHub build provenance attestation. Fulfills the SECURITY.md
 # supply-chain promise. workflow_dispatch backfills older tags.

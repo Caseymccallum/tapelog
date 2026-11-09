@@ -17,9 +17,15 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X main.version={{.Version}} -X github.com/Caseymccallum/tapelog/internal/buildinfo.Version={{.Version}}
-    goos: [darwin, linux, windows]
-    goarch: [amd64, arm64]
+      # The commit is part of the version string a user reads and quotes in a bug
+      # report; without it a CI build carries no provenance at all.
+      - -s -w -X main.version={{.Version}} -X github.com/Caseymccallum/tapelog/internal/buildinfo.Version={{.Version}} -X github.com/Caseymccallum/tapelog/internal/buildinfo.Commit={{.FullCommit}}
+    # The beta offers only the platforms that were built, executed and walked
+    # through. macOS and linux/arm64 compile, but publishing them from a build
+    # matrix would advertise support nobody has run; add them back only after an
+    # executed acceptance pass on those platforms.
+    goos: [linux, windows]
+    goarch: [amd64]
 
 archives:
   - formats: [tar.gz]

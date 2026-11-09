@@ -1,0 +1,73 @@
+name: Installation problem
+description: Downloading, extracting, checksums, PATH or first run did not work
+labels: ["installation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying the beta. Installation problems are the highest-priority feedback right
+        now — a download that does not run is worse than a missing feature.
+
+        **Please do not paste secrets, tokens or private client data.** Paths are fine; credentials
+        are not. Feedback is voluntary and nothing is collected automatically.
+
+        Before filing, please check:
+        - you extracted the whole archive, not just the binary;
+        - on Linux, `chmod +x tapelog` if your unzip tool dropped the executable bit;
+        - the published checksum matches (`sha256sum -c checksums.txt`, or `Get-FileHash` on Windows);
+        - you are running the archive for the platform you actually have (`tapelog version`).
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did it fail?
+      options:
+        - Downloading the archive
+        - Checksum did not match
+        - Extracting the archive
+        - Running tapelog (command not found / will not start)
+        - tapelog demo failed
+        - tapelog web did not open
+        - Worked, but the instructions were wrong or unclear
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: tapelog version
+      description: Output of `tapelog version`, or "would not start".
+      placeholder: "tapelog 0.5.0-beta.1 (<commit>)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 10
+        - Windows 11
+        - Linux amd64
+        - macOS (not an offered platform)
+        - linux/arm64 (not an offered platform)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: commands
+    attributes:
+      label: Exact commands and output
+      description: Copy the command you ran and the full error. Include the archive filename you downloaded.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: |
+        Anything unusual: restricted corporate machine, antivirus quarantine, WSL vs native,
+        a non-ASCII path or username, spaces in the path, or a directory you do not own.

@@ -45,6 +45,14 @@ The signing identity is the release workflow itself — a signature is only
 as trustworthy as the repository's CI. Report suspected supply-chain
 issues via the private channel above.
 
+**Prereleases can differ, and the archive says which you have.** A build made by
+the release workflow is signed and carries an SBOM whatever its version label. A
+`-beta`/`-rc` archive published by hand from a local build carries
+`checksums.txt` and the `MANIFEST.txt` that names its commit, but **no
+signature and no SBOM**; its `MANIFEST.txt` states `signing: NOT PERFORMED`.
+Check the archive before trusting the stronger claim, and treat an unverified
+prerelease as untrusted code like any other unsigned download.
+
 ## Verifying session evidence
 
 Session logs are hash-chained, but a chain alone does not prove *who*

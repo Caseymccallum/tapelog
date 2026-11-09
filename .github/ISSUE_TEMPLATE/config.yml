@@ -1,0 +1,10 @@
+# Feedback routing for the beta.
+# Nothing here collects data automatically; every report is written by the person filing it.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability (do not open a public issue)
+    url: https://github.com/Caseymccallum/tapelog/security/policy
+    about: Report privately. Never paste credentials, private recordings or client data in an issue.
+  - name: Question or general discussion
+    url: https://github.com/Caseymccallum/tapelog/discussions
+    about: Ask about setup, policy design or how the evidence model works. Feedback is welcome, never required.

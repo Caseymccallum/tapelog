@@ -26,13 +26,41 @@ body:
   - type: textarea
     id: doctor
     attributes:
-      label: `tapelog doctor` output
+      label: "`tapelog doctor` output"
       description: Run `tapelog doctor --policy <your policy>` and paste the output.
       render: shell
   - type: input
     id: version
     attributes:
       label: tapelog version
-      placeholder: "tapelog 0.2.0 (from `tapelog version`)"
+      description: Output of `tapelog version` (it prints the version and the commit).
+      placeholder: "tapelog 0.5.0-beta.1 (<commit>)"
     validations:
       required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows amd64
+        - Linux amd64
+        - macOS (not an offered platform — best effort only)
+        - linux/arm64 (not an offered platform — best effort only)
+        - Other / built from source
+    validations:
+      required: true
+  - type: input
+    id: mcp
+    attributes:
+      label: MCP client and server
+      description: Which client (Roo, Cline, Claude Code, Cursor, Hermes, scripted probe…) and which server was on the far side.
+      placeholder: "e.g. Cline 3.x -> @modelcontextprotocol/server-filesystem 1.x"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitised diagnostics
+      description: |
+        `tapelog verify <recording>` output, the relevant `policy/decision` lines, or a recording
+        you made against disposable data. Sanitise paths and identifiers before pasting.
+        Do not attach a recording of real work without reading it first.
+      render: shell

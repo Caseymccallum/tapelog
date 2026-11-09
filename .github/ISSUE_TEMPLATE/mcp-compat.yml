@@ -1,0 +1,81 @@
+name: MCP client or server compatibility
+description: A client or server did not connect, or behaved differently behind Tapelog
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tapelog sits between an MCP client and an MCP server. Compatibility reports are most
+        useful when they name **both ends** and the exact protocol era.
+
+        **Do not paste secrets, tokens, credentials or private client data.** A recording can
+        contain tool arguments and results; sanitise it before attaching. Feedback is voluntary
+        and nothing is collected automatically.
+
+        Two honest limits to check before filing:
+        - Tapelog sees **only** traffic crossing its boundary. A client's built-in tools never
+          appear, so a clean recording is not evidence of clean behaviour.
+        - Older clients may negotiate a different protocol era. If `hermes mcp test` or the client's
+          own connection check fails in about a second, say so — it is usually a handshake-era
+          mismatch, not a boundary failure.
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client (name and version)
+      placeholder: "e.g. Claude Code 2.x, Cline 3.x, Roo 3.x, Cursor 1.x, Hermes 23.0, scripted probe"
+    validations:
+      required: true
+
+  - type: input
+    id: server
+    attributes:
+      label: MCP server (name and version)
+      placeholder: "e.g. @modelcontextprotocol/server-filesystem 1.x, a custom stdio server"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: How is Tapelog attached?
+      options:
+        - tapelog record (stdio wrapper)
+        - tapelog mux / multi-server
+        - tapelog replay (cassette as a server)
+        - tapelog web workspace only (no live client)
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: era
+    attributes:
+      label: Protocol era, if known
+      description: From the client or server documentation, or the `initialize` / `server/discover` exchange in the recording.
+      placeholder: "e.g. 2025-11-25 or 2026-07-28"
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: What happened
+      description: Connection failure, missing tools, wrong result, hang, or a slow start? Quote the exact error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: transcript
+    attributes:
+      label: Sanitised transcript or recording excerpt
+      description: |
+        The `initialize`, `tools/list` and the failing call, with credentials and identifiers removed.
+        `tapelog inspect <recording> --plain` is usually the clearest form.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: tapelog version
+      placeholder: "tapelog 0.5.0-beta.1 (<commit>)"
+    validations:
+      required: true
