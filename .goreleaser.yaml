@@ -53,6 +53,10 @@ archives:
       - CODE_OF_CONDUCT.md
       - RESEARCH.md
       - STACK.md
+      # fileglob's ** requires a subdirectory, so this does not match top-level
+      # docs/*.md; both patterns are needed. A tag-triggered build must ship the
+      # same guides the tested archive does.
+      - docs/*.md
       - docs/**/*.md
       - examples/regression-demo/*.json
       - examples/regression-demo/*.jsonl

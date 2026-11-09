@@ -17,13 +17,23 @@ fi
 commit="$(git rev-parse HEAD)"
 [ -n "$commit" ] || { echo "cannot determine commit for MANIFEST.txt" >&2; exit 1; }
 
+# goreleaser runs this hook for snapshot builds too. Only the release workflow
+# signs and SBOMs, so the manifest must not inherit the stronger claim there.
+if [ -n "${CI:-}" ] && [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  signing="PERFORMED (cosign keyless over checksums.txt by the release workflow)"
+  sbom="PRODUCED per archive (syft/SPDX)"
+else
+  signing="NOT PERFORMED (local goreleaser build; the release workflow signs it)"
+  sbom="NOT PRODUCED locally (the release workflow produces one per archive)"
+fi
+
 {
   echo "version: $version"
   echo "commit: $commit"
   echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "go: $(go version)"
-  echo "signing: PERFORMED (cosign keyless over checksums.txt by the release workflow)"
-  echo "sbom: PRODUCED per archive (syft/SPDX)"
+  echo "signing: $signing"
+  echo "sbom: $sbom"
 } > MANIFEST.txt
 
 cat MANIFEST.txt

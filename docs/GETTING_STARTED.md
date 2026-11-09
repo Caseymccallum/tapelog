@@ -68,7 +68,7 @@ all required checks passed (preflight only; no MCP server started)
 ```
 
 `tapelog version` from a release archive also prints the commit it was built from —
-`tapelog 0.5.0-beta.1 (f45ff18c…)` — while `doctor` prints the version only. A plain `go build`
+`tapelog 0.5.0-beta.1 (d4950d3…)` — while `doctor` prints the version only. A plain `go build`
 prints no commit, which is the signal that the binary carries no build provenance.
 
 ## 3. See it work without an agent
