@@ -31,9 +31,21 @@ native_out="$out"
 if command -v cygpath >/dev/null 2>&1; then native_out="$(cygpath -w "$out")"; fi
 cd "$root"
 
+echo "== manifest"
+{
+  echo "version: $version"
+  echo "commit: $commit$dirty"
+  echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "go: $(go version)"
+  echo "signing: NOT PERFORMED (cosign keyless needs the release workflow's OIDC identity)"
+  echo "sbom: NOT PRODUCED locally (goreleaser produces one per archive in CI)"
+} > "$out/MANIFEST.txt"
+cat "$out/MANIFEST.txt"
+
+
 echo "== building tapelog $version ($commit$dirty)"
 # Platforms to build. Default is every configured target; a beta ships only the
-# platforms that have been executed (see docs/releases/TAPELOG_PUBLIC_BETA_READINESS.md).
+# platforms that have been executed (see docs/GETTING_STARTED.md#supported-platforms).
 #   TAPELOG_PLATFORMS="windows/amd64 linux/amd64" bash scripts/build-release-candidate.sh
 targets=()
 if [ -n "${TAPELOG_PLATFORMS:-}" ]; then
@@ -70,6 +82,7 @@ for target in "${targets[@]}"; do
   chmod 0755 "$out/bin/$bin"
   cp "$out/bin/$bin" "$stage/"
   cp LICENSE README.md CHANGELOG.md THIRD_PARTY_NOTICES.md "$stage/"
+  cp "$out/MANIFEST.txt" "$stage/"
   # The first-run guides ship with the binary: a download-only user has no checkout,
   # and the privacy guidance has to be readable before the first recording.
   mkdir -p "$stage/docs"
@@ -114,18 +127,6 @@ echo "== checksums"
 (cd "$out" && sha256sum tapelog_*.zip tapelog_*.tar.gz > checksums.txt)
 cat "$out/checksums.txt"
 
-echo "== manifest"
-{
-  echo "version: $version"
-  echo "commit: $commit$dirty"
-  echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "go: $(go version)"
-  echo "signing: NOT PERFORMED (cosign keyless needs the release workflow's OIDC identity)"
-  echo "sbom: NOT PRODUCED locally (goreleaser produces one per archive in CI)"
-  echo "archives:"
-  ls -1 "$out"/tapelog_*.zip "$out"/tapelog_*.tar.gz 2>/dev/null | sed 's#.*/##' | sed 's/^/  - /'
-} > "$out/MANIFEST.txt"
-cat "$out/MANIFEST.txt"
 rm -rf "$out/stage"
 echo
 echo "candidate written to $out"
