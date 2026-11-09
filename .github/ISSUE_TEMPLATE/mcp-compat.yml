@@ -72,6 +72,27 @@ body:
         `tapelog inspect <recording> --plain` is usually the clearest form.
       render: shell
 
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: The smallest sequence that shows it — the config entry, the client action, and the first wrong result.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows amd64
+        - Linux amd64
+        - macOS (not an offered platform — best effort only)
+        - linux/arm64 (not an offered platform — best effort only)
+        - Other / built from source
+    validations:
+      required: true
+
   - type: input
     id: version
     attributes:

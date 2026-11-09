@@ -36,7 +36,7 @@ no Go toolchain, no account, no network.
 Verify the download against the `checksums.txt` published beside it:
 
 ```bash
-# Linux / macOS
+# Linux
 sha256sum -c checksums.txt --ignore-missing
 # Windows (PowerShell)
 Get-FileHash .\tapelog_0.5.0-beta.1_windows_amd64.zip -Algorithm SHA256
@@ -62,12 +62,14 @@ $ ./bin/tapelog doctor
 ! plugins — none configured (optional)
 ! os-sandbox — no OS enforcement on this platform (Linux required); policy still enforces
 ✓ terminal — interactive approval prompts available
+✓ log-location — . is writable
+✓ node — on PATH (for npx-based MCP servers)
+all required checks passed (preflight only; no MCP server started)
 ```
 
-This line is the M15 release candidate; the published release is `v0.4.0`, so the strings cannot be
-confused. A build stamped with a commit (release archives are) additionally prints it:
-`tapelog 0.5.0-beta.1 (abc1234)`. A plain `go build` prints no commit — that is the signal that the
-binary carries no build provenance.
+`tapelog version` from a release archive also prints the commit it was built from —
+`tapelog 0.5.0-beta.1 (f45ff18c…)` — while `doctor` prints the version only. A plain `go build`
+prints no commit, which is the signal that the binary carries no build provenance.
 
 ## 3. See it work without an agent
 
@@ -116,9 +118,11 @@ no network service and no third-party server are needed for either path.
 > - For the beta, start with **fictional or disposable data** until you have read
 >   [Security and limitations](SECURITY-AND-LIMITATIONS.md) and know which mode you want.
 > - Tapelog **does not send recordings anywhere**. There is no telemetry, no account and no automatic
->   network call: it writes local files. The two network features are opt-in commands
->   (`checkpoint --witness rekor` submits to a public transparency log; `export otel <endpoint>`
->   sends traces to the endpoint you name).
+>   network call: it writes local files. Two commands can contact the network, and only when you run
+>   them: `tapelog checkpoint` submits the checkpoint's chain head to a public transparency log
+>   (Rekor is the default — pass `--witness none` to keep it local), and
+>   `tapelog export otel <session.jsonl> --endpoint <url>` sends OTLP traces to the endpoint you name
+>   (with no endpoint it prints to stdout).
 
 
 ## 4. Put it in front of a server you already use

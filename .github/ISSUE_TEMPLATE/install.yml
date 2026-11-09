@@ -55,6 +55,13 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: mcp
+    attributes:
+      label: MCP client and server (if any)
+      description: Which client and server you were setting up. Write "none — install only" if you did not get that far.
+      placeholder: "e.g. Cline 3.x -> @modelcontextprotocol/server-filesystem 1.x"
+
   - type: textarea
     id: commands
     attributes:

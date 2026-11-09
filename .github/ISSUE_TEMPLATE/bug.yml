@@ -55,6 +55,8 @@ body:
       label: MCP client and server
       description: Which client (Roo, Cline, Claude Code, Cursor, Hermes, scripted probe…) and which server was on the far side.
       placeholder: "e.g. Cline 3.x -> @modelcontextprotocol/server-filesystem 1.x"
+    validations:
+      required: true
   - type: textarea
     id: diagnostics
     attributes:
@@ -64,3 +66,5 @@ body:
         you made against disposable data. Sanitise paths and identifiers before pasting.
         Do not attach a recording of real work without reading it first.
       render: shell
+    validations:
+      required: true

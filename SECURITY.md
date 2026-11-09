@@ -4,8 +4,9 @@
 
 Please **do not** open a public issue for security vulnerabilities.
 
-- Use **GitHub Security Advisories → "Report a vulnerability"** on this repository (preferred), or
-- Email: `security@tapelog.dev` *(placeholder — wire before launch)*
+- Use **GitHub Security Advisories → "Report a vulnerability"** on this repository. It is the only
+  private channel wired for this beta; there is no security mailbox to fall back on, and a public
+  issue is not a private report.
 
 Include: description, reproduction steps, impact, and any suggested fix. We acknowledge within **72 hours** and aim to ship fixes within **14 days** for high-severity issues. Credit is given unless you prefer anonymity.
 
@@ -80,7 +81,7 @@ Per docs/THREAT_MODEL.md, tapelog is a security-adjacent tool. We therefore hold
 - **SBOM** per archive (syft/SPDX) + **GitHub build provenance attestation**
   — **automated** in the same workflow (`workflow_dispatch` backfills
   older tags)
-- **No telemetry, ever.** Nothing is collected or reported, and no network call happens unless you ask for one: `checkpoint --witness rekor` submits to a public transparency log, `export otel` sends OTLP traces to the endpoint you name, and MCP traffic goes to the servers you configure.
+- **No telemetry, ever.** Nothing is collected or reported, and Tapelog makes no network call on its own: it writes local files and talks to the MCP servers you configure. Two commands can reach the network, and only when you run them — `tapelog checkpoint` submits the checkpoint's chain head to a public transparency log (Rekor is the default; `--witness none` keeps it local), and `tapelog export otel <session.jsonl> --endpoint <url>` sends OTLP traces to the endpoint you name.
 - **Dependency hygiene:** automated updates, `govulncheck` in CI
 - **Prompt-response:** security fixes are released before public disclosure timelines typical for feature work
 

@@ -58,12 +58,11 @@ if [ -n "${TAPELOG_PLATFORMS:-}" ]; then
     esac
   done
 else
+  # Only platforms that have been executed. Add a target here and in
+  # .goreleaser.yaml together, after an acceptance pass on that platform.
   targets=(
     "windows amd64 .exe zip"
     "linux amd64 '' tar.gz"
-    "linux arm64 '' tar.gz"
-    "darwin amd64 '' tar.gz"
-    "darwin arm64 '' tar.gz"
   )
 fi
 for target in "${targets[@]}"; do
@@ -85,8 +84,11 @@ for target in "${targets[@]}"; do
   cp "$out/MANIFEST.txt" "$stage/"
   # The first-run guides ship with the binary: a download-only user has no checkout,
   # and the privacy guidance has to be readable before the first recording.
-  mkdir -p "$stage/docs"
-  cp docs/GETTING_STARTED.md docs/SECURITY-AND-LIMITATIONS.md docs/REGRESSION-LAB.md "$stage/docs/"
+  # Every guide the shipped docs link to, so a downloader is not sent to a 404.
+  mkdir -p "$stage/docs/adr"
+  cp docs/*.md "$stage/docs/"
+  cp docs/adr/*.md "$stage/docs/adr/" 2>/dev/null || true
+  cp SECURITY.md ARCHITECTURE.md CONTRIBUTING.md "$stage/"
   # The Getting Started walkthrough ends with the fictional Regression Lab suite. A
   # download-only user has no source checkout, so the suite travels with the archive.
   mkdir -p "$stage/examples/regression-demo"

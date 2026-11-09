@@ -9,6 +9,9 @@ project_name: tapelog
 before:
   hooks:
     - go mod tidy
+    # The archive carries its own provenance; a downloader can read the commit
+    # straight out of it without trusting the release page.
+    - bash scripts/goreleaser-manifest.sh
 
 builds:
   - id: tapelog
@@ -33,6 +36,24 @@ archives:
       - goos: windows
         formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # goreleaser's default is LICENSE/README/CHANGELOG only. A download-only user
+    # needs the guides and the fictional demo the guides run, exactly as the local
+    # candidate build ships them; without this list CI replaces the tested archive
+    # with one whose documented commands cannot run.
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - THIRD_PARTY_NOTICES.md
+      - MANIFEST.txt
+      - SECURITY.md
+      - ARCHITECTURE.md
+      - CONTRIBUTING.md
+      - docs/**/*.md
+      - examples/regression-demo/*.json
+      - examples/regression-demo/*.jsonl
+      - examples/regression-demo/*.md
+      - examples/regression-demo/*.sh
 
 checksum:
   name_template: checksums.txt

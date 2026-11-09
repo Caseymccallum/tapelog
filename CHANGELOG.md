@@ -27,6 +27,16 @@ source of truth for the version.
   executed and walked through. macOS and linux/arm64 compile and are deliberately not offered.
 ## [Unreleased]
 
+- **Release blockers found by the independent review, fixed before publication** — `tapelog checkpoint`
+  submits to Rekor **by default**, and three documents described it as opt-in; the notes, GETTING_STARTED
+  and SECURITY.md now say the default and name `--witness none` as the way to keep a checkpoint local,
+  and the `export otel` example is the form the CLI accepts (`export otel <session.jsonl> --endpoint <url>`).
+  goreleaser's archive file list omitted the docs and the demo suite the guides run, so a tag-triggered
+  build would have replaced the tested archive with four files; it now ships the same payload plus a
+  `MANIFEST.txt` written by `scripts/goreleaser-manifest.sh`. The local packaging script defaults to the
+  two platforms that have been executed, and both builders bundle every guide the shipped docs link to.
+  The bundled doctor sample matches real output, and the release scope is stated as tested.
+
 - **The Behaviour summary keeps its six metrics in a 3x2 block (design)** — the strip is a four-column
   grid, so six metrics wrapped into a row of four and an orphaned pair. The second row's first cell
   kept the divider's left border and 20px padding that every non-first cell carries, so its number
