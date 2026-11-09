@@ -11,7 +11,7 @@ front of one MCP server, record a real interaction, and replay it —
 within five minutes ([docs/QUICKSTART.md](docs/QUICKSTART.md)). The
 follow-on five minutes (record → denied call → inspect → verify →
 replay → what-if) must stay demonstrable end to end
-([examples/trajectory-demo](../examples/trajectory-demo)).
+([examples/trajectory-demo](examples/trajectory-demo)).
 
 Every change is judged against that. If a change makes the product
 slower to understand, install, or prove — or breaks the demo path — it

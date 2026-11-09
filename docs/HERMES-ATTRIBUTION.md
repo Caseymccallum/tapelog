@@ -101,9 +101,9 @@ and never invents a group: absent attribution is reported as absent.
 
 ## If you want to attempt the patched-client experiment
 
-It is a controlled experiment on someone's working installation, not an install step. Read
-[`M14_HERMES_GATEWAY_PLAN.md`](reviews/TAPELOG_M14_HERMES_GATEWAY_PLAN.md) and the runbook it
-describes before doing anything, and expect this shape:
+It is a controlled experiment on someone's working installation, not an install step. Start from
+the client setup notes in [`CLIENT-SETUP.md`](CLIENT-SETUP.md), rehearse off-tree first, and expect
+this shape:
 
 1. Back up every file you will touch and record its hash; verify the backup byte-for-byte.
 2. Patch the client off-tree first and rehearse, so nothing is modified in place.

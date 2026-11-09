@@ -49,4 +49,3 @@ included paths:
   docs/TESTING.md
   docs/THREAT_MODEL.md
   docs/WORKBENCH.md
-  docs/reviews/TAPELOG_LOCAL_REVIEW_GUIDE.md

@@ -99,9 +99,8 @@ tapelog policy whatif --policy packs/starter.yaml denied.jsonl
 
 That is the product: **record → enforce → inspect → verify → replay →
 what-if** — a flight recorder your CI can assert over. The full command
-tour is in the [README](../README.md#command-tour); the 30-minute
-walkthrough of everything else is
-[docs/launch/TESTING-GUIDE.md](launch/TESTING-GUIDE.md).
+tour is in the [README](../README.md#command-tour); the longer
+walkthrough of everything else is [docs/TESTING.md](TESTING.md).
 
 ## No agent yet?
 

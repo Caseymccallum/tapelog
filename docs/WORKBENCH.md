@@ -107,9 +107,9 @@ before you save anything. It is read-only by construction:
 - No endpoint writes, replaces, formats or activates a policy. Saving a
   candidate is an explicit browser action into a **new** file, and a non-empty
   file is refused.
-- The active policy is only ever read. Verify that yourself with
-  `docs/reviews/evidence/m5/verify-no-write.ps1`, which hashes the policy and
-  every recording before and after exercising all Studio endpoints.
+- The active policy is only ever read. Verify that yourself: hash the policy
+  file and every recording before and after exercising every Studio endpoint;
+  none of the hashes may change.
 - The builder expresses only what the engine supports: `allow`/`deny`/`confirm`,
   tool globs, one top-level argument condition per clause (`equals`, `starts
   with`, `ends with`, `contains`, whole numbers, booleans), task labels and an

@@ -1,11 +1,12 @@
 # Roadmap
 
-## Developer experience milestone (local review branch, 2026-11-07)
+## Developer experience milestone (2026-11-07)
 
 - Setup preview/new candidate generation for an existing named stdio server.
 - Executable/port preflight, scoped inspection summaries and malformed-log diagnosis.
 - Offline first-session demonstration and [beginner guide](FIRST-SESSION.md).
-- Evidence and release gates: [DX review](reviews/TAPELOG_DEVELOPER_EXPERIENCE_EVOLUTION.md).
+- Evidence and release gates: the developer-experience review that accompanied this milestone
+  (kept with the project records, not published with the beta).
 - No policy, transport, recording-format or replay semantics changed. This is not a v0.5/v0.6 expansion or a public release.
 
 
