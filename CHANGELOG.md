@@ -41,10 +41,13 @@ source of truth for the version.
   is the only primary action; `Run saved suite →` is secondary and disabled while the draft differs,
   with a line stating it runs the saved file rather than the draft. The CLI block sits apart behind an
   accent rule with a working `Copy` action. Switching suites or starting a new one with unsaved edits
-  now asks first, returning to the same suite keeps the draft, and closing the tab warns; a failed
-  save is a `role="alert"` banner instead of silence. Measured at 320/390/684/768/1440: 0 axe
+  now asks first, returning to the same suite keeps the draft, declining one restores the address,
+  and closing the tab warns; a failed save replaces any earlier "Saved" line and leads the panel as
+  a `role="alert"` banner, the state after a save comes from the server's response rather than a
+  second index read, a new suite reads `Not saved yet` instead of `Saved`, and the Add select is
+  named by its visible label instead of a conflicting `aria-label`. Measured at 320/390/684/768/1440: 0 axe
   violations, no small targets, no page overflow, description measure 530px at every width, contrast
-  5.6–8.4:1. Frontend suite 60 → 64 tests.
+  5.6–8.4:1. Frontend suite 60 → 68 tests.
 
 - **Observed-group rows now lead with the conversation they represent (design)** — the user-agent
   disclosure marker became a *grid item* once the summary was laid out as a grid, so it claimed the

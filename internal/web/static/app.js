@@ -2774,7 +2774,14 @@ function openLabSuite(file) {
     renderSuiteEditor();
     return;
   }
-  if(!confirmDiscardSuiteEdits())return;
+  if(!confirmDiscardSuiteEdits()) {
+    // The hash already moved to the declined suite; put it back so the address
+    // bar, the list highlight and the editor all describe the same suite.
+    if(labSuiteFile&&location.hash!=="#lab&suite="+encodeURIComponent(labSuiteFile)) {
+      history.replaceState(null,"","#lab&suite="+encodeURIComponent(labSuiteFile));
+    }
+    return;
+  }
   ++labRunRequest;
   labSuiteFile=file;
   setLabTab("suites",false);
@@ -2800,8 +2807,9 @@ function refreshSuiteState() {
   if(!draft)return;
   const badge=$("suite-save-state");
   if(badge) {
-    badge.className="badge suite-save-state "+(draft.dirty?"denied":"success");
-    badge.textContent=draft.dirty?"Unsaved changes":"Saved";
+    // A new suite has no file yet: "Saved" would be a lie until the first save.
+    badge.className="badge suite-save-state "+(draft.isNew?"":draft.dirty?"denied":"success");
+    badge.textContent=draft.isNew?"Not saved yet":draft.dirty?"Unsaved changes":"Saved";
   }
   const count=$("suite-case-count");
   if(count)count.textContent=draft.cases.length+(draft.cases.length===1?" case":" cases");
@@ -2833,7 +2841,7 @@ function renderSuiteEditor() {
   const countBadge=el("span","badge suite-case-count",draft.cases.length+(draft.cases.length===1?" case":" cases"));
   countBadge.id="suite-case-count";
   status.append(countBadge);
-  const saveBadge=el("span","badge suite-save-state "+(draft.dirty?"denied":"success"),draft.dirty?"Unsaved changes":"Saved");
+  const saveBadge=el("span","badge suite-save-state "+(draft.isNew?"":draft.dirty?"denied":"success"),draft.isNew?"Not saved yet":draft.dirty?"Unsaved changes":"Saved");
   saveBadge.id="suite-save-state";
   status.append(saveBadge);
   head.append(status);
@@ -2890,7 +2898,6 @@ function renderSuiteEditor() {
     const row=el("div","suite-add-row");
     const select=el("select","");
     select.id="lab-add-case";
-    select.setAttribute("aria-label","Case to add");
     for(const c of available)select.add(new Option(c.title||c.file,c.file));
     row.append(select);
     row.append(button("Add to suite",()=> {
@@ -2952,12 +2959,20 @@ function renderSuiteEditor() {
   }
   refreshSuiteState();
 }
+function clearSuiteBanners(detail) {
+  for(const child of [...detail.children])if(String(child.className||"").startsWith("banner"))child.remove();
+}
 async function saveSuiteDraft() {
+  const detail=$("lab-suite-detail");
   const draft=suiteDraft;
   if(!draft)return;
   const fail=text=> {
-    const banner=notice($("lab-suite-detail"),text,"warning");
+    // One failure at a time: a stale "Saved as …" above an error reads as success.
+    clearSuiteBanners(detail);
+    const banner=el("div","banner warning",text);
     banner.setAttribute("role","alert");
+    detail.prepend(banner);
+    if(banner.scrollIntoView)banner.scrollIntoView({block:"nearest"});
   };
   if(!draft.title.trim()) {
     fail("Give the suite a title before saving.");
@@ -2980,13 +2995,30 @@ async function saveSuiteDraft() {
       )
     }
     );
-    // The server accepted the suite: the draft is no longer ahead of the file.
-    // Clearing this before reopening also lets openLabSuite reload the saved
-    // revision instead of keeping the (now identical) dirty draft.
+    // The server accepted the suite. Take the new state from its response so a
+    // failed index reload cannot reopen the pre-save revision as "Saved".
+    clearSuiteBanners(detail);
+    draft.file=data.file;
+    draft.title=draft.title.trim();
     draft.dirty=false;
-    await loadLab();
-    openLabSuite(data.file);
-    notice($("lab-suite-detail"),"Saved as "+data.file+".","");
+    draft.isNew=false;
+    if(data.revision)draft.revision=data.revision;
+    if(Array.isArray(data.missing))draft.missing=data.missing;
+    if(labIndex) {
+      const suites=labIndex.suites||(labIndex.suites=[]);
+      const entry=suites.find(s=>s.file===data.file);
+      const saved= {file:data.file,title:draft.title,cases:draft.cases.slice(),revision:draft.revision,missing:draft.missing||[]};
+      if(entry)Object.assign(entry,saved);
+      else suites.push(saved);
+      renderLabSuites(labIndex);
+    }
+    if(labSuiteFile!==data.file) {
+      labSuiteFile=data.file;
+      setWorkspaceRoute("#lab&suite="+encodeURIComponent(data.file));
+    }
+    renderSuiteEditor();
+    notice(detail,"Saved as "+data.file+".","");
+    loadLab().catch(()=> {});
   } catch(e) {
     fail(e.message);
   }

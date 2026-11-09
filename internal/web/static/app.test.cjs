@@ -12,7 +12,7 @@ class Node {
  set outerHTML(_){throw new Error('Untrusted HTML sink used');}
  append(...nodes){for(const n of nodes)if(n)n.parent=this;this.children.push(...nodes);}
  remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);}
- prepend(...nodes){this.children.unshift(...nodes);}
+ prepend(...nodes){for(const n of nodes){this.children=this.children.filter(c=>c!==n);if(n)n.parent=this;}this.children.unshift(...nodes);}
  focus(){}
  scrollIntoView(){}
  replaceChildren(...nodes){this.text='';for(const n of nodes)if(n)n.parent=this;this.children=nodes;if(this.tagName==='select')this.value='';}
@@ -618,7 +618,9 @@ test('the saved-suite editor reads as a composed list, not glued inline text',()
  const run=all(detail).find(n=>n.id==='suite-run-saved');
  assert.ok(run&&run.disabled===false);
  const select=all(detail).find(n=>n.id==='lab-add-case');
- assert.ok(select);assert.equal(select.getAttribute('aria-label'),'Case to add');
+ assert.ok(select);assert.equal(select.getAttribute('aria-label'),undefined,'the visible label must name the control (WCAG 2.5.3)');
+ const addLabel=all(detail).find(n=>n.tagName==='label'&&n.getAttribute('for')==='lab-add-case');
+ assert.match(addLabel.textContent,/Add a case/);
  assert.match(text,/tapelog lab suite --dir \. --suite suite\.json/);
 });
 test('unsaved suite edits are signalled and protected before switching suites',()=>{
@@ -663,6 +665,32 @@ test('a successful copy clears the earlier copy-it-yourself warning',async()=>{
  await copy.onclick();
  assert.doesNotMatch(nodes.get('lab-suite-detail').textContent,/Copy this command yourself/,'the stale warning must go once the copy works');
  assert.equal(copy.textContent,'Copied');
+});
+test('a brand-new suite says it is not saved yet, not "Saved"',()=>{
+ const {context,nodes}=app();
+ vm.runInContext('labIndex={cases:[{file:"01-allowed-read.json",title:"T"}],suites:[]};suiteDraft={file:"",title:"",cases:[],revision:"",isNew:true,missing:[]};renderSuiteEditor()',context);
+ const all=n=>[n,...n.children.flatMap(all)];
+ const badge=all(nodes.get('lab-suite-detail')).find(n=>n.id==='suite-save-state');
+ assert.equal(badge.textContent,'Not saved yet');
+ assert.doesNotMatch(badge.className,/success/);
+});
+test('declining a suite switch puts the address bar back on the open suite',()=>{
+ const {context}=app();
+ context.history.replaceState=(...args)=>{context.replaced=args;};
+ vm.runInContext('labIndex={cases:[],suites:[{file:"other.json",title:"Other",cases:[],revision:"x"}]};suiteDraft={file:"suite.json",title:"Edited",cases:[],revision:"r",isNew:false,dirty:true};labSuiteFile="suite.json";confirm=()=>false;location.hash="#lab&suite=other.json";openLabSuite("other.json")',context);
+ assert.equal(context.replaced[2],'#lab&suite=suite.json','a declined switch must not leave the hash naming the other suite');
+});
+test('a failed save clears the earlier success line and leads the panel',async()=>{
+ const {context,nodes}=app();
+ vm.runInContext('labIndex={cases:[],suites:[]};suiteDraft={file:"suite.json",title:"T",cases:["01-allowed-read.json"],revision:"r",isNew:false,dirty:true};renderSuiteEditor()',context);
+ const detail=nodes.get('lab-suite-detail');
+ vm.runInContext('notice(document.getElementById("lab-suite-detail"),"Saved as suite.json.","")',context);
+ vm.runInContext('api=async()=>{throw new Error("changed on disk")}',context);
+ await vm.runInContext('saveSuiteDraft()',context);
+ const banners=detail.children.filter(n=>String(n.className||'').startsWith('banner'));
+ assert.equal(banners.length,1,'the stale success line must not sit above the failure');
+ assert.equal(detail.children[0],banners[0],'the failure must be at the top of the panel');
+ assert.match(banners[0].textContent,/changed on disk/);
 });
 test('activity rows expose their visible label rather than an incompatible override',async()=>{
  const {context,nodes}=app();context.response={session:{calls:1},total:1,findings:[],activities:[{seq:3,tool:'read_file',status:'success',verdict:'allow',server:'fictional',ts:'2026-01-01T00:00:00Z',duration_ms:1}]};
