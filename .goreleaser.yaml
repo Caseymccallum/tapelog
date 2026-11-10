@@ -36,10 +36,6 @@ archives:
       - goos: windows
         formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    # Keep repository paths inside the archive (docs/…, examples/…). goreleaser
-    # otherwise strips the parent directory, which puts GETTING_STARTED.md at the
-    # root and breaks every relative link between the guides.
-    strip_parent: false
     # goreleaser's default is LICENSE/README/CHANGELOG only. A download-only user
     # needs the guides and the fictional demo the guides run, exactly as the local
     # candidate build ships them; without this list CI replaces the tested archive
@@ -57,15 +53,15 @@ archives:
       - CODE_OF_CONDUCT.md
       - RESEARCH.md
       - STACK.md
-      # fileglob's ** requires a subdirectory, so this does not match top-level
-      # docs/*.md; both patterns are needed. A tag-triggered build must ship the
-      # same guides the tested archive does.
-      - docs/*.md
-      - docs/**/*.md
-      - examples/regression-demo/*.json
-      - examples/regression-demo/*.jsonl
-      - examples/regression-demo/*.md
-      - examples/regression-demo/*.sh
+      # src/dst keeps the repository path inside the archive. A bare glob entry
+      # is archived relative to the glob's own base, which flattened the guides to
+      # the root and broke every relative link between them.
+      - src: docs/*.md
+        dst: docs
+      - src: docs/adr/*.md
+        dst: docs/adr
+      - src: examples/regression-demo/*
+        dst: examples/regression-demo
 
 checksum:
   name_template: checksums.txt
