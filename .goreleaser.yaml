@@ -36,6 +36,10 @@ archives:
       - goos: windows
         formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Keep repository paths inside the archive (docs/…, examples/…). goreleaser
+    # otherwise strips the parent directory, which puts GETTING_STARTED.md at the
+    # root and breaks every relative link between the guides.
+    strip_parent: false
     # goreleaser's default is LICENSE/README/CHANGELOG only. A download-only user
     # needs the guides and the fictional demo the guides run, exactly as the local
     # candidate build ships them; without this list CI replaces the tested archive

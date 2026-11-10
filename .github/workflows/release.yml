@@ -1,28 +1,42 @@
 name: release
 
-# Publishes a signed GitHub Release for every v* tag: the two tested static
-# binaries (windows/amd64, linux/amd64 — see .goreleaser.yaml),
-# checksums.txt (cosign-signed, keyless), one SBOM per archive (syft),
-# and GitHub build provenance attestation. Fulfills the SECURITY.md
-# supply-chain promise. workflow_dispatch backfills older tags.
+# Tag-triggered release, split so nothing is published before the artifacts it
+# would publish have been built, verified on both platforms, and attested.
+#
+#   build          goreleaser release --skip=publish -> archives, checksums,
+#                  cosign signature, SBOMs, provenance attestation
+#   verify-linux   extract the Linux archive and execute it
+#   verify-windows extract the Windows archive and execute it
+#   publish        create the GitHub prerelease from exactly those files
+#
+# workflow_dispatch backfills an older tag with the same sequencing.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "tag to (re)release, e.g. v0.2.0"
+        description: "tag to (re)release, e.g. v0.5.0-beta.1"
         required: true
 
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
-  goreleaser:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # cosign keyless + provenance attestation
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,19 +47,172 @@ jobs:
           go-version-file: go.mod
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
-      - name: Release (build, SBOM, sign, publish)
+      - name: Build, checksum, sign and SBOM (does not publish)
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: v2.18.2
-          args: release --clean
+          args: release --clean --skip=publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assert the expected artifacts exist
+        run: |
+          set -euo pipefail
+          ls -l dist
+          test -f dist/checksums.txt
+          test -f dist/checksums.txt.sig
+          test -f dist/checksums.txt.pem
+          test "$(ls dist/*windows_amd64.zip | wc -l)" = "1"
+          test "$(ls dist/*linux_amd64.tar.gz | wc -l)" = "1"
+          test "$(ls dist/*.spdx.json 2>/dev/null | wc -l)" -ge 1
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
+            dist/tapelog_*.zip
+            dist/tapelog_*.tar.gz
             dist/checksums.txt
-            dist/*.sig
-            dist/*.pem
+            dist/checksums.txt.sig
+            dist/checksums.txt.pem
+            dist/*.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
 
+  verify-linux:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Verify the Linux archive executes and carries the expected payload
+        run: |
+          set -euo pipefail
+          expected="$(git rev-parse HEAD)"
+          (cd dist && sha256sum -c checksums.txt)
+          tar -tzf dist/*linux_amd64.tar.gz | grep -q 'docs/GETTING_STARTED.md'
+          tar -tzf dist/*linux_amd64.tar.gz | grep -q 'examples/regression-demo/demo-suite.json'
+          tar -tzf dist/*linux_amd64.tar.gz | grep -q 'MANIFEST.txt'
+          mkdir -p pkg && tar -xzf dist/*linux_amd64.tar.gz -C pkg
+          test -x pkg/*/tapelog
+          cd pkg/*/
+          version="$(./tapelog version)"
+          echo "$version"
+          echo "$version" | grep -F "($expected)" || { echo "version does not name the released commit $expected"; exit 1; }
+          grep -F "commit: $expected" MANIFEST.txt
+          ./tapelog demo --dir /tmp/demo-run
+          ./tapelog verify /tmp/demo-run/recordings/*.jsonl | grep -F 'chain intact'
+          set +e
+          ./tapelog lab suite --dir examples/regression-demo --suite demo-suite.json > /tmp/lab.log 2>&1
+          code=$?
+          set -e
+          test "$code" = "1" || { echo "bundled suite exited $code, expected 1 (a deliberate FAIL)"; cat /tmp/lab.log; exit 1; }
+          grep -F '2 pass, 1 fail, 2 inconclusive' /tmp/lab.log
+          ./tapelog web --dir examples/regression-demo --listen 127.0.0.1:8989 > /tmp/web.log 2>&1 &
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8989/api/sessions > /dev/null && break; sleep 0.5; done
+          curl -fsS http://127.0.0.1:8989/ | grep -F 'Your agent sessions'
+          curl -fsS http://127.0.0.1:8989/app.js | grep -F 'suite-case-list'
+          curl -fsS http://127.0.0.1:8989/app.css | grep -F '#behaviour-stats'
+          echo "linux archive verified"
+
+  verify-windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Verify the Windows archive executes and carries the expected payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (git rev-parse HEAD).Trim()
+          $zip = Get-ChildItem dist/*windows_amd64.zip | Select-Object -First 1
+          $line = (Get-Content dist/checksums.txt | Where-Object { $_ -match [regex]::Escape($zip.Name) })
+          if (-not $line) { throw "no checksum line for $($zip.Name)" }
+          $want = ($line -replace '^[0-9a-f]{64}\s+\*?', '').Trim()
+          $got = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $want.ToLower()) { throw "checksum mismatch: $got != $want" }
+          Expand-Archive -Path $zip.FullName -DestinationPath pkg -Force
+          $dir = Get-ChildItem pkg -Directory | Select-Object -First 1
+          Push-Location $dir.FullName
+          try {
+            $version = & .\tapelog.exe version
+            Write-Host $version
+            if ($version -notmatch [regex]::Escape("($expected)")) { throw "version does not name the released commit $expected" }
+            if (-not (Select-String -Path MANIFEST.txt -SimpleMatch "commit: $expected" -Quiet)) { throw "MANIFEST.txt does not name $expected" }
+            if (-not (Test-Path docs/GETTING_STARTED.md)) { throw "docs/GETTING_STARTED.md missing" }
+            if (-not (Test-Path examples/regression-demo/demo-suite.json)) { throw "demo suite missing" }
+            & .\tapelog.exe demo --dir demo-run
+            if ($LASTEXITCODE -ne 0) { throw "demo failed" }
+            $rec = (Get-ChildItem demo-run/recordings/*.jsonl | Select-Object -First 1).FullName
+            $verify = & .\tapelog.exe verify $rec
+            if ($verify -notmatch 'chain intact') { throw "verify did not report an intact chain" }
+            & .\tapelog.exe lab suite --dir examples/regression-demo --suite demo-suite.json *> lab.log
+            if ($LASTEXITCODE -ne 1) { throw "bundled suite exited $LASTEXITCODE, expected 1 (a deliberate FAIL)" }
+            if (-not (Select-String -Path lab.log -SimpleMatch '2 pass, 1 fail, 2 inconclusive' -Quiet)) { throw "suite summary missing" }
+            $proc = Start-Process -FilePath .\tapelog.exe -ArgumentList 'web','--dir','examples/regression-demo','--listen','127.0.0.1:8989' -PassThru -WindowStyle Hidden
+            try {
+              $ready = $false
+              for ($i = 0; $i -lt 40; $i++) {
+                try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8989/api/sessions -TimeoutSec 2 | Out-Null; $ready = $true; break } catch { Start-Sleep -Milliseconds 500 }
+              }
+              if (-not $ready) { throw "web server did not answer on 127.0.0.1:8989" }
+              $root = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8989/).Content
+              if ($root -notmatch 'Your agent sessions') { throw "workspace HTML not served" }
+              $js = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8989/app.js).Content
+              if ($js -notmatch 'suite-case-list') { throw "embedded workspace assets missing" }
+            } finally {
+              if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+            }
+            Write-Host "windows archive verified"
+          } finally {
+            Pop-Location
+          }
+
+  publish:
+    needs: [build, verify-linux, verify-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Publish the verified artifacts as a prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          notes="release-notes/${TAG}.md"
+          shopt -s nullglob
+          sboms=(dist/*.spdx.json)
+          assets=(dist/tapelog_*.zip dist/tapelog_*.tar.gz dist/checksums.txt dist/checksums.txt.sig dist/checksums.txt.pem)
+          if [ -f "$notes" ]; then
+            gh release create "$TAG" --prerelease --title "Tapelog $TAG" --notes-file "$notes" "${assets[@]}" "${sboms[@]}"
+          else
+            gh release create "$TAG" --prerelease --title "Tapelog $TAG" --generate-notes "${assets[@]}" "${sboms[@]}"
+          fi
+          gh release view "$TAG" --json tagName,isPrerelease,assets --jq '{tag:.tagName, prerelease:.isPrerelease, assets:[.assets[].name]}'

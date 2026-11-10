@@ -25,7 +25,9 @@ jobs:
         run: go test -race -count=1 -timeout 10m ./...
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          # v1.1.4 panics on this module set (`unexpected expr: *ast.KeyValueExpr`) because its
+          # pinned x/tools cannot parse Go 1.27 code; v1.9.0 was run against this tree before pinning.
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./...
 
   test-windows:
