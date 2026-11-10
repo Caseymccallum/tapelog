@@ -109,34 +109,7 @@ jobs:
           name: dist
           path: dist
       - name: Verify the Linux archive executes and carries the expected payload
-        run: |
-          set -euo pipefail
-          expected="$(git rev-parse HEAD)"
-          (cd dist && sha256sum -c checksums.txt)
-          tar -tzf dist/*linux_amd64.tar.gz | grep -q 'docs/GETTING_STARTED.md'
-          tar -tzf dist/*linux_amd64.tar.gz | grep -q 'examples/regression-demo/demo-suite.json'
-          tar -tzf dist/*linux_amd64.tar.gz | grep -q 'MANIFEST.txt'
-          mkdir -p pkg && tar -xzf dist/*linux_amd64.tar.gz -C pkg
-          test -x pkg/*/tapelog
-          cd pkg/*/
-          version="$(./tapelog version)"
-          echo "$version"
-          echo "$version" | grep -F "($expected)" || { echo "version does not name the released commit $expected"; exit 1; }
-          grep -F "commit: $expected" MANIFEST.txt
-          ./tapelog demo --dir /tmp/demo-run
-          ./tapelog verify /tmp/demo-run/recordings/*.jsonl | grep -F 'chain intact'
-          set +e
-          ./tapelog lab suite --dir examples/regression-demo --suite demo-suite.json > /tmp/lab.log 2>&1
-          code=$?
-          set -e
-          test "$code" = "1" || { echo "bundled suite exited $code, expected 1 (a deliberate FAIL)"; cat /tmp/lab.log; exit 1; }
-          grep -F '2 pass, 1 fail, 2 inconclusive' /tmp/lab.log
-          ./tapelog web --dir examples/regression-demo --listen 127.0.0.1:8989 > /tmp/web.log 2>&1 &
-          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8989/api/sessions > /dev/null && break; sleep 0.5; done
-          curl -fsS http://127.0.0.1:8989/ | grep -F 'Your agent sessions'
-          curl -fsS http://127.0.0.1:8989/app.js | grep -F 'suite-case-list'
-          curl -fsS http://127.0.0.1:8989/app.css | grep -F '#behaviour-stats'
-          echo "linux archive verified"
+        run: bash .github/scripts/verify-linux.sh dist
 
   verify-windows:
     needs: build
@@ -153,51 +126,7 @@ jobs:
           path: dist
       - name: Verify the Windows archive executes and carries the expected payload
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $expected = (git rev-parse HEAD).Trim()
-          $zip = Get-ChildItem dist/*windows_amd64.zip | Select-Object -First 1
-          $line = (Get-Content dist/checksums.txt | Where-Object { $_ -match [regex]::Escape($zip.Name) })
-          if (-not $line) { throw "no checksum line for $($zip.Name)" }
-          $want = ($line -replace '^[0-9a-f]{64}\s+\*?', '').Trim()
-          $got = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
-          if ($got -ne $want.ToLower()) { throw "checksum mismatch: $got != $want" }
-          Expand-Archive -Path $zip.FullName -DestinationPath pkg -Force
-          $dir = Get-ChildItem pkg -Directory | Select-Object -First 1
-          Push-Location $dir.FullName
-          try {
-            $version = & .\tapelog.exe version
-            Write-Host $version
-            if ($version -notmatch [regex]::Escape("($expected)")) { throw "version does not name the released commit $expected" }
-            if (-not (Select-String -Path MANIFEST.txt -SimpleMatch "commit: $expected" -Quiet)) { throw "MANIFEST.txt does not name $expected" }
-            if (-not (Test-Path docs/GETTING_STARTED.md)) { throw "docs/GETTING_STARTED.md missing" }
-            if (-not (Test-Path examples/regression-demo/demo-suite.json)) { throw "demo suite missing" }
-            & .\tapelog.exe demo --dir demo-run
-            if ($LASTEXITCODE -ne 0) { throw "demo failed" }
-            $rec = (Get-ChildItem demo-run/recordings/*.jsonl | Select-Object -First 1).FullName
-            $verify = & .\tapelog.exe verify $rec
-            if ($verify -notmatch 'chain intact') { throw "verify did not report an intact chain" }
-            & .\tapelog.exe lab suite --dir examples/regression-demo --suite demo-suite.json *> lab.log
-            if ($LASTEXITCODE -ne 1) { throw "bundled suite exited $LASTEXITCODE, expected 1 (a deliberate FAIL)" }
-            if (-not (Select-String -Path lab.log -SimpleMatch '2 pass, 1 fail, 2 inconclusive' -Quiet)) { throw "suite summary missing" }
-            $proc = Start-Process -FilePath .\tapelog.exe -ArgumentList 'web','--dir','examples/regression-demo','--listen','127.0.0.1:8989' -PassThru -WindowStyle Hidden
-            try {
-              $ready = $false
-              for ($i = 0; $i -lt 40; $i++) {
-                try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8989/api/sessions -TimeoutSec 2 | Out-Null; $ready = $true; break } catch { Start-Sleep -Milliseconds 500 }
-              }
-              if (-not $ready) { throw "web server did not answer on 127.0.0.1:8989" }
-              $root = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8989/).Content
-              if ($root -notmatch 'Your agent sessions') { throw "workspace HTML not served" }
-              $js = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8989/app.js).Content
-              if ($js -notmatch 'suite-case-list') { throw "embedded workspace assets missing" }
-            } finally {
-              if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
-            }
-            Write-Host "windows archive verified"
-          } finally {
-            Pop-Location
-          }
+        run: pwsh -NoProfile -File .github/scripts/verify-windows.ps1 -DistDir dist
 
   publish:
     needs: [build, verify-linux, verify-windows]
