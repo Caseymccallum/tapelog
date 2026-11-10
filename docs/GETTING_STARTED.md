@@ -42,6 +42,27 @@ sha256sum -c checksums.txt --ignore-missing
 Get-FileHash .\tapelog_0.5.0-beta.1_windows_amd64.zip -Algorithm SHA256
 ```
 
+Check the rest of what the release publishes:
+
+```bash
+# Signature over checksums.txt (keyless, GitHub OIDC):
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  --certificate-identity-regexp 'https://github\.com/Caseymccallum/tapelog/\.github/workflows/release\.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+
+# Provenance attestation for the archive you downloaded (GitHub CLI):
+gh attestation verify tapelog_0.5.0-beta.1_windows_amd64.zip --repo Caseymccallum/tapelog
+
+# SBOM beside the archive (SPDX JSON), without extra tooling:
+python -c "import json;d=json.load(open('tapelog_0.5.0-beta.1_windows_amd64.zip.spdx.json'));print(d['spdxVersion'], len(d['packages']), 'packages')"
+```
+
+These come from the release workflow. An archive you built yourself is not
+signed: its `MANIFEST.txt` says `signing: NOT PERFORMED`.
+
 You can run the binary from the extracted directory, or put it on `PATH`.
 
 **Building from source** is supported and documented, but it is not required to try the beta:
@@ -174,15 +195,15 @@ See [The Regression Lab](REGRESSION-LAB.md) for the claim kinds, the two eligibi
 
 | Platform | Build | Functional acceptance |
 |---|---|---|
-| Windows amd64 | yes | **yes** — every command in this repository's docs was run here |
-| Linux amd64 | yes | **partly** — the full test suite under `-race` runs in `golang:1.27`; the CLI was not driven end to end on a Linux desktop |
+| Windows amd64 | yes | **yes** — CI `verify-windows` runs the published archive end to end, and the same commands were run by hand |
+| Linux amd64 | yes | **yes for the CLI** — CI `verify-linux` extracts the published archive inside `debian:bookworm-slim` and runs version, demo, verify, the bundled suite and the workspace; the `-race` suite runs in `golang:1.27`. No Linux desktop session was tested |
 | macOS (amd64, arm64) | compiles; **no archive published for the beta** | **no** — no macOS machine was available; nothing is claimed |
 
 ## Troubleshooting the things that actually go wrong
 
 | Symptom | Cause |
 |---|---|
-| A command in this repo "does not exist" | you are running the published `v0.4.0` binary; use the M15 candidate archive or rebuild from source |
+| A command in this repo "does not exist" | you are running the published `v0.4.0` binary; install the `v0.5.0-beta.1` archive or rebuild from source |
 | `session/start` and `tools/list` but zero calls | the client did the work natively, or never invoked an MCP tool. The boundary observes only MCP traffic |
 | `bind: Only one usage of each socket address` | the web port is taken; pass `--listen 127.0.0.1:0` and it reports the port it got |
 | "cannot find the path specified" from Git Bash on Windows | pass native `C:/…` paths to the binary, not `/c/…` |

@@ -13,21 +13,20 @@
 > **Experimental:** value-level taint · signed checkpoints · the MCP compat lab.
 > [CHANGELOG](CHANGELOG.md) · [getting started](docs/GETTING_STARTED.md) · [threat model](docs/THREAT_MODEL.md)
 
-## Start here (development branch)
+## Start here
 
 [**Getting started**](docs/GETTING_STARTED.md): build the binary, check which
 one you have, run the ~1-second offline demo, then wrap one existing stdio
-server. It states which platforms are actually tested, and every command in it
-was run on the branch it describes. Deeper walkthrough:
+server. It states which platforms are actually tested. Deeper walkthrough:
 [Your first session](docs/FIRST-SESSION.md).
 
 `tapelog setup` previews the change and saves a **separate candidate config**; it
-never edits active settings. These commands require building this branch; they
-are not in v0.4.0. Only traffic crossing Tapelog's MCP boundary is recorded —
+never edits active settings. These commands ship in the beta; they are not in
+v0.4.0. Only traffic crossing Tapelog's MCP boundary is recorded —
 built-in agent tools remain unobserved, and five-minute onboarding has not been
 measured on a machine other than the author's.
 
-**Agent Session Workbench (M2 development branch):** `tapelog web --dir <recordings>`
+**Agent Session Workbench:** `tapelog web --dir <recordings>`
 opens a searchable session library, linked call investigation, recorded-response
 comparison and a trajectory-test builder. Dark/light UI, bounded event pages and
 integrity diagnostics work with historical logs. [Workbench guide](docs/WORKBENCH.md).
@@ -75,11 +74,15 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/THREAT_MODEL.md](docs/THREAT_MO
 ## Install
 
 ```bash
-# prebuilt binaries for this beta: Windows and Linux, amd64 — GitHub Releases.
-# Checksums are published; signing and SBOM are NOT produced for the beta:
-#   https://github.com/Caseymccallum/tapelog/releases
+# prebuilt archives: Windows and Linux, amd64
+#   https://github.com/Caseymccallum/tapelog/releases/tag/v0.5.0-beta.1
+# Beside them: checksums.txt, a cosign signature and certificate for it, an SPDX
+# SBOM per archive, and a build-provenance attestation. How to check each is in
+# docs/GETTING_STARTED.md.
 
-go install github.com/Caseymccallum/tapelog/cmd/tapelog@latest   # or from source
+# From source, pinned. `@latest` resolves to the last stable module version
+# (v0.4.0), which does not contain the beta commands:
+go install github.com/Caseymccallum/tapelog/cmd/tapelog@v0.5.0-beta.1
 ```
 
 ## Connect your agent (one config change)
