@@ -1,4 +1,8 @@
-# goreleaser config — single static binaries for the platforms agents run on.
+# NOTE: the release workflow does not use this file. It runs
+# scripts/build-release-candidate.sh — the same script that produced the accepted
+# artifacts — and then signs/SBOMs the result, so the published bytes are the tested
+# bytes. This config is kept for other tooling; update both if the packaging changes.
+#
 # Release flow: push a v* tag (or workflow_dispatch the release workflow)
 # and it builds, SBOMs (syft), signs (cosign, SECURITY.md promise),
 # attests provenance, and publishes the GitHub Release.

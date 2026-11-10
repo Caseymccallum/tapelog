@@ -47,14 +47,26 @@ jobs:
           go-version-file: go.mod
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
-      - name: Build, checksum, sign and SBOM (does not publish)
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          distribution: goreleaser
-          version: v2.18.2
-          args: release --clean --skip=publish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package with the tested script (does not publish)
+        run: |
+          set -euo pipefail
+          TAPELOG_PLATFORMS="windows/amd64 linux/amd64" \
+          TAPELOG_MANIFEST_SIGNING="PERFORMED (cosign keyless over checksums.txt by this workflow)" \
+          TAPELOG_MANIFEST_SBOM="PRODUCED per archive (syft/SPDX) by this workflow" \
+            bash scripts/build-release-candidate.sh "$PWD/dist"
+      - name: Sign the checksums (cosign keyless)
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --output-signature dist/checksums.txt.sig \
+            --output-certificate dist/checksums.txt.pem \
+            dist/checksums.txt
+      - name: SBOM per archive (syft/SPDX)
+        run: |
+          set -euo pipefail
+          for f in dist/tapelog_*.zip dist/tapelog_*.tar.gz; do
+            syft "$f" -o spdx-json > "$f.spdx.json"
+          done
       - name: Assert the expected artifacts exist
         run: |
           set -euo pipefail
@@ -65,6 +77,7 @@ jobs:
           test "$(ls dist/*windows_amd64.zip | wc -l)" = "1"
           test "$(ls dist/*linux_amd64.tar.gz | wc -l)" = "1"
           test "$(ls dist/*.spdx.json 2>/dev/null | wc -l)" -ge 1
+          grep -q 'signing: PERFORMED' dist/MANIFEST.txt
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
