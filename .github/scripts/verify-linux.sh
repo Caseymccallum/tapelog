@@ -12,10 +12,10 @@ archive="$(ls "$dist"/*linux_amd64.tar.gz | head -1)"
 [ -n "$archive" ] || { echo "no linux archive in $dist" >&2; exit 1; }
 (cd "$dist" && sha256sum -c checksums.txt)
 
-tar -tzf "$archive" | grep -q 'docs/GETTING_STARTED.md' || { echo "docs/GETTING_STARTED.md missing" >&2; exit 1; }
-tar -tzf "$archive" | grep -q 'docs/SECURITY-AND-LIMITATIONS.md' || { echo "docs/SECURITY-AND-LIMITATIONS.md missing" >&2; exit 1; }
-tar -tzf "$archive" | grep -q 'examples/regression-demo/demo-suite.json' || { echo "demo suite missing" >&2; exit 1; }
-tar -tzf "$archive" | grep -q 'MANIFEST.txt' || { echo "MANIFEST.txt missing" >&2; exit 1; }
+tar -tzf "$archive" | grep -F 'docs/GETTING_STARTED.md' > /dev/null || { echo "docs/GETTING_STARTED.md missing" >&2; exit 1; }
+tar -tzf "$archive" | grep -F 'docs/SECURITY-AND-LIMITATIONS.md' > /dev/null || { echo "docs/SECURITY-AND-LIMITATIONS.md missing" >&2; exit 1; }
+tar -tzf "$archive" | grep -F 'examples/regression-demo/demo-suite.json' > /dev/null || { echo "demo suite missing" >&2; exit 1; }
+tar -tzf "$archive" | grep -F 'MANIFEST.txt' > /dev/null || { echo "MANIFEST.txt missing" >&2; exit 1; }
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
