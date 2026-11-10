@@ -57,11 +57,11 @@ archives:
       # is archived relative to the glob's own base, which flattened the guides to
       # the root and broke every relative link between them.
       - src: docs/*.md
-        dst: docs
+        strip_parent: false
       - src: docs/adr/*.md
-        dst: docs/adr
+        strip_parent: false
       - src: examples/regression-demo/*
-        dst: examples/regression-demo
+        strip_parent: false
 
 checksum:
   name_template: checksums.txt
